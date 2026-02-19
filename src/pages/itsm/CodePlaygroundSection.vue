@@ -62,6 +62,7 @@
 import CodeEditor from '../../components/itsm/CodeEditor.vue'
 import CodeExecutor from '../../components/itsm/CodeExecutor.vue'
 import ItsmModal from '../../components/itsm/ItsmModal.vue'
+import { api } from '../../utils/api.js'
 
 export default {
   name: 'CodePlaygroundSection',
@@ -82,31 +83,41 @@ export default {
       this.snippetDesc = ''
       this.showSaveModal = true
     },
-    confirmSave() {
+    async confirmSave() {
       if (!this.snippetName.trim()) {
         alert('请输入片段名称')
         return
       }
-      const snippet = {
-        name: this.snippetName,
-        description: this.snippetDesc,
-        code: this.currentCode,
-        language: this.currentLanguage,
-        timestamp: Date.now()
+
+      try {
+        const snippet = {
+          name: this.snippetName,
+          description: this.snippetDesc,
+          code: this.currentCode,
+          language: this.currentLanguage
+        }
+        const created = await api.snippets.create(snippet)
+        this.snippets.unshift(created)
+        this.showSaveModal = false
+        alert('✅ 片段已保存')
+      } catch (error) {
+        console.error('保存失败:', error)
+        alert('保存失败: ' + error.message)
       }
-      this.snippets.unshift(snippet)
-      this.saveToStorage()
-      this.showSaveModal = false
-      alert('✅ 片段已保存')
     },
-    loadSnippet() {
-      // 从 localStorage 加载
-      const saved = localStorage.getItem('code_snippets')
-      if (!saved) {
-        alert('暂无保存的代码片段')
-        return
+    async loadSnippet() {
+      try {
+        const snippets = await api.snippets.getAll()
+        this.snippets = Array.isArray(snippets) ? snippets : []
+        if (this.snippets.length === 0) {
+          console.log('暂无保存的代码片段')
+          // 不显示警告，这是正常的
+        }
+      } catch (error) {
+        console.error('加载代码片段失败:', error)
+        this.snippets = []
+        // 即使加载失败，也要继续使用编辑器
       }
-      this.snippets = JSON.parse(saved)
     },
     loadSnippetCode(snippet) {
       this.currentCode = snippet.code
@@ -116,21 +127,31 @@ export default {
       navigator.clipboard.writeText(snippet.code)
       alert('✅ 代码已复制')
     },
-    deleteSnippet(idx) {
+    async deleteSnippet(idx) {
       if (confirm('确定删除此片段?')) {
-        this.snippets.splice(idx, 1)
-        this.saveToStorage()
+        try {
+          const snippet = this.snippets[idx]
+          await api.snippets.delete(snippet.id)
+          this.snippets.splice(idx, 1)
+        } catch (error) {
+          console.error('删除失败:', error)
+          alert('删除失败: ' + error.message)
+        }
       }
     },
-    clearAll() {
+    async clearAll() {
       if (confirm('确定要清空所有代码和片段吗?')) {
-        this.currentCode = ''
-        this.snippets = []
-        this.saveToStorage()
+        try {
+          for (const snippet of this.snippets) {
+            await api.snippets.delete(snippet.id)
+          }
+          this.currentCode = ''
+          this.snippets = []
+        } catch (error) {
+          console.error('清空失败:', error)
+          alert('清空失败: ' + error.message)
+        }
       }
-    },
-    saveToStorage() {
-      localStorage.setItem('code_snippets', JSON.stringify(this.snippets))
     },
     formatDate(ts) {
       return new Date(ts).toLocaleDateString('zh-CN', {

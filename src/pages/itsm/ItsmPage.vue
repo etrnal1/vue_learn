@@ -96,6 +96,7 @@ import ItsmSettings from './ItsmSettings.vue'
 import ProcessFlowSection from './ProcessFlowSection.vue'
 import CodePlaygroundSection from './CodePlaygroundSection.vue'
 import GitLogSection from './GitLogSection.vue'
+import { api } from '../../utils/api.js'
 
 const DEFAULT_USERS = [
   { id: 'u1', name: '张三', role: 'admin', avatar: '👨‍💻', email: 'zhangsan@example.com', createdAt: Date.now() },
@@ -129,78 +130,107 @@ export default {
       tickets: [],
       serviceRequests: [],
       articles: [],
-      flows: [],
-      counters: { ticket: 0, request: 0, article: 0, flow: 0 }
+      flows: []
     }
   },
   methods: {
     // === User Management ===
-    switchUser(user) {
-      this.currentUser = user
-      this.saveToStorage('itsm_current_user', user.id)
-    },
-    addUser(userData) {
-      const user = {
-        id: 'u' + Date.now(),
-        ...userData,
-        createdAt: Date.now()
+    async switchUser(user) {
+      try {
+        await api.users.switchCurrent(user.id)
+        this.currentUser = user
+      } catch (error) {
+        console.error('切换用户失败:', error)
+        alert('切换用户失败: ' + error.message)
       }
-      this.users.push(user)
-      this.saveToStorage('itsm_users', this.users)
     },
-    updateUser(updated) {
-      const idx = this.users.findIndex(u => u.id === updated.id)
-      if (idx !== -1) {
-        this.users[idx] = { ...this.users[idx], ...updated }
-        if (this.currentUser.id === updated.id) {
-          this.currentUser = this.users[idx]
+    async addUser(userData) {
+      try {
+        const user = {
+          id: 'u' + Date.now(),
+          ...userData,
+          createdAt: Date.now()
         }
-        this.saveToStorage('itsm_users', this.users)
+        const created = await api.users.create(user)
+        this.users.push(created)
+      } catch (error) {
+        console.error('添加用户失败:', error)
+        alert('添加用户失败: ' + error.message)
       }
     },
-    removeUser(id) {
-      this.users = this.users.filter(u => u.id !== id)
-      if (this.currentUser.id === id && this.users.length > 0) {
-        this.currentUser = this.users[0]
-        this.saveToStorage('itsm_current_user', this.currentUser.id)
+    async updateUser(updated) {
+      try {
+        const result = await api.users.update(updated.id, updated)
+        const idx = this.users.findIndex(u => u.id === updated.id)
+        if (idx !== -1) {
+          this.users[idx] = result
+          if (this.currentUser.id === updated.id) {
+            this.currentUser = result
+          }
+        }
+      } catch (error) {
+        console.error('更新用户失败:', error)
+        alert('更新用户失败: ' + error.message)
       }
-      this.saveToStorage('itsm_users', this.users)
+    },
+    async removeUser(id) {
+      try {
+        await api.users.delete(id)
+        this.users = this.users.filter(u => u.id !== id)
+        if (this.currentUser.id === id && this.users.length > 0) {
+          this.currentUser = this.users[0]
+          await api.users.switchCurrent(this.currentUser.id)
+        }
+      } catch (error) {
+        console.error('删除用户失败:', error)
+        alert('删除用户失败: ' + error.message)
+      }
     },
 
     // === Tickets ===
-    createTicket(data) {
-      this.counters.ticket++
-      const ticket = {
-        id: 't' + Date.now(),
-        ticketNo: 'INC-' + String(this.counters.ticket).padStart(5, '0'),
-        title: data.title,
-        description: data.description,
-        category: data.category,
-        priority: data.priority,
-        status: 'new',
-        assigneeId: data.assigneeId || '',
-        reporterId: this.currentUser.id,
-        relatedArticleIds: [],
-        attachments: data.attachments || [],
-        comments: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        resolvedAt: null,
-        closedAt: null
-      }
-      this.tickets.push(ticket)
-      this.saveTickets()
-    },
-    updateTicket(updated) {
-      const idx = this.tickets.findIndex(t => t.id === updated.id)
-      if (idx !== -1) {
-        this.tickets[idx] = { ...updated }
-        this.saveTickets()
+    async createTicket(data) {
+      try {
+        const ticket = {
+          id: 't' + Date.now(),
+          title: data.title,
+          description: data.description,
+          category: data.category,
+          priority: data.priority,
+          status: 'new',
+          assigneeId: data.assigneeId || null,
+          reporterId: this.currentUser.id,
+          relatedArticleIds: [],
+          attachments: data.attachments || []
+        }
+        const created = await api.tickets.create(ticket)
+        // 将后端返回的字段名映射到前端格式
+        created.comments = []
+        this.tickets.unshift(created)
+      } catch (error) {
+        console.error('创建工单失败:', error)
+        alert('创建工单失败: ' + error.message)
       }
     },
-    deleteTicket(id) {
-      this.tickets = this.tickets.filter(t => t.id !== id)
-      this.saveTickets()
+    async updateTicket(updated) {
+      try {
+        const result = await api.tickets.update(updated.id, updated)
+        const idx = this.tickets.findIndex(t => t.id === updated.id)
+        if (idx !== -1) {
+          this.tickets[idx] = { ...result, comments: updated.comments || [] }
+        }
+      } catch (error) {
+        console.error('更新工单失败:', error)
+        alert('更新工单失败: ' + error.message)
+      }
+    },
+    async deleteTicket(id) {
+      try {
+        await api.tickets.delete(id)
+        this.tickets = this.tickets.filter(t => t.id !== id)
+      } catch (error) {
+        console.error('删除工单失败:', error)
+        alert('删除工单失败: ' + error.message)
+      }
     },
     viewTicketFromDashboard(ticket) {
       this.activeTab = 'incidents'
@@ -212,204 +242,276 @@ export default {
     },
 
     // === Service Requests ===
-    createRequest(data) {
-      this.counters.request++
-      const request = {
-        id: 'sr' + Date.now(),
-        requestNo: 'SR-' + String(this.counters.request).padStart(5, '0'),
-        serviceType: data.serviceType,
-        title: data.title,
-        description: data.description,
-        priority: data.priority,
-        status: data.status || 'submitted',
-        requesterId: this.currentUser.id,
-        approverId: '',
-        assigneeId: '',
-        approvalNote: '',
-        comments: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        approvedAt: null,
-        completedAt: null
-      }
-      this.serviceRequests.push(request)
-      this.saveRequests()
-    },
-    updateRequest(updated) {
-      const idx = this.serviceRequests.findIndex(r => r.id === updated.id)
-      if (idx !== -1) {
-        this.serviceRequests[idx] = { ...updated }
-        this.saveRequests()
+    async createRequest(data) {
+      try {
+        const request = {
+          id: 'sr' + Date.now(),
+          serviceType: data.serviceType,
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+          status: data.status || 'submitted',
+          requesterId: this.currentUser.id,
+          approverId: null,
+          assigneeId: null,
+          approvalNote: null
+        }
+        const created = await api.requests.create(request)
+        created.comments = []
+        this.serviceRequests.unshift(created)
+      } catch (error) {
+        console.error('创建服务请求失败:', error)
+        alert('创建服务请求失败: ' + error.message)
       }
     },
-    deleteRequest(id) {
-      this.serviceRequests = this.serviceRequests.filter(r => r.id !== id)
-      this.saveRequests()
+    async updateRequest(updated) {
+      try {
+        const result = await api.requests.update(updated.id, updated)
+        const idx = this.serviceRequests.findIndex(r => r.id === updated.id)
+        if (idx !== -1) {
+          this.serviceRequests[idx] = { ...result, comments: updated.comments || [] }
+        }
+      } catch (error) {
+        console.error('更新服务请求失败:', error)
+        alert('更新服务请求失败: ' + error.message)
+      }
+    },
+    async deleteRequest(id) {
+      try {
+        await api.requests.delete(id)
+        this.serviceRequests = this.serviceRequests.filter(r => r.id !== id)
+      } catch (error) {
+        console.error('删除服务请求失败:', error)
+        alert('删除服务请求失败: ' + error.message)
+      }
     },
 
     // === Articles ===
-    createArticle(data) {
-      this.counters.article++
-      const article = {
-        id: 'kb' + Date.now(),
-        articleNo: 'KB-' + String(this.counters.article).padStart(5, '0'),
-        title: data.title,
-        content: data.content,
-        category: data.category,
-        tags: data.tags || [],
-        authorId: this.currentUser.id,
-        viewCount: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      }
-      this.articles.push(article)
-      this.saveArticles()
-    },
-    updateArticle(updated) {
-      const idx = this.articles.findIndex(a => a.id === updated.id)
-      if (idx !== -1) {
-        this.articles[idx] = { ...updated }
-        this.saveArticles()
+    async createArticle(data) {
+      try {
+        const article = {
+          id: 'kb' + Date.now(),
+          title: data.title,
+          content: data.content,
+          category: data.category,
+          tags: data.tags || [],
+          authorId: this.currentUser.id
+        }
+        const created = await api.articles.create(article)
+        this.articles.unshift(created)
+      } catch (error) {
+        console.error('创建文章失败:', error)
+        alert('创建文章失败: ' + error.message)
       }
     },
-    deleteArticle(id) {
-      this.articles = this.articles.filter(a => a.id !== id)
-      this.saveArticles()
+    async updateArticle(updated) {
+      try {
+        const result = await api.articles.update(updated.id, updated)
+        const idx = this.articles.findIndex(a => a.id === updated.id)
+        if (idx !== -1) {
+          this.articles[idx] = result
+        }
+      } catch (error) {
+        console.error('更新文章失败:', error)
+        alert('更新文章失败: ' + error.message)
+      }
+    },
+    async deleteArticle(id) {
+      try {
+        await api.articles.delete(id)
+        this.articles = this.articles.filter(a => a.id !== id)
+      } catch (error) {
+        console.error('删除文章失败:', error)
+        alert('删除文章失败: ' + error.message)
+      }
     },
 
     // === Flows ===
-    createFlow(data) {
-      this.counters.flow++
-      const flow = {
-        id: 'flow' + Date.now(),
-        flowNo: 'FLOW-' + String(this.counters.flow).padStart(5, '0'),
-        name: data.name,
-        description: data.description,
-        icon: data.icon,
-        steps: data.steps,
-        authorId: this.currentUser.id,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      }
-      this.flows.push(flow)
-      this.saveFlows()
-    },
-    updateFlow(updated) {
-      const idx = this.flows.findIndex(f => f.id === updated.id)
-      if (idx !== -1) {
-        this.flows[idx] = { ...updated }
-        this.saveFlows()
-      }
-    },
-    deleteFlow(id) {
-      this.flows = this.flows.filter(f => f.id !== id)
-      this.saveFlows()
-    },
-    saveFlows() {
-      this.saveToStorage('itsm_flows', this.flows)
-      this.saveToStorage('itsm_counters', this.counters)
-    },
-
-    // === Storage ===
-    saveToStorage(key, data) {
-      localStorage.setItem(key, JSON.stringify(data))
-    },
-    saveTickets() {
-      this.saveToStorage('itsm_tickets', this.tickets)
-      this.saveToStorage('itsm_counters', this.counters)
-    },
-    saveRequests() {
-      this.saveToStorage('itsm_service_requests', this.serviceRequests)
-      this.saveToStorage('itsm_counters', this.counters)
-    },
-    saveArticles() {
-      this.saveToStorage('itsm_articles', this.articles)
-      this.saveToStorage('itsm_counters', this.counters)
-    },
-    loadFromStorage() {
+    async createFlow(data) {
       try {
-        const users = localStorage.getItem('itsm_users')
-        this.users = users ? JSON.parse(users) : [...DEFAULT_USERS]
-
-        const currentUserId = localStorage.getItem('itsm_current_user')
-        if (currentUserId) {
-          const id = JSON.parse(currentUserId)
-          const found = this.users.find(u => u.id === id)
-          if (found) this.currentUser = found
+        const flow = {
+          id: 'flow' + Date.now(),
+          name: data.name,
+          description: data.description,
+          icon: data.icon,
+          steps: data.steps,
+          authorId: this.currentUser.id
         }
-        if (!this.users.find(u => u.id === this.currentUser.id)) {
+        const created = await api.flows.create(flow)
+        this.flows.unshift(created)
+      } catch (error) {
+        console.error('创建流程失败:', error)
+        alert('创建流程失败: ' + error.message)
+      }
+    },
+    async updateFlow(updated) {
+      try {
+        const result = await api.flows.update(updated.id, updated)
+        const idx = this.flows.findIndex(f => f.id === updated.id)
+        if (idx !== -1) {
+          this.flows[idx] = result
+        }
+      } catch (error) {
+        console.error('更新流程失败:', error)
+        alert('更新流程失败: ' + error.message)
+      }
+    },
+    async deleteFlow(id) {
+      try {
+        await api.flows.delete(id)
+        this.flows = this.flows.filter(f => f.id !== id)
+      } catch (error) {
+        console.error('删除流程失败:', error)
+        alert('删除流程失败: ' + error.message)
+      }
+    },
+
+    // === Data Loading ===
+    async loadFromStorage() {
+      try {
+        // 加载用户
+        let users = []
+        try {
+          users = await api.users.getAll()
+        } catch (e) {
+          console.warn('加载用户列表失败:', e)
+          users = []
+        }
+
+        // 如果没有用户，创建默认用户
+        if (users.length === 0) {
+          try {
+            for (const user of DEFAULT_USERS) {
+              await api.users.create(user)
+            }
+            users = [...DEFAULT_USERS]
+          } catch (e) {
+            console.warn('创建默认用户失败:', e)
+            users = [...DEFAULT_USERS]
+          }
+        }
+
+        this.users = users
+
+        // 加载当前用户
+        let currentUser = null
+        try {
+          currentUser = await api.users.getCurrent()
+        } catch (e) {
+          console.warn('加载当前用户失败:', e)
+        }
+
+        if (currentUser) {
+          this.currentUser = currentUser
+        } else {
           this.currentUser = this.users[0] || DEFAULT_USERS[0]
+          try {
+            await api.users.switchCurrent(this.currentUser.id)
+          } catch (e) {
+            console.warn('切换用户失败:', e)
+          }
         }
 
-        const tickets = localStorage.getItem('itsm_tickets')
-        this.tickets = tickets ? JSON.parse(tickets) : []
-
-        const requests = localStorage.getItem('itsm_service_requests')
-        this.serviceRequests = requests ? JSON.parse(requests) : []
-
-        const articles = localStorage.getItem('itsm_articles')
-        this.articles = articles ? JSON.parse(articles) : []
-
-        const flows = localStorage.getItem('itsm_flows')
-        this.flows = flows ? JSON.parse(flows) : []
-
-        const counters = localStorage.getItem('itsm_counters')
-        this.counters = counters ? JSON.parse(counters) : { ticket: 0, request: 0, article: 0, flow: 0 }
-
-        // First time: save defaults
-        if (!users) {
-          this.saveToStorage('itsm_users', this.users)
-          this.saveToStorage('itsm_current_user', this.currentUser.id)
+        // 加载工单
+        try {
+          const tickets = await api.tickets.getAll()
+          this.tickets = Array.isArray(tickets) ? tickets : []
+        } catch (e) {
+          console.warn('加载工单失败:', e)
+          this.tickets = []
         }
+
+        // 加载服务请求
+        try {
+          const requests = await api.requests.getAll()
+          this.serviceRequests = Array.isArray(requests) ? requests : []
+        } catch (e) {
+          console.warn('加载服务请求失败:', e)
+          this.serviceRequests = []
+        }
+
+        // 加载文章
+        try {
+          const articles = await api.articles.getAll()
+          this.articles = Array.isArray(articles) ? articles : []
+        } catch (e) {
+          console.warn('加载文章失败:', e)
+          this.articles = []
+        }
+
+        // 加载流程
+        try {
+          const flows = await api.flows.getAll()
+          this.flows = Array.isArray(flows) ? flows : []
+        } catch (e) {
+          console.warn('加载流程失败:', e)
+          this.flows = []
+        }
+
       } catch (e) {
         console.error('Failed to load ITSM data:', e)
+        // 发生错误时使用默认数据
+        this.users = [...DEFAULT_USERS]
+        this.currentUser = this.users[0]
+        this.tickets = []
+        this.serviceRequests = []
+        this.articles = []
+        this.flows = []
       }
     },
-    importData(data) {
-      if (data.itsm_users) {
-        this.users = data.itsm_users
-        this.saveToStorage('itsm_users', this.users)
+    async importData(data) {
+      try {
+        // 使用迁移 API 导入数据
+        const result = await api.migrate.import(data)
+        console.log('数据导入成功:', result)
+
+        // 重新加载数据
+        await this.loadFromStorage()
+
+        alert('数据导入成功！')
+      } catch (error) {
+        console.error('数据导入失败:', error)
+        alert('数据导入失败: ' + error.message)
       }
-      if (data.itsm_tickets) {
-        this.tickets = data.itsm_tickets
-        this.saveToStorage('itsm_tickets', this.tickets)
+    },
+    async clearData() {
+      if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+        return
       }
-      if (data.itsm_service_requests) {
-        this.serviceRequests = data.itsm_service_requests
-        this.saveToStorage('itsm_service_requests', this.serviceRequests)
-      }
-      if (data.itsm_articles) {
-        this.articles = data.itsm_articles
-        this.saveToStorage('itsm_articles', this.articles)
-      }
-      if (data.itsm_flows) {
-        this.flows = data.itsm_flows
-        this.saveToStorage('itsm_flows', this.flows)
-      }
-      if (data.itsm_counters) {
-        this.counters = data.itsm_counters
-        this.saveToStorage('itsm_counters', this.counters)
-      }
-      if (data.itsm_current_user) {
-        const found = this.users.find(u => u.id === data.itsm_current_user)
-        if (found) {
-          this.currentUser = found
-          this.saveToStorage('itsm_current_user', found.id)
+
+      try {
+        // 删除所有数据（需要先删除依赖的数据）
+        for (const flow of this.flows) {
+          await api.flows.delete(flow.id)
         }
+        for (const article of this.articles) {
+          await api.articles.delete(article.id)
+        }
+        for (const request of this.serviceRequests) {
+          await api.requests.delete(request.id)
+        }
+        for (const ticket of this.tickets) {
+          await api.tickets.delete(ticket.id)
+        }
+        for (const user of this.users) {
+          if (!DEFAULT_USERS.find(u => u.id === user.id)) {
+            await api.users.delete(user.id)
+          }
+        }
+
+        // 重置本地状态
+        this.users = [...DEFAULT_USERS]
+        this.currentUser = this.users[0]
+        this.tickets = []
+        this.serviceRequests = []
+        this.articles = []
+        this.flows = []
+
+        alert('数据清空成功！')
+      } catch (error) {
+        console.error('清空数据失败:', error)
+        alert('清空数据失败: ' + error.message)
       }
-    },
-    clearData() {
-      const keys = ['itsm_users', 'itsm_current_user', 'itsm_tickets', 'itsm_service_requests', 'itsm_articles', 'itsm_flows', 'itsm_counters']
-      keys.forEach(k => localStorage.removeItem(k))
-      this.users = [...DEFAULT_USERS]
-      this.currentUser = this.users[0]
-      this.tickets = []
-      this.serviceRequests = []
-      this.articles = []
-      this.flows = []
-      this.counters = { ticket: 0, request: 0, article: 0, flow: 0 }
-      this.saveToStorage('itsm_users', this.users)
-      this.saveToStorage('itsm_current_user', this.currentUser.id)
     }
   },
   mounted() {

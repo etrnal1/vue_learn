@@ -121,8 +121,8 @@
 
     <!-- 生成时间 -->
     <div v-if="summary" class="generated-at">
-      数据生成时间：{{ new Date(summary.generatedAt).toLocaleString('zh-CN') }}
-      · 启动 dev server 时自动更新
+      <div>数据生成时间：{{ new Date(summary.generatedAt).toLocaleString('zh-CN') }}</div>
+      <div class="auto-refresh-hint">🔄 自动检测更新中 (每 30 秒刷新一次)</div>
     </div>
   </div>
 </template>
@@ -138,6 +138,8 @@ export default {
       commits: [],
       expandedHash: null,
       activeFilter: 'all',
+      lastGeneratedAt: null,
+      autoRefreshInterval: null,
       typeFilters: [
         { value: 'all', label: '全部', icon: '📋' },
         { value: '新功能', label: '新功能', icon: '✨' },
@@ -156,17 +158,47 @@ export default {
     }
   },
   methods: {
-    async loadData() {
+    async loadData(silent = false) {
       try {
-        const res = await fetch('/git-log.json')
+        // 添加时间戳避免缓存
+        const res = await fetch(`/git-log.json?t=${Date.now()}`)
         if (!res.ok) throw new Error('无法加载 git-log.json，请先运行 npm run git-log')
         const data = await res.json()
+
+        // 检测是否有新的更新（通过 generatedAt 字段）
+        const newGeneratedAt = data.summary.generatedAt
+        if (this.lastGeneratedAt && newGeneratedAt !== this.lastGeneratedAt) {
+          console.log('🔄 检测到新的提交，自动更新数据...')
+          console.log('上次生成:', this.lastGeneratedAt)
+          console.log('本次生成:', newGeneratedAt)
+          if (!silent) {
+            // 可以在这里添加一个提示
+            console.log('✨ 提交历史已更新!')
+          }
+        }
+        this.lastGeneratedAt = newGeneratedAt
+
         this.summary = data.summary
         this.commits = data.commits
+        this.error = ''
       } catch (e) {
         this.error = e.message
+        console.error('加载数据失败:', e)
       } finally {
         this.loading = false
+      }
+    },
+    startAutoRefresh() {
+      // 每 30 秒检查一次是否有新数据
+      this.autoRefreshInterval = setInterval(() => {
+        console.log('🔍 检查新的提交...')
+        this.loadData(true) // silent mode
+      }, 30000) // 30秒
+    },
+    stopAutoRefresh() {
+      if (this.autoRefreshInterval) {
+        clearInterval(this.autoRefreshInterval)
+        this.autoRefreshInterval = null
       }
     },
     toggleExpand(hash) {
@@ -217,6 +249,10 @@ export default {
   },
   mounted() {
     this.loadData()
+    this.startAutoRefresh()
+  },
+  beforeUnmount() {
+    this.stopAutoRefresh()
   }
 }
 </script>
@@ -562,6 +598,18 @@ export default {
   margin-top: 30px;
   padding-top: 16px;
   border-top: 1px solid #f0f0f0;
+}
+
+.auto-refresh-hint {
+  color: #667eea;
+  font-size: 0.75em;
+  margin-top: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 /* === 响应式 === */

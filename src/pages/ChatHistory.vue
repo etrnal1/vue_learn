@@ -89,6 +89,7 @@
 
 <script>
 import ChatCard from '../components/ChatCard.vue'
+import { api } from '../utils/api.js'
 
 export default {
   name: 'ChatHistory',
@@ -119,41 +120,53 @@ export default {
     }
   },
   methods: {
-    addChat() {
+    async addChat() {
       if (!this.newChat.title.trim() || !this.newChat.content.trim()) {
         alert('请填写标题和内容')
         return
       }
 
-      const chat = {
-        id: Date.now(),
-        title: this.newChat.title,
-        content: this.newChat.content,
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
-        comments: []
-      }
+      try {
+        const chat = {
+          id: Date.now(),
+          title: this.newChat.title,
+          content: this.newChat.content
+        }
 
-      this.chats.push(chat)
-      this.newChat = { title: '', content: '' }
-      this.saveTolocalStorage()
-      alert('✅ 聊天记录已保存')
+        const created = await api.chats.create(chat)
+        created.comments = []
+        this.chats.unshift(created)
+        this.newChat = { title: '', content: '' }
+        alert('✅ 聊天记录已保存')
+      } catch (error) {
+        console.error('保存失败:', error)
+        alert('保存失败: ' + error.message)
+      }
     },
 
     editChat(chat) {
       this.editingChat = JSON.parse(JSON.stringify(chat))
     },
 
-    saveEdit() {
-      const index = this.chats.findIndex(c => c.id === this.editingChat.id)
-      if (index !== -1) {
-        this.chats[index] = {
-          ...this.editingChat,
-          updatedAt: new Date().getTime()
+    async saveEdit() {
+      try {
+        const result = await api.chats.update(this.editingChat.id, {
+          title: this.editingChat.title,
+          content: this.editingChat.content
+        })
+
+        const index = this.chats.findIndex(c => c.id === this.editingChat.id)
+        if (index !== -1) {
+          this.chats[index] = {
+            ...result,
+            comments: this.chats[index].comments
+          }
         }
-        this.saveTolocalStorage()
         this.editingChat = null
         alert('✅ 编辑成功')
+      } catch (error) {
+        console.error('编辑失败:', error)
+        alert('编辑失败: ' + error.message)
       }
     },
 
@@ -161,11 +174,16 @@ export default {
       this.editingChat = null
     },
 
-    deleteChat(id) {
+    async deleteChat(id) {
       if (confirm('确定要删除这条聊天记录吗？')) {
-        this.chats = this.chats.filter(chat => chat.id !== id)
-        this.saveTolocalStorage()
-        alert('✅ 已删除')
+        try {
+          await api.chats.delete(id)
+          this.chats = this.chats.filter(chat => chat.id !== id)
+          alert('✅ 已删除')
+        } catch (error) {
+          console.error('删除失败:', error)
+          alert('删除失败: ' + error.message)
+        }
       }
     },
 
@@ -173,46 +191,79 @@ export default {
       this.expandedChatId = this.expandedChatId === id ? null : id
     },
 
-    addComment(payload) {
-      const chat = this.chats.find(c => c.id === payload.chatId)
-      if (chat) {
+    async addComment(payload) {
+      try {
         const comment = {
-          id: Date.now(),
-          text: payload.text,
-          createdAt: new Date().getTime()
+          commentId: Date.now(),
+          text: payload.text
         }
-        chat.comments.push(comment)
-        this.saveTolocalStorage()
-      }
-    },
+        const created = await api.chats.addComment(payload.chatId, comment)
 
-    deleteComment(payload) {
-      const chat = this.chats.find(c => c.id === payload.chatId)
-      if (chat) {
-        chat.comments = chat.comments.filter(c => c.id !== payload.commentId)
-        this.saveTolocalStorage()
-      }
-    },
-
-    editComment(payload) {
-      const chat = this.chats.find(c => c.id === payload.chatId)
-      if (chat) {
-        const comment = chat.comments.find(c => c.id === payload.commentId)
-        if (comment) {
-          comment.text = payload.text
-          this.saveTolocalStorage()
+        const chat = this.chats.find(c => c.id === payload.chatId)
+        if (chat) {
+          chat.comments.push(created)
         }
+      } catch (error) {
+        console.error('添加评论失败:', error)
+        alert('添加评论失败: ' + error.message)
       }
     },
 
-    saveTolocalStorage() {
-      localStorage.setItem('chatHistory', JSON.stringify(this.chats))
+    async deleteComment(payload) {
+      try {
+        await api.chats.deleteComment(payload.chatId, payload.commentId)
+
+        const chat = this.chats.find(c => c.id === payload.chatId)
+        if (chat) {
+          chat.comments = chat.comments.filter(c => c.id !== payload.commentId)
+        }
+      } catch (error) {
+        console.error('删除评论失败:', error)
+        alert('删除评论失败: ' + error.message)
+      }
     },
 
-    loadFromlocalStorage() {
-      const data = localStorage.getItem('chatHistory')
-      if (data) {
-        this.chats = JSON.parse(data)
+    async editComment(payload) {
+      // 注意：当前API不支持编辑评论，需要先删除再添加
+      try {
+        await api.chats.deleteComment(payload.chatId, payload.commentId)
+        const newComment = await api.chats.addComment(payload.chatId, {
+          commentId: Date.now(),
+          text: payload.text
+        })
+
+        const chat = this.chats.find(c => c.id === payload.chatId)
+        if (chat) {
+          const idx = chat.comments.findIndex(c => c.id === payload.commentId)
+          if (idx !== -1) {
+            chat.comments.splice(idx, 1, newComment)
+          }
+        }
+      } catch (error) {
+        console.error('编辑评论失败:', error)
+        alert('编辑评论失败: ' + error.message)
+      }
+    },
+
+    async loadFromlocalStorage() {
+      try {
+        const chats = await api.chats.getAll()
+        this.chats = Array.isArray(chats) ? chats : []
+
+        // 为每个聊天加载评论
+        for (const chat of this.chats) {
+          try {
+            const fullChat = await api.chats.getOne(chat.id)
+            chat.comments = Array.isArray(fullChat.comments) ? fullChat.comments : []
+          } catch (e) {
+            console.warn(`加载聊天 ${chat.id} 的评论失败:`, e)
+            chat.comments = []
+          }
+        }
+      } catch (error) {
+        console.warn('加载聊天记录失败:', error)
+        this.chats = []
+        // 继续使用页面，不中断
       }
     }
   },

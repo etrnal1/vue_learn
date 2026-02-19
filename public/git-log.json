@@ -1,17 +1,108 @@
 {
   "summary": {
-    "totalCommits": 8,
-    "totalFiles": 40,
-    "totalInsertions": 10320,
-    "totalDeletions": 2,
+    "totalCommits": 11,
+    "totalFiles": 44,
+    "totalInsertions": 12923,
+    "totalDeletions": 61,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-19 09:30:15 +0800",
-    "generatedAt": "2026-02-19T02:58:48.670Z"
+    "lastCommit": "2026-02-19 11:20:24 +0800",
+    "generatedAt": "2026-02-19T13:47:14.999Z"
   },
   "commits": [
+    {
+      "hash": "3579148",
+      "fullHash": "35791488c56d3a770f873326651a182a10c1dd4c",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 11:20:24 +0800",
+      "subject": "更新: 仪表板卡片可点击跳转 + 新增 5 篇知识文章",
+      "body": "- 仪表板 6 个统计卡片点击后跳转到对应模块页面\n- 知识文章新增：全局主题系统、Git 历史页面、移动端钻取导航、\n  Claude Code 自动提交工作流、开发对话完整记录",
+      "type": "更新",
+      "files": [
+        {
+          "path": "src/pages/itsm/ItsmDashboard.vue",
+          "status": "modified",
+          "name": "ItsmDashboard.vue"
+        },
+        {
+          "path": "src/pages/itsm/KnowledgeArticlesSection.vue",
+          "status": "modified",
+          "name": "KnowledgeArticlesSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 2,
+        "insertions": 692,
+        "deletions": 7
+      }
+    },
+    {
+      "hash": "f129595",
+      "fullHash": "f12959509f32982aa9f80107deac7d553fa6d9c8",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 11:20:16 +0800",
+      "subject": "添加: 全局主题系统（6 套配色 + 暗色模式）",
+      "body": "- App.vue 新增主题切换栏和 CSS 变量体系（蓝/绿/紫/橙/粉/暗夜）\n- 全局覆盖 header、卡片、表格、代码块、输入框等暗色模式样式\n- ItsmPage 清理冗余主题代码，改为继承 App 级变量，CSS 减少 2.8KB",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/App.vue",
+          "status": "modified",
+          "name": "App.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmPage.vue",
+          "status": "modified",
+          "name": "ItsmPage.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 2,
+        "insertions": 754,
+        "deletions": 51
+      }
+    },
+    {
+      "hash": "4e19ec3",
+      "fullHash": "4e19ec307750bdb9d93186b3db5bc579a331103b",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 11:20:08 +0800",
+      "subject": "添加: Git 提交历史页面和构建时日志生成",
+      "body": "- 新增 scripts/gen-git-log.js 构建时提取 git 日志到 JSON\n- 新增 GitLogSection.vue 时间线展示提交记录（统计、筛选、文件变更）\n- package.json 添加 predev/prebuild 钩子自动更新日志",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "package.json",
+          "status": "modified",
+          "name": "package.json"
+        },
+        {
+          "path": "public/git-log.json",
+          "status": "added",
+          "name": "git-log.json"
+        },
+        {
+          "path": "scripts/gen-git-log.js",
+          "status": "added",
+          "name": "gen-git-log.js"
+        },
+        {
+          "path": "src/pages/itsm/GitLogSection.vue",
+          "status": "added",
+          "name": "GitLogSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 4,
+        "insertions": 1157,
+        "deletions": 1
+      }
+    },
     {
       "hash": "e65794f",
       "fullHash": "e65794f9f31e5253ad06f2be6fa3bc904df9f2d1",

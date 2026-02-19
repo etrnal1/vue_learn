@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "predev": "node scripts/gen-git-log.js",
-    "dev": "vite",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "vite",
     "prebuild": "node scripts/gen-git-log.js",
     "build": "vite build",
     "preview": "vite preview",
@@ -16,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",
-    "vite": "^4.3.9"
+    "vite": "^4.3.9",
+    "concurrently": "^8.2.2"
   }
 }
