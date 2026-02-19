@@ -78,7 +78,7 @@ export default {
       searchQuery: '',
       selectedCategory: '全部',
       selectedArticle: null,
-      categories: ['全部', '系统架构', '代码编辑器', '响应式设计', '功能指南', 'API 文档'],
+      categories: ['全部', '系统架构', '代码编辑器', '响应式设计', '功能指南', 'API 文档', '主题系统', '开发工具', '对话总结'],
       articles: [
         {
           id: 1,
@@ -1747,6 +1747,689 @@ Content-Type: application/json
 3. **安全第一** — Function() 替代 eval()，try-catch 防止崩溃
 4. **独立自治** — 不依赖 ItsmPage 的全局状态，自己管理 localStorage
 5. **响应式** — 四个断点适配从手机到桌面的所有设备
+`
+        },
+        {
+          id: 8,
+          icon: '🎨',
+          title: '全局主题系统实现',
+          category: '主题系统',
+          updatedAt: Date.now(),
+          content: `# 全局主题系统实现
+
+## 背景
+
+项目最初只有固定的蓝紫色主题。用户需求：
+1. ITSM 页面支持多套配色
+2. 后来扩展为**全局主题**，所有页面统一切换
+
+## 架构设计
+
+### 两层主题体系
+
+\`\`\`
+App.vue (全局层)
+├── data-theme="blue|green|purple|orange|pink|dark"
+├── --app-* CSS 变量 (全局)
+├── --itsm-* CSS 变量 (ITSM 映射)
+└── 全局暗色模式覆盖
+\`\`\`
+
+### App.vue 核心代码
+
+\`\`\`javascript
+data() {
+  return {
+    currentTheme: 'blue',
+    themes: [
+      { id: 'blue', name: '经典蓝', preview: '...' },
+      { id: 'green', name: '森林绿', preview: '...' },
+      { id: 'purple', name: '星空紫', preview: '...' },
+      { id: 'orange', name: '暖阳橙', preview: '...' },
+      { id: 'pink', name: '樱花粉', preview: '...' },
+      { id: 'dark', name: '暗夜', preview: '...' }
+    ]
+  }
+},
+methods: {
+  switchTheme(id) {
+    this.currentTheme = id
+    localStorage.setItem('app_theme', id)
+    // 同步 body 背景色
+    document.body.style.background =
+      getComputedStyle(this.$el)
+        .getPropertyValue('--app-bg').trim()
+  }
+}
+\`\`\`
+
+### CSS 变量层级
+
+\`\`\`css
+/* 1. 全局变量 - 影响所有页面 */
+.app[data-theme="green"] {
+  --app-primary: #10b981;
+  --app-bg: #f0fdf4;
+  --app-card: #ffffff;
+  --app-text: #1a3a2a;
+  --app-border: #d1fae5;
+}
+
+/* 2. ITSM 映射 - 继承全局变量 */
+.app[data-theme] .itsm-page {
+  --itsm-primary: var(--app-primary);
+  --itsm-card-bg: var(--app-card);
+  --itsm-text: var(--app-text);
+}
+
+/* 3. ITSM 专属覆盖 */
+.app[data-theme="blue"] .itsm-page {
+  --itsm-primary: #3b82f6;  /* ITSM 用纯蓝 */
+}
+\`\`\`
+
+### 暗色模式覆盖
+
+暗色模式需要对全局元素做额外处理：
+
+\`\`\`css
+.app[data-theme="dark"] td { background: var(--app-card); }
+.app[data-theme="dark"] pre { background: #0f172a; color: #93c5fd; }
+.app[data-theme="dark"] input { background: var(--app-card); }
+\`\`\`
+
+### Body 背景同步
+
+\`\`\`javascript
+// CSS 变量只作用于 .app 内部
+// body 背景需要 JS 手动同步
+watch: {
+  currentTheme() {
+    this.$nextTick(() => {
+      document.body.style.background =
+        getComputedStyle(this.$el)
+          .getPropertyValue('--app-bg').trim()
+    })
+  }
+}
+\`\`\`
+
+## 主题清理过程
+
+最初 ItsmPage.vue 有自己独立的主题系统：
+- 自己的 \`data-theme\` 绑定
+- 自己的 theme 数据和 switchTheme 方法
+- 自己的 unscoped CSS 变量定义
+
+**迁移到全局后**：
+1. 删除 ItsmPage 的 \`data-theme\` 绑定
+2. 删除 theme 数据/方法/UI
+3. 保留子组件样式覆盖，选择器改为 \`.app[data-theme] .itsm-page\`
+4. CSS 减少 ~2.8KB
+
+## 关键技术点
+
+| 技术 | 用途 |
+|------|------|
+| \`[data-theme]\` 属性选择器 | 通过 CSS 选择器切换变量 |
+| CSS 自定义属性 (var) | 运行时动态切换颜色 |
+| unscoped style 块 | 穿透 scoped 限制影响子组件 |
+| localStorage | 持久化用户选择 |
+| getComputedStyle | 读取计算后的 CSS 变量值 |
+| body.style 同步 | 补充 CSS 变量无法覆盖的区域 |
+
+## 添加新主题
+
+\`\`\`css
+/* 1. App.vue data 中添加主题信息 */
+{ id: 'sunset', name: '日落', preview: '...' }
+
+/* 2. 添加 CSS 变量块 */
+.app[data-theme="sunset"] {
+  --app-primary: #ff6b6b;
+  --app-bg: #fff5f5;
+  /* ... */
+}
+
+/* 3. ITSM 专属覆盖（可选） */
+.app[data-theme="sunset"] .itsm-page {
+  --itsm-primary-light: #ffe0e0;
+}
+\`\`\`
+`
+        },
+        {
+          id: 9,
+          icon: '📋',
+          title: 'Git 提交历史页面实现',
+          category: '开发工具',
+          updatedAt: Date.now(),
+          content: `# Git 提交历史页面实现
+
+## 功能概述
+
+在 ITSM 的"📋 提交历史"子 Tab 展示项目所有 Git 提交记录，包含统计概览、按类型筛选和详细文件变更。
+
+## 架构
+
+\`\`\`
+scripts/gen-git-log.js    ← 构建时提取 git 日志
+public/git-log.json       ← 生成的 JSON 数据
+GitLogSection.vue         ← 前端展示组件
+package.json              ← predev/prebuild 钩子
+\`\`\`
+
+## 构建时数据生成
+
+### gen-git-log.js 核心逻辑
+
+\`\`\`javascript
+import { execSync } from 'child_process'
+
+// 1. 获取所有提交哈希
+const hashes = execSync('git log --format=%H')
+  .toString().trim().split('\\n')
+
+// 2. 逐条查询详细信息
+hashes.forEach(hash => {
+  const subject = execSync(
+    \\\`git log -1 --format=%s \\\${hash}\\\`
+  ).toString().trim()
+
+  const files = execSync(
+    \\\`git diff-tree --no-commit-id -r --numstat \\\${hash}\\\`
+  ).toString().trim()
+
+  // 3. 根据中文前缀分类
+  let type = '其他'
+  if (subject.includes('添加')) type = '新功能'
+  else if (subject.includes('更新')) type = '更新'
+  else if (subject.includes('修复')) type = '修复'
+})
+\`\`\`
+
+### npm 生命周期钩子
+
+\`\`\`json
+{
+  "scripts": {
+    "predev": "node scripts/gen-git-log.js",
+    "prebuild": "node scripts/gen-git-log.js",
+    "dev": "vite"
+  }
+}
+\`\`\`
+
+每次 \`npm run dev\` 或 \`npm run build\` 前自动生成最新日志。
+
+## 前端组件
+
+### 数据获取
+
+\`\`\`javascript
+async mounted() {
+  const res = await fetch('/git-log.json')
+  const data = await res.json()
+  this.commits = data.commits
+  this.summary = data.summary
+}
+\`\`\`
+
+### 功能特性
+
+1. **统计概览**: 4 张 StatCard（总提交、文件数、新增行、删除行）
+2. **类型筛选**: 全部/新功能/更新/修复/文档/配置/样式
+3. **时间线展示**: 左侧彩色圆点 + 竖线，右侧卡片
+4. **可展开详情**: 点击卡片查看每个文件的增删行数
+5. **变更条**: 绿色/红色比例条可视化代码变更量
+6. **相对时间**: "3 分钟前"、"2 小时前"
+
+### 相对时间格式化
+
+\`\`\`javascript
+formatRelativeTime(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 60) return \\\`\\\${minutes} 分钟前\\\`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return \\\`\\\${hours} 小时前\\\`
+  const days = Math.floor(hours / 24)
+  return \\\`\\\${days} 天前\\\`
+}
+\`\`\`
+
+## 遇到的问题
+
+### null 字节错误
+
+最初尝试用 \`\\x00\` 做字段分隔符：
+
+\`\`\`javascript
+// 错误：ERR_INVALID_ARG_VALUE
+execSync('git log --format=%H\\x00%s\\x00%an')
+\`\`\`
+
+**解决方案**：改为逐条查询每个提交的属性
+
+\`\`\`javascript
+// 正确
+const hash = hashes[i]
+const subject = execSync(\\\`git log -1 --format=%s \\\${hash}\\\`).toString()
+const author = execSync(\\\`git log -1 --format=%an \\\${hash}\\\`).toString()
+\`\`\`
+
+## JSON 数据结构
+
+\`\`\`json
+{
+  "summary": {
+    "totalCommits": 8,
+    "totalFiles": 42,
+    "totalInsertions": 5600,
+    "totalDeletions": 120
+  },
+  "commits": [
+    {
+      "hash": "abc123",
+      "subject": "添加: ITSM 基础框架",
+      "author": "用户名",
+      "date": "2025-02-15T10:00:00+08:00",
+      "type": "新功能",
+      "files": [
+        { "path": "src/pages/itsm/ItsmPage.vue",
+          "insertions": 450, "deletions": 0,
+          "status": "added" }
+      ],
+      "totalInsertions": 450,
+      "totalDeletions": 0
+    }
+  ]
+}
+\`\`\`
+`
+        },
+        {
+          id: 10,
+          icon: '📱',
+          title: '移动端钻取导航模式',
+          category: '响应式设计',
+          updatedAt: Date.now(),
+          content: `# 移动端钻取导航模式 (Drill-Down)
+
+## 问题
+
+知识文章页面在桌面端使用左右两栏布局：左侧文章列表，右侧文章详情。但在手机上两栏同时显示，文章内容被挤压得无法阅读。
+
+## 解决方案
+
+采用**钻取导航模式**：
+- 默认显示文章列表
+- 点击文章后，列表隐藏，全屏显示文章详情
+- 顶部显示"← 返回列表"按钮
+
+## 实现代码
+
+### 模板
+
+\`\`\`html
+&lt;div class="knowledge-articles"
+     :class="{ 'viewing-article': selectedArticle }"&gt;
+
+  &lt;!-- 列表 --&gt;
+  &lt;div class="articles-list"&gt; ... &lt;/div&gt;
+
+  &lt;!-- 详情 --&gt;
+  &lt;div v-if="selectedArticle" class="article-detail"&gt;
+    &lt;button @click="selectedArticle = null"
+            class="btn-back"&gt;← 返回列表&lt;/button&gt;
+    &lt;!-- 文章内容 --&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+\`\`\`
+
+### CSS 关键样式
+
+\`\`\`css
+/* 桌面：两栏布局 */
+.knowledge-articles {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+}
+
+/* 返回按钮默认隐藏 */
+.btn-back { display: none; }
+
+/* 移动端：切换为单列 */
+@media (max-width: 768px) {
+  .knowledge-articles {
+    grid-template-columns: 1fr;
+  }
+
+  /* 选中文章时：隐藏列表，全屏详情 */
+  .knowledge-articles.viewing-article .articles-list,
+  .knowledge-articles.viewing-article .articles-nav,
+  .knowledge-articles.viewing-article .section-header,
+  .knowledge-articles.viewing-article .article-placeholder {
+    display: none;
+  }
+
+  .knowledge-articles.viewing-article .article-detail {
+    grid-column: 1;
+    min-height: 80vh;
+  }
+
+  /* 显示返回按钮 */
+  .btn-back { display: inline-flex; }
+}
+\`\`\`
+
+## 核心逻辑
+
+\`\`\`javascript
+methods: {
+  selectArticle(article) {
+    this.selectedArticle = article
+    // 移动端选中后滚动到顶部
+    this.$nextTick(() => {
+      const detail = this.$el.querySelector('.article-detail')
+      if (detail) detail.scrollTop = 0
+    })
+  }
+},
+mounted() {
+  // 自动选中第一篇（桌面端直接显示）
+  if (this.articles.length > 0) {
+    this.selectedArticle = this.articles[0]
+  }
+}
+\`\`\`
+
+## 设计要点
+
+| 要点 | 说明 |
+|------|------|
+| CSS class 控制 | \`.viewing-article\` 动态切换布局 |
+| 渐进增强 | 桌面端始终双栏，移动端才切换 |
+| 滚动复位 | 切换文章后 \`scrollTop = 0\` |
+| 自动选中 | mounted 时选中首篇，桌面端不留空白 |
+| 按钮可见性 | \`.btn-back\` 仅移动端显示 |
+
+## 适用场景
+
+这种模式适用于：
+- 邮件应用（列表 → 详情）
+- 设置页面（菜单 → 子页面）
+- 聊天应用（对话列表 → 聊天窗口）
+- 文件管理器（文件夹 → 文件内容）
+
+核心思想：**一次只展示一个层级的信息**，通过导航前进和后退切换。
+`
+        },
+        {
+          id: 11,
+          icon: '🔧',
+          title: 'Claude Code 自动提交工作流',
+          category: '开发工具',
+          updatedAt: Date.now(),
+          content: `# Claude Code 自动提交工作流
+
+## 概述
+
+使用 Claude Code 的 **Hook + Skill** 机制，实现每次任务完成后自动检测并提交代码变更。
+
+## 架构
+
+\`\`\`
+.claude/
+├── hooks/auto-commit.sh          ← Stop Hook 检测脚本
+├── skills/commit/SKILL.md        ← /commit 技能定义
+└── settings.local.json           ← Hook 注册配置
+\`\`\`
+
+## Hook: 自动检测未提交变更
+
+### settings.local.json
+
+\`\`\`json
+{
+  "hooks": {
+    "Stop": [{
+      "type": "command",
+      "command": "bash .claude/hooks/auto-commit.sh"
+    }]
+  }
+}
+\`\`\`
+
+### auto-commit.sh 核心逻辑
+
+\`\`\`bash
+#!/bin/bash
+LOCK_FILE="/tmp/claude_auto_commit_lock"
+
+# 防止递归循环（120秒冷却）
+if [ -f "$LOCK_FILE" ]; then
+  age=$(($(date +%s) - $(stat -f %m "$LOCK_FILE")))
+  if [ $age -lt 120 ]; then
+    echo '{"decision":"allow","reason":"冷却中"}'
+    exit 0
+  fi
+fi
+
+# 检测未提交变更
+git diff --quiet 2>/dev/null
+has_changes=$?
+
+# 检测未跟踪文件
+untracked=$(git ls-files --others --exclude-standard | head -1)
+
+if [ $has_changes -ne 0 ] || [ -n "$untracked" ]; then
+  # 有变更 → 阻止退出，触发提交
+  echo '{"decision":"block","reason":"检测到变更，请用 /commit 提交"}'
+else
+  echo '{"decision":"allow","reason":"无变更"}'
+fi
+\`\`\`
+
+### 防循环机制
+
+\`\`\`
+任务完成 → Stop Hook 触发
+    ↓
+检查 LOCK_FILE
+    ├─ 存在且 < 120秒 → 跳过（防止 commit 完又触发）
+    └─ 不存在 → 检测变更
+        ├─ 有变更 → block + 提示
+        └─ 无变更 → allow
+\`\`\`
+
+## Skill: /commit 智能提交
+
+### SKILL.md 定义
+
+\`\`\`markdown
+# /commit 技能
+
+## 工作流程
+1. 分析所有变更文件
+2. 按功能模块分组
+3. 每组生成一个语义化提交
+
+## 提交消息格式
+\\\`类型: 主题描述\\\`
+
+类型：添加/更新/修复/文档/样式/配置/重构
+
+## 分组策略
+- pages/itsm/*.vue → ITSM 功能
+- components/itsm/*.vue → ITSM 组件
+- scripts/*.js → 构建工具
+- .claude/** → 开发工具配置
+\`\`\`
+
+### 实际提交示例
+
+一次任务产生 40+ 文件变更，分为 7 个提交：
+
+| 提交 | 文件数 | 消息 |
+|------|--------|------|
+| #1 | 5 | 添加: ITSM 基础框架 |
+| #2 | 8 | 添加: 事件管理模块 |
+| #3 | 4 | 添加: 服务请求模块 |
+| #4 | 4 | 添加: 知识库模块 |
+| #5 | 5 | 添加: 仪表板和代码编辑器 |
+| #6 | 2 | 文档: 项目使用说明 |
+| #7 | 3 | 配置: 开发工具和构建脚本 |
+
+## 关键规则
+
+1. **永远不用 \`git add .\`** — 逐文件添加，避免提交敏感文件
+2. **排除列表**: dist/、node_modules/、.DS_Store
+3. **不自动 push** — 只做本地提交
+4. **中文提交消息** — 符合团队习惯
+5. **Co-Authored-By 标记** — 标识 AI 协作
+`
+        },
+        {
+          id: 12,
+          icon: '💬',
+          title: '开发对话记录：从零搭建 ITSM 系统',
+          category: '对话总结',
+          updatedAt: Date.now(),
+          content: `# 开发对话记录：从零搭建 ITSM 系统
+
+## 项目概况
+
+与 Claude Code 协作，在 Vue 3 + Vite 项目中搭建了完整的 ITSM（IT 服务管理）系统。
+
+---
+
+## 第一阶段：系统框架与核心模块
+
+### 对话 1：系统设计
+
+**问**: 在现有 Vue 项目中构建 ITSM 系统
+**答**: 设计了完整方案，包含 6 个核心模块（仪表板、事件管理、服务请求、知识库、流程管理、代码编辑器），25 个新文件，分 6 个阶段实施。
+
+关键决策：
+- ItsmPage.vue 作为数据中心，管理所有状态
+- localStorage 持久化，6 个独立 key
+- 子 Tab 导航，不修改路由
+
+### 对话 2：模块逐步实现
+
+按阶段创建所有文件，每阶段完成后验证构建。最终 97 个模块全部编译通过。
+
+---
+
+## 第二阶段：知识文章与代码分析
+
+### 对话 3：知识文章页面
+
+**问**: 把学到的知识保存到文章页面
+**答**: 创建 KnowledgeArticlesSection.vue，内嵌 7 篇技术文章，涵盖系统架构、代码编辑器、响应式设计、API 文档等。
+
+遇到的问题：
+- \`&lt;token&gt;\` 被 Vue 模板解析器当作 HTML 标签
+- \`&lt;script&gt;\` 标签在 Markdown 代码块中也会被解析
+- 解决：所有尖括号转义为 \`&amp;lt;\` 和 \`&amp;gt;\`
+
+### 对话 4：代码编辑器源码分析
+
+**问**: 分析代码编辑器的实现并保存为知识文章
+**答**: 阅读了三个组件文件（CodePlaygroundSection、CodeEditor、CodeExecutor），写出深度分析文章（1800+ 字），涵盖三层架构、数据流、执行引擎、如何扩展新语言等。
+
+---
+
+## 第三阶段：移动端与外网访问
+
+### 对话 5：手机无法访问
+
+**问**: 浏览器能看到，手机看不到
+**答**: 两个层面的问题：
+
+1. **网络层**: Vite 默认只监听 localhost
+   - 解决：\`vite.config.js\` 添加 \`host: true\`
+
+2. **布局层**: 文章列表和详情挤在一起
+   - 解决：实现钻取导航模式（drill-down）
+
+### 对话 6：外网访问
+
+**问**: 想在任何网络都能看到
+**答**: 使用 Cloudflare Tunnel 创建公网 URL：
+\`\`\`bash
+cloudflared tunnel --url http://localhost:5173
+\`\`\`
+免费、无需注册、每次生成临时 URL。
+
+---
+
+## 第四阶段：开发工具链
+
+### 对话 7：自动提交 Hook + Skill
+
+**问**: 每次任务完成后自动 commit
+**答**: 创建了完整工作流：
+- \`.claude/hooks/auto-commit.sh\` — Stop 钩子检测变更
+- \`.claude/skills/commit/SKILL.md\` — 智能分组提交技能
+- 防递归循环机制（120秒冷却）
+
+### 对话 8：执行首次提交
+
+**问**: 用 /commit 提交当前变更
+**答**: 分析 40+ 文件，分成 7 个语义化提交（框架 → 模块 → 文档 → 配置）。
+
+### 对话 9：Git 提交历史页面
+
+**问**: 创建页面展示每次提交了什么
+**答**: 创建了三个文件：
+- \`gen-git-log.js\` — 构建时提取 git 日志
+- \`git-log.json\` — 生成的数据
+- \`GitLogSection.vue\` — 时间线展示
+
+亮点：npm predev 钩子自动更新、相对时间显示、文件变更可视化条。
+
+---
+
+## 第五阶段：主题系统
+
+### 对话 10：ITSM 主题
+
+**问**: 添加几个主题让页面颜色变化
+**答**: 实现 6 套主题（蓝、绿、紫、橙、粉、暗夜），通过 CSS 自定义属性 + \`[data-theme]\` 属性选择器实现。unscoped style 块穿透到所有子组件。
+
+### 对话 11：全局主题
+
+**问**: 顺便给我来个整体的
+**答**: 将主题系统从 ITSM 提升到 App.vue：
+- 所有页面统一使用 \`--app-*\` 变量
+- ITSM 通过 \`--itsm-*\` 映射继承
+- 暗色模式全局覆盖（表格、代码块、输入框等）
+- 清理 ItsmPage 冗余代码，CSS 减少 2.8KB
+
+---
+
+## 技术统计
+
+| 指标 | 数值 |
+|------|------|
+| 新增文件 | 30+ |
+| Vue 组件 | 25+ |
+| 构建模块 | 97 |
+| CSS 主题 | 6 套 |
+| 知识文章 | 12 篇 |
+| Git 提交 | 8+ |
+| 外部依赖 | 0 |
+
+## 核心经验
+
+1. **渐进式构建** — 每个阶段都可验证，不会积累错误
+2. **Vue 模板转义** — 涉及代码展示时，尖括号必须转义
+3. **CSS 变量层级** — 全局 → 页面 → 组件，逐层继承
+4. **构建时生成** — 用 npm 生命周期钩子做数据预处理
+5. **移动端优先** — 钻取导航比响应式两栏更实用
 `
         }
       ]

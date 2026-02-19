@@ -4,12 +4,12 @@
 
     <!-- Stats Row -->
     <div class="stats-grid">
-      <StatCard icon="🎫" :value="stats.totalTickets" label="总工单数" color="#3b82f6" />
-      <StatCard icon="🔥" :value="stats.openTickets" label="待处理工单" color="#ef4444" />
-      <StatCard icon="📋" :value="stats.totalRequests" label="服务请求" color="#8b5cf6" />
-      <StatCard icon="📚" :value="stats.totalArticles" label="知识库文章" color="#10b981" />
-      <StatCard icon="✅" :value="stats.resolvedToday" label="今日解决" color="#f59e0b" />
-      <StatCard icon="👥" :value="stats.totalUsers" label="团队成员" color="#6366f1" />
+      <StatCard icon="🎫" :value="stats.totalTickets" label="总工单数" color="#3b82f6" @click="$emit('navigate', 'incidents')" class="clickable" />
+      <StatCard icon="🔥" :value="stats.openTickets" label="待处理工单" color="#ef4444" @click="$emit('navigate', 'incidents')" class="clickable" />
+      <StatCard icon="📋" :value="stats.totalRequests" label="服务请求" color="#8b5cf6" @click="$emit('navigate', 'requests')" class="clickable" />
+      <StatCard icon="📚" :value="stats.totalArticles" label="知识库文章" color="#10b981" @click="$emit('navigate', 'knowledge')" class="clickable" />
+      <StatCard icon="✅" :value="stats.resolvedToday" label="今日解决" color="#f59e0b" @click="$emit('navigate', 'incidents')" class="clickable" />
+      <StatCard icon="👥" :value="stats.totalUsers" label="团队成员" color="#6366f1" @click="$emit('navigate', 'settings')" class="clickable" />
     </div>
 
     <!-- Recent Tickets -->
@@ -114,6 +114,8 @@ h2 { margin: 0 0 24px; color: #333; font-size: 1.4em; }
   gap: 16px;
   margin-bottom: 28px;
 }
+
+.clickable { cursor: pointer; }
 
 .section-card {
   background: white;
