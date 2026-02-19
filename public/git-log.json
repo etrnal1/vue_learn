@@ -1,0 +1,351 @@
+{
+  "summary": {
+    "totalCommits": 8,
+    "totalFiles": 40,
+    "totalInsertions": 10320,
+    "totalDeletions": 2,
+    "authors": [
+      "etrnal1"
+    ],
+    "firstCommit": "2026-02-16 09:53:59 +0800",
+    "lastCommit": "2026-02-19 09:30:15 +0800",
+    "generatedAt": "2026-02-19T02:58:48.670Z"
+  },
+  "commits": [
+    {
+      "hash": "e65794f",
+      "fullHash": "e65794f9f31e5253ad06f2be6fa3bc904df9f2d1",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:30:15 +0800",
+      "subject": "配置: Vite 局域网访问和 Claude Code 自动提交",
+      "body": "Vite 添加 host:true 支持手机/外网访问，\n添加 Stop Hook 自动检测未提交变更并阻止退出，\n添加 /commit 技能实现按主题分组的智能提交。",
+      "type": "配置",
+      "files": [
+        {
+          "path": ".claude/hooks/auto-commit.sh",
+          "status": "added",
+          "name": "auto-commit.sh"
+        },
+        {
+          "path": ".claude/settings.local.json",
+          "status": "added",
+          "name": "settings.local.json"
+        },
+        {
+          "path": ".claude/skills/commit/SKILL.md",
+          "status": "added",
+          "name": "SKILL.md"
+        },
+        {
+          "path": "package-lock.json",
+          "status": "added",
+          "name": "package-lock.json"
+        },
+        {
+          "path": "vite.config.js",
+          "status": "modified",
+          "name": "vite.config.js"
+        }
+      ],
+      "stats": {
+        "filesChanged": 5,
+        "insertions": 1043,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "ca4e75e",
+      "fullHash": "ca4e75eb4367858a336dad22c436ec82f9afa099",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:30:08 +0800",
+      "subject": "文档: 响应式设计指南和移动端测试手册",
+      "body": "三断点适配方案（480px/768px/1024px）、各模块布局对照表、\n字体间距调整参数、触屏优化规范、浏览器设备模拟测试清单。",
+      "type": "文档",
+      "files": [
+        {
+          "path": "MOBILE_TEST_GUIDE.md",
+          "status": "added",
+          "name": "MOBILE_TEST_GUIDE.md"
+        },
+        {
+          "path": "RESPONSIVE_DESIGN.md",
+          "status": "added",
+          "name": "RESPONSIVE_DESIGN.md"
+        }
+      ],
+      "stats": {
+        "filesChanged": 2,
+        "insertions": 542,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "5d56811",
+      "fullHash": "5d568116475edbba908371b4a381e5f9575feedc",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:30:00 +0800",
+      "subject": "添加: 仪表板、流程管理和代码编辑器",
+      "body": "仪表板统计概览和快速操作、用户管理和数据导入导出设置、\n流程可视化时间线、支持 Python/JS/Bash/HTML/SQL 的代码编辑器\n（Function() 安全执行 + API 降级模拟）。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/components/itsm/CodeEditor.vue",
+          "status": "added",
+          "name": "CodeEditor.vue"
+        },
+        {
+          "path": "src/components/itsm/CodeExecutor.vue",
+          "status": "added",
+          "name": "CodeExecutor.vue"
+        },
+        {
+          "path": "src/pages/itsm/CodePlaygroundSection.vue",
+          "status": "added",
+          "name": "CodePlaygroundSection.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmDashboard.vue",
+          "status": "added",
+          "name": "ItsmDashboard.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmSettings.vue",
+          "status": "added",
+          "name": "ItsmSettings.vue"
+        },
+        {
+          "path": "src/pages/itsm/ProcessFlowSection.vue",
+          "status": "added",
+          "name": "ProcessFlowSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 6,
+        "insertions": 2487,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "e9a0c71",
+      "fullHash": "e9a0c7180b12bcefc21942f2ffcb2b1146d3c6c4",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:29:52 +0800",
+      "subject": "添加: 知识库和文章浏览模块",
+      "body": "Markdown 文章编辑器和渲染器、分类标签搜索、7 篇内置知识文章\n（系统架构/代码编辑器分析/响应式设计/功能指南/API文档/VSCode远程连接），\n手机端钻入式导航（选中文章后全屏阅读+返回按钮）。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/components/itsm/ArticleCard.vue",
+          "status": "added",
+          "name": "ArticleCard.vue"
+        },
+        {
+          "path": "src/components/itsm/ArticleEditor.vue",
+          "status": "added",
+          "name": "ArticleEditor.vue"
+        },
+        {
+          "path": "src/components/itsm/MarkdownRenderer.vue",
+          "status": "added",
+          "name": "MarkdownRenderer.vue"
+        },
+        {
+          "path": "src/pages/itsm/KnowledgeArticlesSection.vue",
+          "status": "added",
+          "name": "KnowledgeArticlesSection.vue"
+        },
+        {
+          "path": "src/pages/itsm/KnowledgeBaseSection.vue",
+          "status": "added",
+          "name": "KnowledgeBaseSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 5,
+        "insertions": 2864,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "acb2ec8",
+      "fullHash": "acb2ec8201d75cdcac0adcd6d801889702213d78",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:29:44 +0800",
+      "subject": "添加: ITSM 服务请求模块",
+      "body": "服务目录浏览、请求提交、审批工作流（提交→审批/拒绝→处理中→完成）、\n状态跟踪和评论功能。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/components/itsm/ServiceCatalogCard.vue",
+          "status": "added",
+          "name": "ServiceCatalogCard.vue"
+        },
+        {
+          "path": "src/components/itsm/ServiceRequestCard.vue",
+          "status": "added",
+          "name": "ServiceRequestCard.vue"
+        },
+        {
+          "path": "src/components/itsm/ServiceRequestForm.vue",
+          "status": "added",
+          "name": "ServiceRequestForm.vue"
+        },
+        {
+          "path": "src/pages/itsm/ServiceRequestSection.vue",
+          "status": "added",
+          "name": "ServiceRequestSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 4,
+        "insertions": 713,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "ee373fd",
+      "fullHash": "ee373fde5d343ac5b439361c53bc66ca9b388cba",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:29:38 +0800",
+      "subject": "添加: ITSM 事件管理模块",
+      "body": "工单 CRUD、优先级分配、状态流转（新建→处理中→已解决→已关闭）、\n评论系统、文件附件上传（支持拖拽，最大 10GB）。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/components/itsm/FileUpload.vue",
+          "status": "added",
+          "name": "FileUpload.vue"
+        },
+        {
+          "path": "src/components/itsm/TicketCard.vue",
+          "status": "added",
+          "name": "TicketCard.vue"
+        },
+        {
+          "path": "src/components/itsm/TicketComments.vue",
+          "status": "added",
+          "name": "TicketComments.vue"
+        },
+        {
+          "path": "src/components/itsm/TicketForm.vue",
+          "status": "added",
+          "name": "TicketForm.vue"
+        },
+        {
+          "path": "src/pages/itsm/IncidentSection.vue",
+          "status": "added",
+          "name": "IncidentSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 5,
+        "insertions": 1094,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "cc72158",
+      "fullHash": "cc72158bc558ffb9f90e63f66f2f82fd7f592a5e",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 09:29:30 +0800",
+      "subject": "添加: ITSM 系统基础框架和公共组件",
+      "body": "包含主容器 ItsmPage、子导航、模态框、用户切换、\n搜索筛选、状态/优先级标签、统计卡片等 13 个基础组件，\n集成到 App.vue 顶部导航。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "src/App.vue",
+          "status": "modified",
+          "name": "App.vue"
+        },
+        {
+          "path": "src/components/Header.vue",
+          "status": "modified",
+          "name": "Header.vue"
+        },
+        {
+          "path": "src/components/itsm/ConfirmDialog.vue",
+          "status": "added",
+          "name": "ConfirmDialog.vue"
+        },
+        {
+          "path": "src/components/itsm/DataExportImport.vue",
+          "status": "added",
+          "name": "DataExportImport.vue"
+        },
+        {
+          "path": "src/components/itsm/ItsmModal.vue",
+          "status": "added",
+          "name": "ItsmModal.vue"
+        },
+        {
+          "path": "src/components/itsm/ItsmSubTabs.vue",
+          "status": "added",
+          "name": "ItsmSubTabs.vue"
+        },
+        {
+          "path": "src/components/itsm/PriorityBadge.vue",
+          "status": "added",
+          "name": "PriorityBadge.vue"
+        },
+        {
+          "path": "src/components/itsm/SearchFilter.vue",
+          "status": "added",
+          "name": "SearchFilter.vue"
+        },
+        {
+          "path": "src/components/itsm/StatCard.vue",
+          "status": "added",
+          "name": "StatCard.vue"
+        },
+        {
+          "path": "src/components/itsm/StatusBadge.vue",
+          "status": "added",
+          "name": "StatusBadge.vue"
+        },
+        {
+          "path": "src/components/itsm/UserSelector.vue",
+          "status": "added",
+          "name": "UserSelector.vue"
+        },
+        {
+          "path": "src/components/itsm/UserSwitcher.vue",
+          "status": "added",
+          "name": "UserSwitcher.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmPage.vue",
+          "status": "added",
+          "name": "ItsmPage.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 13,
+        "insertions": 1577,
+        "deletions": 2
+      }
+    },
+    {
+      "hash": "d52c12e",
+      "fullHash": "d52c12ec9bf8e6c4628765dd31008b7b27f374df",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-16 09:53:59 +0800",
+      "subject": "feat: Add chat history feature with comments support",
+      "body": "- Add ChatHistory.vue page for storing chat records\n- Add ChatCard.vue component for displaying individual chats\n- Implement full CRUD operations for chats and comments\n- Add chat search and filtering functionality\n- Integrate ChatHistory into main App.vue navigation\n- Add localStorage persistence for data\n- Support editing and deleting comments\n- Responsive design with animations",
+      "type": "新功能",
+      "files": [],
+      "stats": {
+        "filesChanged": 0,
+        "insertions": 0,
+        "deletions": 0
+      }
+    }
+  ]
+}

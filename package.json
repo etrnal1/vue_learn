@@ -4,9 +4,12 @@
   "description": "Vue 3 学习参考应用",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/gen-git-log.js",
     "dev": "vite",
+    "prebuild": "node scripts/gen-git-log.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "git-log": "node scripts/gen-git-log.js"
   },
   "dependencies": {
     "vue": "^3.3.4"
