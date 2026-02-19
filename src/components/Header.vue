@@ -2,6 +2,7 @@
   <div class="header">
     <h1>✨ Vue 3 学习参考中心</h1>
     <p>全功能学习平台 - Spring、Excel、最佳实践</p>
+   
   </div>
 </template>
 

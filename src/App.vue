@@ -24,6 +24,9 @@
 
     <!-- Tab 4: 聊天记录 -->
     <ChatHistory v-if="activeTab === 'chat'" />
+
+    <!-- Tab 5: IT 服务管理 -->
+    <ItsmPage v-if="activeTab === 'itsm'" />
   </div>
 </template>
 
@@ -33,6 +36,7 @@ import HomePage from './pages/HomePage.vue'
 import SpringReference from './pages/SpringReference.vue'
 import ExcelReference from './pages/ExcelReference.vue'
 import ChatHistory from './pages/ChatHistory.vue'
+import ItsmPage from './pages/itsm/ItsmPage.vue'
 
 export default {
   components: {
@@ -40,7 +44,8 @@ export default {
     HomePage,
     SpringReference,
     ExcelReference,
-    ChatHistory
+    ChatHistory,
+    ItsmPage
   },
   data() {
     return {
@@ -49,7 +54,8 @@ export default {
         { id: 'home', label: '🏠 首页' },
         { id: 'spring', label: '🚀 Spring 参考' },
         { id: 'excel', label: '📊 Excel 参考' },
-        { id: 'chat', label: '💬 聊天记录' }
+        { id: 'chat', label: '💬 聊天记录' },
+        { id: 'itsm', label: '🔧 IT 服务管理' }
       ]
     }
   }
