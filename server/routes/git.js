@@ -1,46 +1,136 @@
 import express from 'express';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { mkdtemp, rm } from 'fs/promises';
+import os from 'os';
+import path from 'path';
 
 const router = express.Router();
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
 
-// Git 项目根目录（需要根据实际情况调整）
-const GIT_DIR = '/Users/mac/vue-learning-app';
+const GIT_DIR = process.env.GIT_DIR || process.cwd();
+const REF_PATTERN = /^[A-Za-z0-9._/-]+$/;
+const REMOTE_PATTERN = /^[A-Za-z0-9._-]+$/;
+const MAIN_BRANCHES = new Set(['main', 'master']);
 
-// 执行 Git 命令的辅助函数
-async function runGitCommand(command) {
+function sanitizeRefName(ref, fieldName = '分支名') {
+  if (typeof ref !== 'string' || !ref.trim()) {
+    return { ok: false, error: `${fieldName}不能为空` };
+  }
+
+  const value = ref.trim();
+
+  if (!REF_PATTERN.test(value) || value.startsWith('-') || value.includes('..') || value.includes('//')) {
+    return { ok: false, error: `无效的${fieldName}` };
+  }
+
+  if (value.endsWith('/') || value.endsWith('.')) {
+    return { ok: false, error: `无效的${fieldName}` };
+  }
+
+  return { ok: true, value };
+}
+
+function sanitizeFilePath(pathValue) {
+  if (typeof pathValue !== 'string' || !pathValue.trim()) {
+    return { ok: false, error: '文件路径不能为空' };
+  }
+
+  const value = pathValue.trim();
+
+  if (value.includes('..') || value.startsWith('/') || value.includes('\u0000')) {
+    return { ok: false, error: '无效的文件路径' };
+  }
+
+  return { ok: true, value };
+}
+
+function parseLimit(rawLimit, defaultLimit = 10, max = 100) {
+  const parsed = Number.parseInt(rawLimit, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return defaultLimit;
+  }
+  return Math.min(parsed, max);
+}
+
+function sanitizeRemoteName(remote) {
+  if (typeof remote !== 'string' || !remote.trim()) {
+    return { ok: false, error: '远程仓库名不能为空' };
+  }
+  const value = remote.trim();
+  if (!REMOTE_PATTERN.test(value) || value.startsWith('-')) {
+    return { ok: false, error: '无效的远程仓库名' };
+  }
+  return { ok: true, value };
+}
+
+async function runGitCommand(args, options = {}) {
+  const runCwd = options.cwd || GIT_DIR;
   try {
-    const { stdout, stderr } = await execPromise(command, { cwd: GIT_DIR });
-    return { success: true, data: stdout.trim(), error: stderr };
+    const { stdout, stderr } = await execFilePromise('git', args, {
+      cwd: runCwd,
+      maxBuffer: 10 * 1024 * 1024
+    });
+
+    return {
+      success: true,
+      data: stdout.trim(),
+      stderr: (stderr || '').trim()
+    };
   } catch (error) {
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      code: typeof error.code === 'number' ? error.code : 1,
+      error: (error.stderr || error.message || '').trim() || 'Git 命令执行失败',
+      data: (error.stdout || '').trim()
+    };
   }
 }
 
-// 获取所有分支
+async function hasUncommittedChanges() {
+  const statusResult = await runGitCommand(['status', '--porcelain']);
+  return statusResult.success && Boolean(statusResult.data);
+}
+
+async function getCurrentBranchName() {
+  const result = await runGitCommand(['branch', '--show-current']);
+  if (!result.success) return '';
+  return result.data;
+}
+
+function sendGitError(res, result, hint = '', status = 500) {
+  return res.status(status).json({
+    error: result.error || 'Git 操作失败',
+    ...(hint ? { hint } : {})
+  });
+}
+
 router.get('/branches', async (req, res) => {
   try {
-    const result = await runGitCommand('git branch -a');
+    const result = await runGitCommand(['branch', '-a', '--no-color']);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
     const branches = result.data
       .split('\n')
-      .map(line => {
+      .map((line) => {
         const isCurrent = line.startsWith('*');
-        const name = line.replace('*', '').trim();
-        const isRemote = name.startsWith('remotes/');
+        const fullName = line.replace('*', '').trim();
+        const isRemote = fullName.startsWith('remotes/');
+        const normalizedName = isRemote
+          ? fullName.replace(/^remotes\/[^/]+\//, '')
+          : fullName;
+
         return {
-          name: name.replace('remotes/origin/', ''),
-          fullName: name,
+          name: normalizedName,
+          fullName,
           isCurrent,
           isRemote,
           type: isRemote ? 'remote' : 'local'
         };
       })
-      .filter(b => b.name && !b.name.includes('HEAD ->'));
+      .filter((item) => item.name && !item.fullName.includes('HEAD ->'));
 
     res.json({ branches });
   } catch (error) {
@@ -48,43 +138,52 @@ router.get('/branches', async (req, res) => {
   }
 });
 
-// 获取当前分支
 router.get('/current-branch', async (req, res) => {
   try {
-    const result = await runGitCommand('git branch --show-current');
+    const result = await runGitCommand(['branch', '--show-current']);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
+
     res.json({ currentBranch: result.data });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 获取分支的提交历史
 router.get('/branch-commits/:branchName', async (req, res) => {
   try {
-    const { branchName } = req.params;
-    const limit = req.query.limit || 10;
-    const result = await runGitCommand(
-      `git log ${branchName} --oneline --graph -${limit}`
-    );
-
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
+    const validatedRef = sanitizeRefName(req.params.branchName);
+    if (!validatedRef.ok) {
+      return res.status(400).json({ error: validatedRef.error });
     }
 
-    const commits = result.data.split('\n').map(line => {
-      const match = line.match(/^[\*\|\s\\\/]+\s*([a-f0-9]+)\s+(.+)$/);
-      if (match) {
-        return {
-          hash: match[1],
-          message: match[2],
-          raw: line
-        };
-      }
-      return { raw: line };
-    });
+    const limit = parseLimit(req.query.limit, 10, 100);
+    const result = await runGitCommand([
+      'log',
+      validatedRef.value,
+      '--oneline',
+      '--graph',
+      `-${limit}`
+    ]);
+
+    if (!result.success) {
+      return sendGitError(res, result);
+    }
+
+    const commits = result.data
+      ? result.data.split('\n').map((line) => {
+          const match = line.match(/^[*|\\/\s]*\s*([a-f0-9]+)\s+(.+)$/i);
+          if (match) {
+            return {
+              hash: match[1],
+              message: match[2],
+              raw: line
+            };
+          }
+          return { raw: line };
+        })
+      : [];
 
     res.json({ commits });
   } catch (error) {
@@ -92,51 +191,42 @@ router.get('/branch-commits/:branchName', async (req, res) => {
   }
 });
 
-// 创建新分支
 router.post('/create-branch', async (req, res) => {
   try {
-    const { branchName, checkout } = req.body;
-
-    if (!branchName) {
-      return res.status(400).json({ error: '分支名不能为空' });
+    const validatedRef = sanitizeRefName(req.body.branchName);
+    if (!validatedRef.ok) {
+      return res.status(400).json({ error: validatedRef.error });
     }
 
-    // 验证分支名格式
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(branchName)) {
-      return res.status(400).json({ error: '分支名只能包含字母、数字、/、_、-' });
-    }
+    const args = req.body.checkout
+      ? ['checkout', '-b', validatedRef.value]
+      : ['branch', validatedRef.value];
 
-    const command = checkout
-      ? `git checkout -b ${branchName}`
-      : `git branch ${branchName}`;
-
-    const result = await runGitCommand(command);
-
+    const result = await runGitCommand(args);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
     res.json({
       success: true,
-      message: checkout ? `已创建并切换到分支 ${branchName}` : `已创建分支 ${branchName}`,
-      branchName
+      message: req.body.checkout
+        ? `已创建并切换到分支 ${validatedRef.value}`
+        : `已创建分支 ${validatedRef.value}`,
+      branchName: validatedRef.value
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 切换分支
 router.post('/checkout', async (req, res) => {
   try {
-    const { branchName } = req.body;
-
-    if (!branchName) {
-      return res.status(400).json({ error: '分支名不能为空' });
+    const validatedRef = sanitizeRefName(req.body.branchName);
+    if (!validatedRef.ok) {
+      return res.status(400).json({ error: validatedRef.error });
     }
 
-    // 先检查是否有未提交的修改
-    const statusResult = await runGitCommand('git status --porcelain');
+    const statusResult = await runGitCommand(['status', '--porcelain']);
     if (statusResult.success && statusResult.data) {
       return res.status(400).json({
         error: '有未提交的修改，请先提交或暂存',
@@ -145,50 +235,56 @@ router.post('/checkout', async (req, res) => {
       });
     }
 
-    const result = await runGitCommand(`git checkout ${branchName}`);
-
+    const result = await runGitCommand(['checkout', validatedRef.value]);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
     res.json({
       success: true,
-      message: `已切换到分支 ${branchName}`,
-      branchName
+      message: `已切换到分支 ${validatedRef.value}`,
+      branchName: validatedRef.value
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 合并分支
 router.post('/merge', async (req, res) => {
   try {
-    const { sourceBranch, targetBranch } = req.body;
+    const sourceRef = sanitizeRefName(req.body.sourceBranch, '源分支');
+    const targetRef = sanitizeRefName(req.body.targetBranch, '目标分支');
 
-    if (!sourceBranch || !targetBranch) {
-      return res.status(400).json({ error: '源分支和目标分支不能为空' });
+    if (!sourceRef.ok || !targetRef.ok) {
+      return res.status(400).json({ error: sourceRef.error || targetRef.error });
     }
 
-    // 1. 切换到目标分支
-    const checkoutResult = await runGitCommand(`git checkout ${targetBranch}`);
-    if (!checkoutResult.success) {
-      return res.status(500).json({ error: `切换到 ${targetBranch} 失败: ${checkoutResult.error}` });
+    if (sourceRef.value === targetRef.value) {
+      return res.status(400).json({ error: '源分支和目标分支不能相同' });
     }
 
-    // 2. 合并源分支
-    const mergeResult = await runGitCommand(`git merge ${sourceBranch} --no-edit`);
-
-    if (!mergeResult.success) {
-      return res.status(500).json({
-        error: `合并失败: ${mergeResult.error}`,
-        hint: '可能存在冲突，请在命令行手动解决'
+    if (await hasUncommittedChanges()) {
+      return res.status(400).json({
+        error: '检测到未提交修改，请先提交或暂存后再执行合并'
       });
+    }
+
+    const currentBranch = await getCurrentBranchName();
+    if (currentBranch !== targetRef.value) {
+      const checkoutResult = await runGitCommand(['checkout', targetRef.value]);
+      if (!checkoutResult.success) {
+        return sendGitError(res, checkoutResult, `切换到 ${targetRef.value} 失败`);
+      }
+    }
+
+    const mergeResult = await runGitCommand(['merge', sourceRef.value, '--no-edit']);
+    if (!mergeResult.success) {
+      return sendGitError(res, mergeResult, '可能存在冲突，请在命令行手动解决');
     }
 
     res.json({
       success: true,
-      message: `已将 ${sourceBranch} 合并到 ${targetBranch}`,
+      message: `已将 ${sourceRef.value} 合并到 ${targetRef.value}`,
       output: mergeResult.data
     });
   } catch (error) {
@@ -196,67 +292,59 @@ router.post('/merge', async (req, res) => {
   }
 });
 
-// 删除分支
 router.delete('/branch/:branchName', async (req, res) => {
   try {
-    const { branchName } = req.params;
-    const { force } = req.query;
-
-    if (!branchName) {
-      return res.status(400).json({ error: '分支名不能为空' });
+    const validatedRef = sanitizeRefName(req.params.branchName);
+    if (!validatedRef.ok) {
+      return res.status(400).json({ error: validatedRef.error });
     }
 
-    // 不允许删除当前分支
-    const currentResult = await runGitCommand('git branch --show-current');
-    if (currentResult.success && currentResult.data === branchName) {
-      return res.status(400).json({ error: '不能删除当前分支，请先切换到其他分支' });
-    }
-
-    // 不允许删除主分支
-    if (branchName === 'main' || branchName === 'master') {
+    if (MAIN_BRANCHES.has(validatedRef.value)) {
       return res.status(400).json({ error: '不允许删除主分支' });
     }
 
-    const command = force === 'true'
-      ? `git branch -D ${branchName}`
-      : `git branch -d ${branchName}`;
+    const currentBranch = await getCurrentBranchName();
+    if (currentBranch === validatedRef.value) {
+      return res.status(400).json({ error: '不能删除当前分支，请先切换到其他分支' });
+    }
 
-    const result = await runGitCommand(command);
+    const forceDelete = req.query.force === 'true';
+    const result = await runGitCommand([
+      'branch',
+      forceDelete ? '-D' : '-d',
+      validatedRef.value
+    ]);
 
     if (!result.success) {
-      return res.status(500).json({
-        error: result.error,
-        hint: '如果分支未合并，请使用强制删除'
-      });
+      return sendGitError(res, result, '如果分支未合并，请使用强制删除');
     }
 
     res.json({
       success: true,
-      message: `已删除分支 ${branchName}`
+      message: `已删除分支 ${validatedRef.value}`
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 获取 Git 状态
 router.get('/status', async (req, res) => {
   try {
-    const result = await runGitCommand('git status --porcelain');
-
+    const result = await runGitCommand(['status', '--porcelain']);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
-    const hasChanges = result.data.length > 0;
-    const files = result.data.split('\n').filter(Boolean).map(line => {
-      const status = line.substring(0, 2);
-      const file = line.substring(3);
-      return { status, file };
-    });
+    const files = result.data
+      ? result.data.split('\n').filter(Boolean).map((line) => {
+          const status = line.substring(0, 2);
+          const file = line.substring(3);
+          return { status, file };
+        })
+      : [];
 
     res.json({
-      hasChanges,
+      hasChanges: files.length > 0,
       files,
       count: files.length
     });
@@ -265,18 +353,16 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// 暂存更改（stash）
 router.post('/stash', async (req, res) => {
   try {
-    const { message } = req.body;
-    const command = message
-      ? `git stash save "${message}"`
-      : 'git stash';
+    const rawMessage = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+    const args = rawMessage
+      ? ['stash', 'push', '-m', rawMessage]
+      : ['stash', 'push'];
 
-    const result = await runGitCommand(command);
-
+    const result = await runGitCommand(args);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
     res.json({
@@ -289,13 +375,11 @@ router.post('/stash', async (req, res) => {
   }
 });
 
-// 恢复暂存（stash pop）
 router.post('/stash-pop', async (req, res) => {
   try {
-    const result = await runGitCommand('git stash pop');
-
+    const result = await runGitCommand(['stash', 'pop']);
     if (!result.success) {
-      return res.status(500).json({ error: result.error });
+      return sendGitError(res, result);
     }
 
     res.json({
@@ -308,126 +392,247 @@ router.post('/stash-pop', async (req, res) => {
   }
 });
 
-// 获取分支的文件变更列表
+router.get('/remotes', async (req, res) => {
+  try {
+    const result = await runGitCommand(['remote']);
+    if (!result.success) {
+      return sendGitError(res, result);
+    }
+
+    const remotes = (result.data || '').split('\n').filter(Boolean);
+    res.json({
+      remotes,
+      defaultRemote: remotes.includes('origin') ? 'origin' : remotes[0] || ''
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/fetch', async (req, res) => {
+  try {
+    const validatedRemote = sanitizeRemoteName(req.body.remote || 'origin');
+    if (!validatedRemote.ok) {
+      return res.status(400).json({ error: validatedRemote.error });
+    }
+
+    const shouldPrune = Boolean(req.body.prune);
+    const args = ['fetch', validatedRemote.value];
+    if (shouldPrune) {
+      args.push('--prune');
+    }
+
+    const result = await runGitCommand(args);
+    if (!result.success) {
+      return sendGitError(res, result);
+    }
+
+    res.json({
+      success: true,
+      message: shouldPrune
+        ? `已从 ${validatedRemote.value} 拉取并清理远程追踪分支`
+        : `已从 ${validatedRemote.value} 拉取最新信息`,
+      output: result.data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/push', async (req, res) => {
+  try {
+    const validatedRemote = sanitizeRemoteName(req.body.remote || 'origin');
+    const validatedBranch = sanitizeRefName(req.body.branchName);
+
+    if (!validatedRemote.ok || !validatedBranch.ok) {
+      return res.status(400).json({ error: validatedRemote.error || validatedBranch.error });
+    }
+
+    const setUpstream = req.body.setUpstream !== false;
+    const args = ['push'];
+    if (setUpstream) {
+      args.push('-u');
+    }
+    args.push(validatedRemote.value, validatedBranch.value);
+
+    const result = await runGitCommand(args);
+    if (!result.success) {
+      return sendGitError(res, result);
+    }
+
+    res.json({
+      success: true,
+      message: `已推送 ${validatedBranch.value} 到 ${validatedRemote.value}`,
+      output: result.data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/remote-branch/:branchName', async (req, res) => {
+  try {
+    const validatedRemote = sanitizeRemoteName(String(req.query.remote || 'origin'));
+    const validatedBranch = sanitizeRefName(req.params.branchName);
+
+    if (!validatedRemote.ok || !validatedBranch.ok) {
+      return res.status(400).json({ error: validatedRemote.error || validatedBranch.error });
+    }
+
+    if (MAIN_BRANCHES.has(validatedBranch.value)) {
+      return res.status(400).json({ error: '不允许删除主分支的远程分支' });
+    }
+
+    const result = await runGitCommand([
+      'push',
+      validatedRemote.value,
+      '--delete',
+      validatedBranch.value
+    ]);
+
+    if (!result.success) {
+      return sendGitError(res, result);
+    }
+
+    res.json({
+      success: true,
+      message: `已删除远程分支 ${validatedRemote.value}/${validatedBranch.value}`,
+      output: result.data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/branch-files/:branchName', async (req, res) => {
   try {
-    const { branchName } = req.params;
-    const { base = 'main', mode = 'diff' } = req.query;
-
-    // 验证分支名和基准分支名
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(branchName)) {
-      return res.status(400).json({ error: '无效的分支名' });
-    }
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(base)) {
-      return res.status(400).json({ error: '无效的基准分支名' });
+    const validatedBranch = sanitizeRefName(req.params.branchName);
+    if (!validatedBranch.ok) {
+      return res.status(400).json({ error: validatedBranch.error });
     }
 
-    // mode=history: 获取分支历史中所有修改过的文件
+    const validatedBase = sanitizeRefName(String(req.query.base || 'main'), '基准分支');
+    if (!validatedBase.ok) {
+      return res.status(400).json({ error: validatedBase.error });
+    }
+
+    const mode = req.query.mode === 'history' ? 'history' : 'diff';
+
     if (mode === 'history') {
-      const result = await runGitCommand(
-        `git log ${branchName} --name-status --pretty=format:"COMMIT|%h|%an|%ad|%s" --date=iso`
-      );
+      const logResult = await runGitCommand([
+        'log',
+        validatedBranch.value,
+        '--name-status',
+        '--pretty=format:COMMIT|%h|%an|%ad|%s',
+        '--date=iso'
+      ]);
 
-      if (!result.success) {
-        return res.status(500).json({ error: result.error });
+      if (!logResult.success) {
+        return sendGitError(res, logResult);
       }
 
-      // 解析输出，聚合文件统计
       const fileStats = new Map();
       let currentCommit = null;
 
-      result.data.split('\n').forEach(line => {
+      for (const line of (logResult.data || '').split('\n')) {
         if (line.startsWith('COMMIT|')) {
           const parts = line.split('|');
           currentCommit = {
-            hash: parts[1],
-            author: parts[2],
-            date: parts[3],
-            subject: parts[4]
+            hash: parts[1] || '',
+            author: parts[2] || '',
+            date: parts[3] || '',
+            subject: parts.slice(4).join('|') || ''
           };
-        } else if (/^[MADR]\t/.test(line)) {
-          const status = line[0];
-          const filePath = line.substring(2);
-
-          if (!fileStats.has(filePath)) {
-            fileStats.set(filePath, {
-              path: filePath,
-              name: filePath.split('/').pop(),
-              modifyCount: 0,
-              lastModifiedDate: '',
-              lastModifiedBy: '',
-              lastCommitHash: '',
-              lastCommitMessage: ''
-            });
-          }
-
-          const stat = fileStats.get(filePath);
-          stat.modifyCount++;
-
-          // 第一次遇到就是最新的修改（git log 是倒序）
-          if (!stat.lastModifiedDate) {
-            stat.lastModifiedDate = currentCommit.date;
-            stat.lastModifiedBy = currentCommit.author;
-            stat.lastCommitHash = currentCommit.hash;
-            stat.lastCommitMessage = currentCommit.subject;
-          }
+          continue;
         }
-      });
 
-      // 转换为数组并按修改次数降序排列
-      const files = Array.from(fileStats.values())
-        .sort((a, b) => b.modifyCount - a.modifyCount);
+        if (!currentCommit || !line || !/^[MADR]\s/.test(line)) {
+          continue;
+        }
 
-      // 获取分支提交总数
-      const commitCountResult = await runGitCommand(
-        `git rev-list --count ${branchName}`
-      );
-      const totalCommits = parseInt(commitCountResult.data) || 0;
+        const tokens = line.split('\t');
+        const rawStatus = tokens[0] || '';
+        const status = rawStatus[0];
+        const filePath = status === 'R' ? tokens[2] : tokens[1];
+
+        if (!filePath) {
+          continue;
+        }
+
+        if (!fileStats.has(filePath)) {
+          fileStats.set(filePath, {
+            path: filePath,
+            name: filePath.split('/').pop(),
+            status,
+            modifyCount: 0,
+            lastModifiedDate: '',
+            lastModifiedBy: '',
+            lastCommitHash: '',
+            lastCommitMessage: ''
+          });
+        }
+
+        const fileEntry = fileStats.get(filePath);
+        fileEntry.modifyCount += 1;
+
+        if (!fileEntry.lastModifiedDate) {
+          fileEntry.lastModifiedDate = currentCommit.date;
+          fileEntry.lastModifiedBy = currentCommit.author;
+          fileEntry.lastCommitHash = currentCommit.hash;
+          fileEntry.lastCommitMessage = currentCommit.subject;
+        }
+      }
+
+      const files = Array.from(fileStats.values()).sort((a, b) => b.modifyCount - a.modifyCount);
+      const countResult = await runGitCommand(['rev-list', '--count', validatedBranch.value]);
+      const totalCommits = countResult.success ? Number.parseInt(countResult.data, 10) || 0 : 0;
 
       return res.json({
-        branch: branchName,
-        mode: 'history',
+        branch: validatedBranch.value,
+        mode,
         totalCommits,
         files,
         count: files.length
       });
     }
 
-    // mode=diff（默认）: 获取相对于 base 分支的文件变更
-    const result = await runGitCommand(
-      `git diff --name-status ${base}...${branchName}`
-    );
+    const diffResult = await runGitCommand([
+      'diff',
+      '--name-status',
+      `${validatedBase.value}...${validatedBranch.value}`
+    ]);
 
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
+    if (!diffResult.success) {
+      return sendGitError(res, diffResult);
     }
 
-    // 解析文件列表
     const statusMap = {
-      'M': 'modified',
-      'A': 'added',
-      'D': 'deleted',
-      'R': 'renamed'
+      M: 'modified',
+      A: 'added',
+      D: 'deleted',
+      R: 'renamed'
     };
 
-    const files = result.data
+    const files = (diffResult.data || '')
       .split('\n')
       .filter(Boolean)
-      .map(line => {
+      .map((line) => {
         const parts = line.split('\t');
-        const status = parts[0][0];
-        const path = parts[1] || parts[0].substring(1).trim();
+        const statusCode = (parts[0] || '')[0];
+        const path = statusCode === 'R' ? (parts[2] || '') : (parts[1] || '');
+
         return {
           path,
-          status: statusMap[status] || 'modified',
+          status: statusMap[statusCode] || 'modified',
           name: path.split('/').pop()
         };
-      });
+      })
+      .filter((item) => Boolean(item.path));
 
     res.json({
-      branch: branchName,
-      mode: 'diff',
-      base,
+      branch: validatedBranch.value,
+      mode,
+      base: validatedBase.value,
       files,
       count: files.length
     });
@@ -436,38 +641,206 @@ router.get('/branch-files/:branchName', async (req, res) => {
   }
 });
 
-// 获取指定分支中的文件内容
-router.get('/file-content', async (req, res) => {
+router.get('/merge-preview', async (req, res) => {
   try {
-    const { path, branch } = req.query;
+    const sourceRef = sanitizeRefName(req.query.sourceBranch, '源分支');
+    const targetRef = sanitizeRefName(req.query.targetBranch, '目标分支');
 
-    if (!path || !branch) {
-      return res.status(400).json({ error: '路径和分支名不能为空' });
+    if (!sourceRef.ok || !targetRef.ok) {
+      return res.status(400).json({ error: sourceRef.error || targetRef.error });
     }
 
-    // 安全验证：防止路径遍历
-    if (path.includes('..') || path.startsWith('/')) {
-      return res.status(400).json({ error: '无效的文件路径' });
+    if (sourceRef.value === targetRef.value) {
+      return res.status(400).json({ error: '源分支和目标分支不能相同' });
     }
 
-    // 验证分支名
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(branch)) {
-      return res.status(400).json({ error: '无效的分支名' });
+    const mergeBaseResult = await runGitCommand([
+      'merge-base',
+      sourceRef.value,
+      targetRef.value
+    ]);
+    if (!mergeBaseResult.success || !mergeBaseResult.data) {
+      return sendGitError(res, mergeBaseResult, '无法找到共同祖先');
     }
 
-    const result = await runGitCommand(
-      `git show ${branch}:${path}`
+    const [sourceDiffResult, targetDiffResult] = await Promise.all([
+      runGitCommand(['diff', '--name-only', `${mergeBaseResult.data}..${sourceRef.value}`]),
+      runGitCommand(['diff', '--name-only', `${mergeBaseResult.data}..${targetRef.value}`])
+    ]);
+
+    if (!sourceDiffResult.success || !targetDiffResult.success) {
+      return sendGitError(res, sourceDiffResult.success ? targetDiffResult : sourceDiffResult);
+    }
+
+    const sourceFiles = new Set((sourceDiffResult.data || '').split('\n').filter(Boolean));
+    const targetFiles = new Set((targetDiffResult.data || '').split('\n').filter(Boolean));
+    const potentialConflicts = [...sourceFiles].filter((file) => targetFiles.has(file)).sort();
+
+    res.json({
+      sourceBranch: sourceRef.value,
+      targetBranch: targetRef.value,
+      mergeBase: mergeBaseResult.data,
+      sourceChangedCount: sourceFiles.size,
+      targetChangedCount: targetFiles.size,
+      potentialConflictCount: potentialConflicts.length,
+      potentialConflicts
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/merge-preview-precise', async (req, res) => {
+  let tempWorktreePath = '';
+  try {
+    const sourceRef = sanitizeRefName(req.query.sourceBranch, '源分支');
+    const targetRef = sanitizeRefName(req.query.targetBranch, '目标分支');
+
+    if (!sourceRef.ok || !targetRef.ok) {
+      return res.status(400).json({ error: sourceRef.error || targetRef.error });
+    }
+
+    if (sourceRef.value === targetRef.value) {
+      return res.status(400).json({ error: '源分支和目标分支不能相同' });
+    }
+
+    const [sourceExists, targetExists] = await Promise.all([
+      runGitCommand(['rev-parse', '--verify', sourceRef.value]),
+      runGitCommand(['rev-parse', '--verify', targetRef.value])
+    ]);
+    if (!sourceExists.success || !targetExists.success) {
+      return res.status(400).json({ error: '源分支或目标分支不存在' });
+    }
+
+    tempWorktreePath = await mkdtemp(path.join(os.tmpdir(), 'git-merge-preview-'));
+    const addWorktreeResult = await runGitCommand(
+      ['worktree', 'add', '--detach', tempWorktreePath, targetRef.value],
+      { cwd: GIT_DIR }
+    );
+    if (!addWorktreeResult.success) {
+      return sendGitError(res, addWorktreeResult, '创建临时工作区失败');
+    }
+
+    const mergeResult = await runGitCommand(
+      ['merge', '--no-commit', '--no-ff', sourceRef.value],
+      { cwd: tempWorktreePath }
     );
 
-    if (!result.success) {
-      return res.status(500).json({
-        error: result.error || '无法读取文件内容'
+    const conflictFilesResult = await runGitCommand(
+      ['diff', '--name-only', '--diff-filter=U'],
+      { cwd: tempWorktreePath }
+    );
+    const conflictedFiles = conflictFilesResult.success
+      ? (conflictFilesResult.data || '').split('\n').filter(Boolean).sort()
+      : [];
+
+    if (mergeResult.success) {
+      await runGitCommand(['merge', '--abort'], { cwd: tempWorktreePath });
+      return res.json({
+        sourceBranch: sourceRef.value,
+        targetBranch: targetRef.value,
+        dryRunStatus: 'clean',
+        hasConflicts: false,
+        conflictedFiles: [],
+        conflictCount: 0,
+        message: '精确预检通过：未检测到冲突'
       });
     }
 
+    await runGitCommand(['merge', '--abort'], { cwd: tempWorktreePath });
+
+    return res.json({
+      sourceBranch: sourceRef.value,
+      targetBranch: targetRef.value,
+      dryRunStatus: conflictedFiles.length > 0 ? 'conflict' : 'error',
+      hasConflicts: conflictedFiles.length > 0,
+      conflictedFiles,
+      conflictCount: conflictedFiles.length,
+      message: conflictedFiles.length > 0
+        ? '精确预检发现冲突，请先处理后再合并'
+        : '精确预检执行失败，请在命令行手动检查',
+      rawError: mergeResult.error
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    if (tempWorktreePath) {
+      await runGitCommand(['worktree', 'remove', '--force', tempWorktreePath], { cwd: GIT_DIR });
+      await rm(tempWorktreePath, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+});
+
+router.get('/compare-file', async (req, res) => {
+  try {
+    const validatedPath = sanitizeFilePath(req.query.path);
+    const sourceRef = sanitizeRefName(req.query.sourceBranch, '源分支');
+    const targetRef = sanitizeRefName(req.query.targetBranch, '目标分支');
+
+    if (!validatedPath.ok || !sourceRef.ok || !targetRef.ok) {
+      return res.status(400).json({
+        error: validatedPath.error || sourceRef.error || targetRef.error
+      });
+    }
+
+    if (sourceRef.value === targetRef.value) {
+      return res.status(400).json({ error: '源分支和目标分支不能相同' });
+    }
+
+    const diffRange = `${targetRef.value}..${sourceRef.value}`;
+    const [diffResult, statsResult] = await Promise.all([
+      runGitCommand(['diff', diffRange, '--', validatedPath.value]),
+      runGitCommand(['diff', '--numstat', diffRange, '--', validatedPath.value])
+    ]);
+
+    if (!diffResult.success) {
+      return sendGitError(res, diffResult, '无法获取文件对比结果');
+    }
+
+    const stats = { insertions: 0, deletions: 0 };
+    if (statsResult.success && statsResult.data) {
+      const firstLine = statsResult.data.split('\n')[0] || '';
+      const parts = firstLine.split('\t');
+      if (parts.length >= 2) {
+        stats.insertions = Number.parseInt(parts[0], 10) || 0;
+        stats.deletions = Number.parseInt(parts[1], 10) || 0;
+      }
+    }
+
     res.json({
-      path,
-      branch,
+      path: validatedPath.value,
+      sourceBranch: sourceRef.value,
+      targetBranch: targetRef.value,
+      diff: diffResult.data || '无差异',
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/file-content', async (req, res) => {
+  try {
+    const validatedPath = sanitizeFilePath(req.query.path);
+    const validatedBranch = sanitizeRefName(req.query.branch);
+
+    if (!validatedPath.ok) {
+      return res.status(400).json({ error: validatedPath.error });
+    }
+
+    if (!validatedBranch.ok) {
+      return res.status(400).json({ error: validatedBranch.error });
+    }
+
+    const result = await runGitCommand(['show', `${validatedBranch.value}:${validatedPath.value}`]);
+
+    if (!result.success) {
+      return sendGitError(res, result, '无法读取文件内容');
+    }
+
+    res.json({
+      path: validatedPath.value,
+      branch: validatedBranch.value,
       content: result.data
     });
   } catch (error) {
@@ -475,57 +848,49 @@ router.get('/file-content', async (req, res) => {
   }
 });
 
-// 获取文件的 diff 变更和统计
 router.get('/file-diff', async (req, res) => {
   try {
-    const { path, branch, base = 'main' } = req.query;
+    const validatedPath = sanitizeFilePath(req.query.path);
+    const validatedBranch = sanitizeRefName(req.query.branch);
+    const validatedBase = sanitizeRefName(String(req.query.base || 'main'), '基准分支');
 
-    if (!path || !branch) {
-      return res.status(400).json({ error: '路径和分支名不能为空' });
+    if (!validatedPath.ok) {
+      return res.status(400).json({ error: validatedPath.error });
     }
 
-    // 安全验证
-    if (path.includes('..') || path.startsWith('/')) {
-      return res.status(400).json({ error: '无效的文件路径' });
+    if (!validatedBranch.ok) {
+      return res.status(400).json({ error: validatedBranch.error });
     }
 
-    // 验证分支名和基准分支名
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(branch)) {
-      return res.status(400).json({ error: '无效的分支名' });
-    }
-    if (!/^[a-zA-Z0-9\/_-]+$/.test(base)) {
-      return res.status(400).json({ error: '无效的基准分支名' });
+    if (!validatedBase.ok) {
+      return res.status(400).json({ error: validatedBase.error });
     }
 
-    // 获取 diff 内容
-    const diffResult = await runGitCommand(
-      `git diff ${base}...${branch} -- ${path}`
-    );
+    const range = `${validatedBase.value}...${validatedBranch.value}`;
 
-    // 获取统计信息
-    const statsResult = await runGitCommand(
-      `git diff --numstat ${base}...${branch} -- ${path}`
-    );
+    const [diffResult, statsResult] = await Promise.all([
+      runGitCommand(['diff', range, '--', validatedPath.value]),
+      runGitCommand(['diff', '--numstat', range, '--', validatedPath.value])
+    ]);
 
-    let stats = { insertions: 0, deletions: 0 };
+    if (!diffResult.success) {
+      return sendGitError(res, diffResult, '无法获取 diff 信息');
+    }
+
+    const stats = { insertions: 0, deletions: 0 };
     if (statsResult.success && statsResult.data) {
-      const parts = statsResult.data.split('\t');
+      const firstLine = statsResult.data.split('\n')[0] || '';
+      const parts = firstLine.split('\t');
       if (parts.length >= 2) {
-        stats.insertions = parseInt(parts[0], 10) || 0;
-        stats.deletions = parseInt(parts[1], 10) || 0;
+        stats.insertions = Number.parseInt(parts[0], 10) || 0;
+        stats.deletions = Number.parseInt(parts[1], 10) || 0;
       }
     }
 
-    if (!diffResult.success) {
-      return res.status(500).json({
-        error: diffResult.error || '无法获取 diff 信息'
-      });
-    }
-
     res.json({
-      path,
-      base,
-      target: branch,
+      path: validatedPath.value,
+      base: validatedBase.value,
+      target: validatedBranch.value,
       diff: diffResult.data || '无变更',
       stats
     });
