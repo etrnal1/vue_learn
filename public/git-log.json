@@ -1,17 +1,54 @@
 {
   "summary": {
-    "totalCommits": 25,
+    "totalCommits": 26,
     "totalFiles": 71,
-    "totalInsertions": 21774,
-    "totalDeletions": 589,
+    "totalInsertions": 22375,
+    "totalDeletions": 595,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-20 21:34:49 +0800",
-    "generatedAt": "2026-02-20T14:05:45.776Z"
+    "lastCommit": "2026-02-20 22:08:06 +0800",
+    "generatedAt": "2026-02-20T14:08:07.998Z"
   },
   "commits": [
+    {
+      "hash": "e669507",
+      "fullHash": "e669507912e129e87a49a5630c918d14d3c575e6",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 22:08:06 +0800",
+      "subject": "功能: Git 分支文件变更管理",
+      "body": "- 后端：新增 /branch-files 接口获取分支相对于主分支的文件变更列表\n- 前端：添加文件变更查看模态窗口，支持文件列表、文件内容和 Diff 对比查看\n- 配置：添加 Bash 权限配置支持系统命令调用\n- 数据：更新 Git 日志数据\n\nGenerated with [Claude Code](https://claude.ai/code)\nvia [Happy](https://happy.engineering)",
+      "type": "其他",
+      "files": [
+        {
+          "path": ".claude/settings.local.json",
+          "status": "modified",
+          "name": "settings.local.json"
+        },
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        },
+        {
+          "path": "server/routes/git.js",
+          "status": "modified",
+          "name": "git.js"
+        },
+        {
+          "path": "src/pages/GitBranchManager.vue",
+          "status": "modified",
+          "name": "GitBranchManager.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 4,
+        "insertions": 601,
+        "deletions": 6
+      }
+    },
     {
       "hash": "1892a59",
       "fullHash": "1892a59e8d364760620ad8612593e9f21f0fc7ee",
