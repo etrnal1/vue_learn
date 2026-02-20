@@ -7,7 +7,9 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\n功能: Git 分支文件变更管理\n\n- 后端：新增 /branch-files 接口获取分支相对于主分支的文件变更列表\n- 前端：添加文件变更查看模态窗口，支持文件列表、文件内容和 Diff 对比查看\n- 配置：添加 Bash 权限配置支持系统命令调用\n- 数据：更新 Git 日志数据\n\nGenerated with [Claude Code]\\(https://claude.ai/code\\)\nvia [Happy]\\(https://happy.engineering\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nCo-Authored-By: Happy <yesreply@happy.engineering>\nEOF\n\\)\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\n更新: Git 日志数据\n\nGenerated with [Claude Code]\\(https://claude.ai/code\\)\nvia [Happy]\\(https://happy.engineering\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nCo-Authored-By: Happy <yesreply@happy.engineering>\nEOF\n\\)\")",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\n更新: Git 日志数据与配置\n\nGenerated with [Claude Code]\\(https://claude.ai/code\\)\nvia [Happy]\\(https://happy.engineering\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nCo-Authored-By: Happy <yesreply@happy.engineering>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n更新: Git 日志数据与配置\n\nGenerated with [Claude Code]\\(https://claude.ai/code\\)\nvia [Happy]\\(https://happy.engineering\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nCo-Authored-By: Happy <yesreply@happy.engineering>\nEOF\n\\)\")",
+      "Bash(chmod:*)",
+      "Bash(git commit:*)"
     ]
   },
   "hooks": {
