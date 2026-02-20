@@ -13,6 +13,7 @@ import flowsRouter from './routes/flows.js';
 import chatsRouter from './routes/chats.js';
 import codeSnippetsRouter from './routes/codeSnippets.js';
 import migrateRouter from './routes/migrate.js';
+import gitRouter from './routes/git.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -39,6 +40,7 @@ app.use('/api/flows', flowsRouter);
 app.use('/api/chats', chatsRouter);
 app.use('/api/code-snippets', codeSnippetsRouter);
 app.use('/api/migrate', migrateRouter);
+app.use('/api/git', gitRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -77,6 +79,7 @@ async function startServer() {
     console.log(`  - /api/chats`);
     console.log(`  - /api/code-snippets`);
     console.log(`  - /api/migrate`);
+    console.log(`  - /api/git`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 }

@@ -37,6 +37,7 @@
     <ExcelReference v-if="activeTab === 'excel'" />
     <ChatHistory v-if="activeTab === 'chat'" />
     <ItsmPage v-if="activeTab === 'itsm'" />
+    <GitBranchManager v-if="activeTab === 'git'" />
   </div>
 </template>
 
@@ -47,6 +48,7 @@ import SpringReference from './pages/SpringReference.vue'
 import ExcelReference from './pages/ExcelReference.vue'
 import ChatHistory from './pages/ChatHistory.vue'
 import ItsmPage from './pages/itsm/ItsmPage.vue'
+import GitBranchManager from './pages/GitBranchManager.vue'
 
 export default {
   components: {
@@ -55,7 +57,8 @@ export default {
     SpringReference,
     ExcelReference,
     ChatHistory,
-    ItsmPage
+    ItsmPage,
+    GitBranchManager
   },
   data() {
     return {
@@ -66,7 +69,8 @@ export default {
         { id: 'spring', label: '🚀 Spring 参考' },
         { id: 'excel', label: '📊 Excel 参考' },
         { id: 'chat', label: '💬 聊天记录' },
-        { id: 'itsm', label: '🔧 IT 服务管理' }
+        { id: 'itsm', label: '🔧 IT 服务管理' },
+        { id: 'git', label: '🌿 Git 管理' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
