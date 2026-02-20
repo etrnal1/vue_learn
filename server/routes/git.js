@@ -64,6 +64,18 @@ function sanitizeRemoteName(remote) {
   return { ok: true, value };
 }
 
+function classifyCommitType(subject = '') {
+  if (subject.startsWith('添加') || subject.startsWith('feat')) return '新功能';
+  if (subject.startsWith('更新')) return '更新';
+  if (subject.startsWith('修复') || subject.startsWith('fix')) return '修复';
+  if (subject.startsWith('文档') || subject.startsWith('docs')) return '文档';
+  if (subject.startsWith('配置')) return '配置';
+  if (subject.startsWith('样式')) return '样式';
+  if (subject.startsWith('重构')) return '重构';
+  if (subject.startsWith('移除')) return '移除';
+  return '其他';
+}
+
 async function runGitCommand(args, options = {}) {
   const runCwd = options.cwd || GIT_DIR;
   try {
@@ -186,6 +198,123 @@ router.get('/branch-commits/:branchName', async (req, res) => {
       : [];
 
     res.json({ commits });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/history', async (req, res) => {
+  try {
+    const validatedRef = sanitizeRefName(String(req.query.ref || 'HEAD'), '引用');
+    if (!validatedRef.ok) {
+      return res.status(400).json({ error: validatedRef.error });
+    }
+
+    const limit = parseLimit(req.query.limit, 200, 1000);
+    const logResult = await runGitCommand([
+      'log',
+      validatedRef.value,
+      `-${limit}`,
+      '--date=iso-strict',
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e',
+      '--name-status',
+      '--numstat'
+    ]);
+
+    if (!logResult.success) {
+      return sendGitError(res, logResult);
+    }
+
+    const statusMap = {
+      A: 'added',
+      M: 'modified',
+      D: 'deleted',
+      R: 'renamed',
+      C: 'renamed'
+    };
+
+    const commits = (logResult.data || '')
+      .split('\u001e')
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .map((chunk) => {
+        const lines = chunk.split('\n').filter(Boolean);
+        const header = lines.shift() || '';
+        const [fullHash, hash, author, email, date, subject] = header.split('\u001f');
+
+        const filesMap = new Map();
+        let insertions = 0;
+        let deletions = 0;
+
+        for (const line of lines) {
+          if (/^(\d+|-)\t(\d+|-)\t/.test(line)) {
+            const [addRaw, delRaw, filePath] = line.split('\t');
+            if (addRaw !== '-') insertions += Number.parseInt(addRaw, 10) || 0;
+            if (delRaw !== '-') deletions += Number.parseInt(delRaw, 10) || 0;
+
+            if (filePath && !filesMap.has(filePath)) {
+              filesMap.set(filePath, {
+                path: filePath,
+                status: 'modified',
+                name: filePath.split('/').pop()
+              });
+            }
+            continue;
+          }
+
+          if (!/^[A-Z]\t/.test(line)) {
+            continue;
+          }
+
+          const parts = line.split('\t');
+          const rawStatus = parts[0] || '';
+          const statusCode = rawStatus[0];
+          const filePath = (statusCode === 'R' || statusCode === 'C')
+            ? (parts[2] || parts[1])
+            : parts[1];
+
+          if (!filePath) {
+            continue;
+          }
+
+          filesMap.set(filePath, {
+            path: filePath,
+            status: statusMap[statusCode] || 'modified',
+            name: filePath.split('/').pop()
+          });
+        }
+
+        const files = Array.from(filesMap.values());
+        return {
+          hash,
+          fullHash,
+          author,
+          email,
+          date,
+          subject,
+          body: '',
+          type: classifyCommitType(subject || ''),
+          files,
+          stats: {
+            filesChanged: files.length,
+            insertions,
+            deletions
+          }
+        };
+      });
+
+    const summary = {
+      totalCommits: commits.length,
+      totalFiles: new Set(commits.flatMap((item) => item.files.map((file) => file.path))).size,
+      totalInsertions: commits.reduce((sum, item) => sum + item.stats.insertions, 0),
+      totalDeletions: commits.reduce((sum, item) => sum + item.stats.deletions, 0),
+      authors: [...new Set(commits.map((item) => item.author))],
+      firstCommit: commits.length > 0 ? commits[commits.length - 1].date : null,
+      lastCommit: commits.length > 0 ? commits[0].date : null,
+      generatedAt: new Date().toISOString()
+    };
+
+    res.json({ ref: validatedRef.value, summary, commits });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
