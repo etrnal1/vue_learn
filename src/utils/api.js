@@ -24,6 +24,20 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 export const api = {
+  request: apiRequest,
+  get: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'GET' }),
+  post: (endpoint, body, options = {}) => apiRequest(endpoint, {
+    ...options,
+    method: 'POST',
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }),
+  put: (endpoint, body, options = {}) => apiRequest(endpoint, {
+    ...options,
+    method: 'PUT',
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }),
+  delete: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'DELETE' }),
+
   // Users
   users: {
     getAll: () => apiRequest('/users'),
