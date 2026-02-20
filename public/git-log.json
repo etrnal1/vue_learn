@@ -1,17 +1,71 @@
 {
   "summary": {
-    "totalCommits": 35,
+    "totalCommits": 37,
     "totalFiles": 71,
-    "totalInsertions": 22619,
-    "totalDeletions": 634,
+    "totalInsertions": 22821,
+    "totalDeletions": 649,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-20 22:16:45 +0800",
-    "generatedAt": "2026-02-20T14:33:26.796Z"
+    "lastCommit": "2026-02-20 22:37:42 +0800",
+    "generatedAt": "2026-02-20T14:39:59.298Z"
   },
   "commits": [
+    {
+      "hash": "0a679c3",
+      "fullHash": "0a679c3850a0d12fa9fcc89b54015a2e3c80d648",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 22:37:42 +0800",
+      "subject": "更新: Git 日志数据与配置",
+      "body": "Generated with [Claude Code](https://claude.ai/code)\nvia [Happy](https://happy.engineering)",
+      "type": "更新",
+      "files": [
+        {
+          "path": ".claude/settings.local.json",
+          "status": "modified",
+          "name": "settings.local.json"
+        },
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        }
+      ],
+      "stats": {
+        "filesChanged": 2,
+        "insertions": 55,
+        "deletions": 6
+      }
+    },
+    {
+      "hash": "62e15cb",
+      "fullHash": "62e15cbcc669bf6458d8ea94a62f9c262800e7c9",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 22:37:38 +0800",
+      "subject": "功能: Git 分支文件历史统计展示",
+      "body": "- 后端：添加 mode=history 参数支持获取分支历史中所有修改的文件\n- 前端：显示每个文件的修改次数、最后修改时间和修改者\n- UI：更新文件列表展示方式，按修改次数降序排列\n- 样式：添加响应式设计支持移动端显示\n\nGenerated with [Claude Code](https://claude.ai/code)\nvia [Happy](https://happy.engineering)",
+      "type": "其他",
+      "files": [
+        {
+          "path": "server/routes/git.js",
+          "status": "modified",
+          "name": "git.js"
+        },
+        {
+          "path": "src/pages/GitBranchManager.vue",
+          "status": "modified",
+          "name": "GitBranchManager.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 2,
+        "insertions": 147,
+        "deletions": 9
+      }
+    },
     {
       "hash": "24a9b11",
       "fullHash": "24a9b1102bfc0d067d5402f841c95b8489379a1b",
