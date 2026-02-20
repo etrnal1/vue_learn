@@ -1,17 +1,61 @@
 {
   "summary": {
-    "totalCommits": 22,
-    "totalFiles": 70,
-    "totalInsertions": 20630,
-    "totalDeletions": 578,
+    "totalCommits": 24,
+    "totalFiles": 71,
+    "totalInsertions": 21724,
+    "totalDeletions": 583,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-20 15:09:37 +0800",
-    "generatedAt": "2026-02-20T07:09:38.481Z"
+    "lastCommit": "2026-02-20 18:05:29 +0800",
+    "generatedAt": "2026-02-20T10:05:30.897Z"
   },
   "commits": [
+    {
+      "hash": "0f637e3",
+      "fullHash": "0f637e3d109e4fb2c3411c43c2dd30f59d6d2c22",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 18:05:29 +0800",
+      "subject": "文档: 项目架构和代码逻辑说明",
+      "body": "添加完整的项目架构文档，包括前后端设计、Git 模块实现、\nAPI 通信流程、关键技术点和最佳实践指南。",
+      "type": "文档",
+      "files": [
+        {
+          "path": "PROJECT_ARCHITECTURE.md",
+          "status": "added",
+          "name": "PROJECT_ARCHITECTURE.md"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 1067,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "0538c6d",
+      "fullHash": "0538c6d8f839d7fa8f86f322a46e7e550be556a8",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 15:29:44 +0800",
+      "subject": "更新: Git 日志数据",
+      "body": "同步最新的 Git 提交历史到 public/git-log.json。",
+      "type": "更新",
+      "files": [
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 27,
+        "deletions": 5
+      }
+    },
     {
       "hash": "985d7f4",
       "fullHash": "985d7f442550297943e49fa830c45853c3869c85",
