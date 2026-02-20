@@ -1,7 +1,7 @@
 <template>
   <div class="code-editor-container">
     <div class="editor-toolbar">
-      <select v-model="language" class="language-select" @change="updateTheme">
+      <select v-model="language" class="language-select" @change="handleLanguageChange">
         <option value="python">Python 🐍</option>
         <option value="javascript">JavaScript 📜</option>
         <option value="bash">Bash 🖥️</option>
@@ -30,7 +30,7 @@ export default {
     modelValue: { type: String, default: '' },
     lang: { type: String, default: 'python' }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'update:lang'],
   data() {
     return {
       language: this.lang
@@ -75,12 +75,28 @@ export default {
       }).join('\n')
       this.code = formatted
     },
-    copyCode() {
-      navigator.clipboard.writeText(this.code)
-      alert('代码已复制到剪贴板')
+    async copyCode() {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(this.code)
+        } else {
+          const textarea = document.createElement('textarea')
+          textarea.value = this.code
+          textarea.style.position = 'fixed'
+          textarea.style.opacity = '0'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+        }
+        alert('代码已复制到剪贴板')
+      } catch (error) {
+        alert('复制失败，请手动复制')
+        console.error('复制失败:', error)
+      }
     },
-    updateTheme() {
-      this.$emit('update:modelValue', this.code)
+    handleLanguageChange() {
+      this.$emit('update:lang', this.language)
     }
   },
   watch: {

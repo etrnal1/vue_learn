@@ -81,7 +81,9 @@ export default {
       stderr: '',
       lastExecutionTime: null,
       outputTab: 'stdout',
-      executionStatus: 'idle' // idle, running, success, error
+      executionStatus: 'idle', // idle, running, success, error
+      abortController: null,
+      activeRunId: 0
     }
   },
   computed: {
@@ -118,6 +120,11 @@ export default {
         return
       }
 
+      if (this.abortController) {
+        this.abortController.abort()
+      }
+      const runId = ++this.activeRunId
+      this.abortController = new AbortController()
       this.isRunning = true
       this.executionStatus = 'running'
       this.stdout = ''
@@ -134,8 +141,11 @@ export default {
             code: this.code,
             language: this.language,
             timeout: 30000
-          })
+          }),
+          signal: this.abortController.signal
         })
+
+        if (runId !== this.activeRunId) return
 
         if (!response.ok) {
           // 服务器还未启动，使用本地模拟
@@ -144,16 +154,22 @@ export default {
         }
 
         const result = await response.json()
+        if (runId !== this.activeRunId) return
         this.stdout = result.stdout || ''
         this.stderr = result.stderr || ''
         this.executionStatus = result.stderr ? 'error' : 'success'
       } catch (e) {
+        if (e && e.name === 'AbortError') {
+          return
+        }
         // 无 API 端点，使用本地模拟
         this.simulateExecution()
       } finally {
+        if (runId !== this.activeRunId) return
         const endTime = performance.now()
         this.lastExecutionTime = Math.round(endTime - startTime)
         this.isRunning = false
+        this.abortController = null
       }
     },
 
@@ -764,8 +780,14 @@ export default {
     },
 
     stopExecution() {
+      this.activeRunId++
+      if (this.abortController) {
+        this.abortController.abort()
+        this.abortController = null
+      }
       this.isRunning = false
       this.executionStatus = 'idle'
+      this.stderr = this.stderr || '⏹️ 执行已停止'
       this.$emit('stop')
     }
   }

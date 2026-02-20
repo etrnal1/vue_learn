@@ -12,7 +12,7 @@
     <div class="playground-container">
       <div class="editor-section">
         <h3>编辑代码</h3>
-        <CodeEditor v-model="currentCode" :lang="currentLanguage" />
+        <CodeEditor v-model="currentCode" v-model:lang="currentLanguage" />
       </div>
 
       <div class="executor-section">
@@ -123,9 +123,25 @@ export default {
       this.currentCode = snippet.code
       this.currentLanguage = snippet.language
     },
-    copySnippetCode(snippet) {
-      navigator.clipboard.writeText(snippet.code)
-      alert('✅ 代码已复制')
+    async copySnippetCode(snippet) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(snippet.code)
+        } else {
+          const textarea = document.createElement('textarea')
+          textarea.value = snippet.code
+          textarea.style.position = 'fixed'
+          textarea.style.opacity = '0'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+        }
+        alert('✅ 代码已复制')
+      } catch (error) {
+        console.error('复制失败:', error)
+        alert('复制失败，请手动复制')
+      }
     },
     async deleteSnippet(idx) {
       if (confirm('确定删除此片段?')) {
