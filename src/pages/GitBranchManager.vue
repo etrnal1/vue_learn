@@ -426,10 +426,15 @@ export default {
         const confirm = window.confirm(
           `当前有 ${this.gitStatus.count} 个未提交的修改。\n\n切换分支前需要先提交或暂存这些修改。\n\n点击"确定"暂存修改，点击"取消"返回。`
         )
-        if (confirm) {
-          await this.stashChanges()
+        if (!confirm) {
+          return
         }
-        return
+        try {
+          await this.stashChanges()
+        } catch (error) {
+          this.showMessage('暂存失败，无法切换分支', 'error')
+          return
+        }
       }
 
       try {
