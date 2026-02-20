@@ -1,17 +1,129 @@
 {
   "summary": {
-    "totalCommits": 12,
-    "totalFiles": 62,
-    "totalInsertions": 18339,
-    "totalDeletions": 403,
+    "totalCommits": 13,
+    "totalFiles": 68,
+    "totalInsertions": 19026,
+    "totalDeletions": 539,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-19 21:51:20 +0800",
-    "generatedAt": "2026-02-19T13:51:22.444Z"
+    "lastCommit": "2026-02-20 11:24:35 +0800",
+    "generatedAt": "2026-02-20T03:24:35.956Z"
   },
   "commits": [
+    {
+      "hash": "15dc500",
+      "fullHash": "15dc50021e8c162a08a468ce39110740aebc6301",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 11:24:35 +0800",
+      "subject": "开发中: 服务器优化 + ITSM 组件更新 + 数据初始化脚本",
+      "body": "- 服务器: 更新数据库连接、路由和工具函数\n- 前端: 优化 ChatCard 和 ITSM 相关组件\n- 脚本: 添加测试数据和示例数据初始化脚本\n- 工具: 添加 LocalStorage 迁移工具",
+      "type": "其他",
+      "files": [
+        {
+          "path": ".gitignore",
+          "status": "modified",
+          "name": ".gitignore"
+        },
+        {
+          "path": "migrate-from-localstorage.html",
+          "status": "added",
+          "name": "migrate-from-localstorage.html"
+        },
+        {
+          "path": "package.json",
+          "status": "modified",
+          "name": "package.json"
+        },
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        },
+        {
+          "path": "scripts/init-sample-data.js",
+          "status": "added",
+          "name": "init-sample-data.js"
+        },
+        {
+          "path": "scripts/init-test-data.js",
+          "status": "added",
+          "name": "init-test-data.js"
+        },
+        {
+          "path": "server/db.js",
+          "status": "modified",
+          "name": "db.js"
+        },
+        {
+          "path": "server/index.js",
+          "status": "modified",
+          "name": "index.js"
+        },
+        {
+          "path": "server/init-db.js",
+          "status": "modified",
+          "name": "init-db.js"
+        },
+        {
+          "path": "server/package-lock.json",
+          "status": "modified",
+          "name": "package-lock.json"
+        },
+        {
+          "path": "server/package.json",
+          "status": "modified",
+          "name": "package.json"
+        },
+        {
+          "path": "server/routes/articles.js",
+          "status": "modified",
+          "name": "articles.js"
+        },
+        {
+          "path": "server/routes/tickets.js",
+          "status": "modified",
+          "name": "tickets.js"
+        },
+        {
+          "path": "server/utils.js",
+          "status": "added",
+          "name": "utils.js"
+        },
+        {
+          "path": "src/components/ChatCard.vue",
+          "status": "modified",
+          "name": "ChatCard.vue"
+        },
+        {
+          "path": "src/components/itsm/TicketCard.vue",
+          "status": "modified",
+          "name": "TicketCard.vue"
+        },
+        {
+          "path": "src/pages/itsm/IncidentSection.vue",
+          "status": "modified",
+          "name": "IncidentSection.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmPage.vue",
+          "status": "modified",
+          "name": "ItsmPage.vue"
+        },
+        {
+          "path": "src/pages/itsm/ServiceRequestSection.vue",
+          "status": "modified",
+          "name": "ServiceRequestSection.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 19,
+        "insertions": 687,
+        "deletions": 136
+      }
+    },
     {
       "hash": "68e43ad",
       "fullHash": "68e43ad606eb5ff82c9845b81cce5fe48fc6ea7d",
