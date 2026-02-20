@@ -123,6 +123,13 @@
               历史
             </button>
             <button
+              @click="viewFiles(branch.name)"
+              class="btn btn-sm btn-files"
+              title="查看文件变更"
+            >
+              文件
+            </button>
+            <button
               v-if="!branch.isCurrent && branch.name !== 'main' && branch.name !== 'master'"
               @click="confirmMerge(branch.name)"
               class="btn btn-sm btn-merge"
@@ -211,6 +218,84 @@
       </div>
     </div>
 
+    <!-- 文件列表弹窗 -->
+    <div v-if="showFilesModal" class="modal-overlay" @click="closeFilesModal">
+      <div class="modal-content modal-files" @click.stop>
+        <div class="modal-header">
+          <h3>📁 {{ selectedBranchForFiles }} 的文件变更</h3>
+          <button @click="closeFilesModal" class="btn-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- 加载状态 -->
+          <div v-if="loadingFiles" class="loading-state">⏳ 加载中...</div>
+
+          <!-- 空状态 -->
+          <div v-else-if="branchFiles.length === 0" class="empty-state">
+            该分支相对于 main 没有文件变更
+          </div>
+
+          <!-- 文件列表 -->
+          <div v-else class="file-list">
+            <div class="file-list-header">
+              共 {{ branchFiles.length }} 个文件变更：
+            </div>
+            <div
+              v-for="file in branchFiles"
+              :key="file.path"
+              class="file-item"
+              :class="'file-' + file.status"
+              @click="viewFileDetail(file)"
+            >
+              <span class="file-status-icon">{{ getFileStatusIcon(file.status) }}</span>
+              <span class="file-path">{{ file.path }}</span>
+              <span class="file-status-badge">{{ getFileStatusText(file.status) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文件详情弹窗 -->
+    <div v-if="showFileDetail" class="modal-overlay" @click="closeFileDetail">
+      <div class="modal-content modal-file-detail" @click.stop>
+        <div class="modal-header">
+          <div class="file-detail-title">
+            <span class="file-status-icon">{{ getFileStatusIcon(selectedFile?.status) }}</span>
+            <h3>{{ selectedFile?.path }}</h3>
+          </div>
+          <button @click="closeFileDetail" class="btn-close">✕</button>
+        </div>
+
+        <!-- Tab 切换 -->
+        <div class="view-mode-tabs">
+          <button @click="fileViewMode = 'content'" class="tab-btn" :class="{ active: fileViewMode === 'content' }">
+            📄 文件内容
+          </button>
+          <button @click="fileViewMode = 'diff'" class="tab-btn" :class="{ active: fileViewMode === 'diff' }">
+            🔄 变更对比
+          </button>
+        </div>
+
+        <div class="modal-body file-content-body">
+          <div v-if="loadingFileContent" class="loading-state">⏳ 加载中...</div>
+
+          <!-- 内容视图 -->
+          <div v-else-if="fileViewMode === 'content'" class="content-view">
+            <pre class="code-block"><code>{{ fileContent }}</code></pre>
+          </div>
+
+          <!-- Diff 视图 -->
+          <div v-else class="diff-view">
+            <div v-if="fileDiffStats" class="diff-stats">
+              <span class="stat-add">+{{ fileDiffStats.insertions }} 行</span>
+              <span class="stat-del">-{{ fileDiffStats.deletions }} 行</span>
+            </div>
+            <pre class="code-block diff-block"><code>{{ fileDiff }}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 提示消息 -->
     <div v-if="message" class="toast" :class="message.type">
       {{ message.text }}
@@ -244,7 +329,22 @@ export default {
       showDeleteDialog: false,
       deleteBranch: null,
       forceDelete: false,
-      message: null
+      message: null,
+
+      // 文件浏览相关
+      showFilesModal: false,
+      selectedBranchForFiles: '',
+      branchFiles: [],
+      loadingFiles: false,
+
+      // 文件详情相关
+      showFileDetail: false,
+      selectedFile: null,
+      fileContent: '',
+      fileDiff: '',
+      fileDiffStats: null,
+      loadingFileContent: false,
+      fileViewMode: 'content' // 'content' 或 'diff'
     }
   },
   computed: {
@@ -409,6 +509,100 @@ export default {
       setTimeout(() => {
         this.message = null
       }, 4000)
+    },
+
+    async viewFiles(branchName) {
+      this.selectedBranchForFiles = branchName
+      this.showFilesModal = true
+      this.branchFiles = []
+      this.loadingFiles = true
+
+      try {
+        const data = await api.get(`/git/branch-files/${branchName}`)
+        this.branchFiles = data.files || []
+      } catch (error) {
+        this.showMessage('获取文件列表失败: ' + error.message, 'error')
+      } finally {
+        this.loadingFiles = false
+      }
+    },
+
+    closeFilesModal() {
+      this.showFilesModal = false
+      this.branchFiles = []
+      this.selectedBranchForFiles = ''
+    },
+
+    async viewFileDetail(file) {
+      this.selectedFile = file
+      this.showFileDetail = true
+      this.fileContent = ''
+      this.fileDiff = ''
+      this.fileDiffStats = null
+      this.fileViewMode = 'content'
+      this.loadingFileContent = true
+
+      try {
+        await Promise.all([
+          this.loadFileContent(),
+          this.loadFileDiff()
+        ])
+      } catch (error) {
+        this.showMessage('加载文件详情失败: ' + error.message, 'error')
+      } finally {
+        this.loadingFileContent = false
+      }
+    },
+
+    async loadFileContent() {
+      try {
+        const path = encodeURIComponent(this.selectedFile.path)
+        const branch = encodeURIComponent(this.selectedBranchForFiles)
+        const data = await api.get(`/git/file-content?path=${path}&branch=${branch}`)
+        this.fileContent = data.content
+      } catch (error) {
+        this.fileContent = `错误: ${error.message}`
+      }
+    },
+
+    async loadFileDiff() {
+      try {
+        const path = encodeURIComponent(this.selectedFile.path)
+        const branch = encodeURIComponent(this.selectedBranchForFiles)
+        const data = await api.get(`/git/file-diff?path=${path}&branch=${branch}`)
+        this.fileDiff = data.diff
+        this.fileDiffStats = data.stats
+      } catch (error) {
+        this.fileDiff = `错误: ${error.message}`
+      }
+    },
+
+    closeFileDetail() {
+      this.showFileDetail = false
+      this.selectedFile = null
+      this.fileContent = ''
+      this.fileDiff = ''
+      this.fileDiffStats = null
+    },
+
+    getFileStatusIcon(status) {
+      const icons = {
+        'added': '🟢',
+        'modified': '🟡',
+        'deleted': '🔴',
+        'renamed': '🔵'
+      }
+      return icons[status] || '📄'
+    },
+
+    getFileStatusText(status) {
+      const texts = {
+        'added': '新增',
+        'modified': '修改',
+        'deleted': '删除',
+        'renamed': '重命名'
+      }
+      return texts[status] || status
     }
   },
 
@@ -896,7 +1090,196 @@ export default {
   color: white;
 }
 
+/* 文件列表按钮 */
+.btn-files {
+  background: #f59e0b;
+  color: white;
+  border-color: transparent;
+}
+
+/* 文件列表弹窗 */
+.modal-files {
+  max-width: 600px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-list-header {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--app-border);
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 2px solid var(--app-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: var(--app-card);
+}
+
+.file-item:hover {
+  border-color: var(--app-primary);
+  box-shadow: 0 2px 8px var(--app-shadow-light);
+  transform: translateX(4px);
+}
+
+.file-status-icon {
+  font-size: 1.2em;
+  flex-shrink: 0;
+}
+
+.file-path {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 0.95em;
+  color: var(--app-text);
+  word-break: break-all;
+}
+
+.file-status-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+}
+
+.file-added .file-status-badge {
+  background: #10b981;
+}
+
+.file-modified .file-status-badge {
+  background: #f59e0b;
+}
+
+.file-deleted .file-status-badge {
+  background: #ef4444;
+}
+
+.file-renamed .file-status-badge {
+  background: #8b5cf6;
+}
+
+/* 文件详情弹窗 */
+.modal-file-detail {
+  max-width: 900px;
+}
+
+.file-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-detail-title h3 {
+  margin: 0;
+  color: var(--app-text);
+  word-break: break-all;
+}
+
+.view-mode-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px;
+  border-bottom: 2px solid var(--app-border);
+  background: var(--app-border);
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  border-radius: 6px;
+}
+
+.tab-btn:hover {
+  background: var(--app-card);
+  color: var(--app-primary);
+}
+
+.tab-btn.active {
+  background: var(--app-primary);
+  color: white;
+}
+
+.file-content-body {
+  padding: 0;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.content-view,
+.diff-view {
+  padding: 20px 24px;
+}
+
+.code-block {
+  margin: 0;
+  padding: 16px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-block code {
+  color: inherit;
+  font-family: inherit;
+}
+
+.diff-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.stat-add {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.stat-del {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--app-text-muted);
+  font-style: italic;
+}
+
 /* 响应式 */
+@media (max-width: 1024px) {
+  .modal-file-detail {
+    max-width: 95vw;
+  }
+}
+
 @media (max-width: 768px) {
   .status-card {
     grid-template-columns: 1fr;
@@ -925,6 +1308,34 @@ export default {
 
   .modal-content {
     width: 95%;
+  }
+
+  .file-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .file-status-badge {
+    margin-left: auto;
+  }
+
+  .file-content-body {
+    max-height: 70vh;
+  }
+
+  .code-block {
+    font-size: 0.8em;
+  }
+
+  .view-mode-tabs {
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  .tab-btn {
+    padding: 6px 12px;
+    font-size: 0.9em;
   }
 }
 </style>

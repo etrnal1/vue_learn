@@ -308,4 +308,157 @@ router.post('/stash-pop', async (req, res) => {
   }
 });
 
+// 获取分支的文件变更列表
+router.get('/branch-files/:branchName', async (req, res) => {
+  try {
+    const { branchName } = req.params;
+    const { base = 'main' } = req.query;
+
+    // 验证分支名和基准分支名
+    if (!/^[a-zA-Z0-9\/_-]+$/.test(branchName)) {
+      return res.status(400).json({ error: '无效的分支名' });
+    }
+    if (!/^[a-zA-Z0-9\/_-]+$/.test(base)) {
+      return res.status(400).json({ error: '无效的基准分支名' });
+    }
+
+    const result = await runGitCommand(
+      `git diff --name-status ${base}...${branchName}`
+    );
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+
+    // 解析文件列表
+    const statusMap = {
+      'M': 'modified',
+      'A': 'added',
+      'D': 'deleted',
+      'R': 'renamed'
+    };
+
+    const files = result.data
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const parts = line.split('\t');
+        const status = parts[0][0];
+        const path = parts[1] || parts[0].substring(1).trim();
+        return {
+          path,
+          status: statusMap[status] || 'modified',
+          name: path.split('/').pop()
+        };
+      });
+
+    res.json({
+      branch: branchName,
+      base,
+      files,
+      count: files.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取指定分支中的文件内容
+router.get('/file-content', async (req, res) => {
+  try {
+    const { path, branch } = req.query;
+
+    if (!path || !branch) {
+      return res.status(400).json({ error: '路径和分支名不能为空' });
+    }
+
+    // 安全验证：防止路径遍历
+    if (path.includes('..') || path.startsWith('/')) {
+      return res.status(400).json({ error: '无效的文件路径' });
+    }
+
+    // 验证分支名
+    if (!/^[a-zA-Z0-9\/_-]+$/.test(branch)) {
+      return res.status(400).json({ error: '无效的分支名' });
+    }
+
+    const result = await runGitCommand(
+      `git show ${branch}:${path}`
+    );
+
+    if (!result.success) {
+      return res.status(500).json({
+        error: result.error || '无法读取文件内容'
+      });
+    }
+
+    res.json({
+      path,
+      branch,
+      content: result.data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取文件的 diff 变更和统计
+router.get('/file-diff', async (req, res) => {
+  try {
+    const { path, branch, base = 'main' } = req.query;
+
+    if (!path || !branch) {
+      return res.status(400).json({ error: '路径和分支名不能为空' });
+    }
+
+    // 安全验证
+    if (path.includes('..') || path.startsWith('/')) {
+      return res.status(400).json({ error: '无效的文件路径' });
+    }
+
+    // 验证分支名和基准分支名
+    if (!/^[a-zA-Z0-9\/_-]+$/.test(branch)) {
+      return res.status(400).json({ error: '无效的分支名' });
+    }
+    if (!/^[a-zA-Z0-9\/_-]+$/.test(base)) {
+      return res.status(400).json({ error: '无效的基准分支名' });
+    }
+
+    // 获取 diff 内容
+    const diffResult = await runGitCommand(
+      `git diff ${base}...${branch} -- ${path}`
+    );
+
+    // 获取统计信息
+    const statsResult = await runGitCommand(
+      `git diff --numstat ${base}...${branch} -- ${path}`
+    );
+
+    let stats = { insertions: 0, deletions: 0 };
+    if (statsResult.success && statsResult.data) {
+      const parts = statsResult.data.split('\t');
+      if (parts.length >= 2) {
+        stats.insertions = parseInt(parts[0], 10) || 0;
+        stats.deletions = parseInt(parts[1], 10) || 0;
+      }
+    }
+
+    if (!diffResult.success) {
+      return res.status(500).json({
+        error: diffResult.error || '无法获取 diff 信息'
+      });
+    }
+
+    res.json({
+      path,
+      base,
+      target: branch,
+      diff: diffResult.data || '无变更',
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
