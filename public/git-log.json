@@ -1,17 +1,61 @@
 {
   "summary": {
-    "totalCommits": 33,
+    "totalCommits": 35,
     "totalFiles": 71,
-    "totalInsertions": 22563,
-    "totalDeletions": 627,
+    "totalInsertions": 22619,
+    "totalDeletions": 634,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-20 22:10:54 +0800",
-    "generatedAt": "2026-02-20T14:10:55.963Z"
+    "lastCommit": "2026-02-20 22:16:45 +0800",
+    "generatedAt": "2026-02-20T14:33:26.796Z"
   },
   "commits": [
+    {
+      "hash": "24a9b11",
+      "fullHash": "24a9b1102bfc0d067d5402f841c95b8489379a1b",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 22:16:45 +0800",
+      "subject": "修复: Git 分支管理切换分支功能",
+      "body": "- 修复切换分支时有未提交修改的处理逻辑\n- 暂存修改后现在能正确继续执行分支切换\n- 改进错误处理和用户提示\n\n问题：点击切换分支后暂存修改，但分支没有真正切换，页面消失\n原因：暂存成功后直接返回，没有继续执行切换分支代码\n修复：调整逻辑，只在用户取消或暂存失败时返回\n\nGenerated with [Claude Code](https://claude.ai/code)\nvia [Happy](https://happy.engineering)",
+      "type": "修复",
+      "files": [
+        {
+          "path": "src/pages/GitBranchManager.vue",
+          "status": "modified",
+          "name": "GitBranchManager.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 7,
+        "deletions": 2
+      }
+    },
+    {
+      "hash": "fc2bed4",
+      "fullHash": "fc2bed4ad96ad16d4f866470dec3a6cfbdb3b363",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 22:11:02 +0800",
+      "subject": "更新: Git 日志数据",
+      "body": "Generated with [Claude Code](https://claude.ai/code)\nvia [Happy](https://happy.engineering)",
+      "type": "更新",
+      "files": [
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 49,
+        "deletions": 5
+      }
+    },
     {
       "hash": "48b76f1",
       "fullHash": "48b76f1c410b6fae3884a2f77b777c27f1e78a02",
