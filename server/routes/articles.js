@@ -33,12 +33,7 @@ router.get('/', async (req, res) => {
       ORDER BY a.created_at DESC
     `);
 
-    const processedArticles = articles.map(article => ({
-      ...article,
-      tags: article.tags ? JSON.parse(article.tags) : []
-    }));
-
-    res.json(processedArticles);
+    res.json(articles);
   } catch (error) {
     console.error('获取文章列表失败:', error);
     res.status(500).json({ error: error.message });
@@ -63,12 +58,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: '文章不存在' });
     }
 
-    const article = {
-      ...articles[0],
-      tags: articles[0].tags ? JSON.parse(articles[0].tags) : []
-    };
-
-    res.json(article);
+    res.json(articles[0]);
   } catch (error) {
     console.error('获取文章详情失败:', error);
     res.status(500).json({ error: error.message });
@@ -107,12 +97,7 @@ router.post('/', async (req, res) => {
     );
 
     const [articles] = await pool.query('SELECT * FROM articles WHERE id = ?', [id]);
-    const article = {
-      ...articles[0],
-      tags: articles[0].tags ? JSON.parse(articles[0].tags) : []
-    };
-
-    res.status(201).json(article);
+    res.status(201).json(articles[0]);
   } catch (error) {
     console.error('创建文章失败:', error);
     res.status(500).json({ error: error.message });
@@ -165,12 +150,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: '文章不存在' });
     }
 
-    const article = {
-      ...articles[0],
-      tags: articles[0].tags ? JSON.parse(articles[0].tags) : []
-    };
-
-    res.json(article);
+    res.json(articles[0]);
   } catch (error) {
     console.error('更新文章失败:', error);
     res.status(500).json({ error: error.message });

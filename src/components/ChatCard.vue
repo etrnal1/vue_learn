@@ -17,7 +17,7 @@
 
     <div class="chat-footer">
       <button @click="$emit('toggle-comments')" class="btn-toggle-comments">
-        💬 评论 ({{ chat.comments.length }})
+        💬 评论 ({{ (chat.comments || []).length }})
       </button>
     </div>
 
@@ -39,12 +39,12 @@
       </div>
 
       <!-- 评论列表 -->
-      <div v-if="chat.comments.length === 0" class="no-comments">
+      <div v-if="!chat.comments || chat.comments.length === 0" class="no-comments">
         <p>还没有评论，快去评论吧！</p>
       </div>
 
       <div v-else class="comments-list">
-        <div v-for="comment in chat.comments" :key="comment.id" class="comment-item">
+        <div v-for="comment in (chat.comments || [])" :key="comment.id" class="comment-item">
           <div class="comment-header">
             <span class="comment-date">{{ formatDate(comment.createdAt) }}</span>
             <div class="comment-actions">

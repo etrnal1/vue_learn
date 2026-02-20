@@ -1,13 +1,13 @@
 import mysql from 'mysql2/promise';
 
 const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: 'fcs',
-  port: 3306
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'fcs',
+  port: parseInt(process.env.DB_PORT || '3306')
 };
 
-const DB_NAME = 'itsm_db';
+const DB_NAME = process.env.DB_NAME || 'itsm_db';
 
 async function initDatabase() {
   let connection;

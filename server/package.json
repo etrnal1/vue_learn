@@ -5,12 +5,17 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "init-db": "node init-db.js"
+    "dev": "NODE_ENV=test node -r dotenv/config index.js dotenv_config_path=.env.test",
+    "prod": "NODE_ENV=production node -r dotenv/config index.js dotenv_config_path=.env.production",
+    "init-db": "node init-db.js",
+    "init-db:test": "NODE_ENV=test node -r dotenv/config init-db.js dotenv_config_path=.env.test",
+    "init-db:prod": "NODE_ENV=production node -r dotenv/config init-db.js dotenv_config_path=.env.production"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mysql2": "^3.6.5",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "body-parser": "^1.20.2"
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.17.3"
   }
 }

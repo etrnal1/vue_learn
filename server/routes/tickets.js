@@ -8,13 +8,9 @@ async function generateTicketNo() {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-
-    // 更新计数器并获取新值
     await connection.query("UPDATE counters SET value = value + 1 WHERE id = 'ticket'");
     const [rows] = await connection.query("SELECT value FROM counters WHERE id = 'ticket'");
-
     await connection.commit();
-
     const num = rows[0].value;
     return `TK${String(num).padStart(6, '0')}`;
   } catch (error) {
@@ -38,15 +34,8 @@ router.get('/', async (req, res) => {
       LEFT JOIN users u2 ON t.reporter_id = u2.id
       ORDER BY t.created_at DESC
     `);
-
-    // 解析 JSON 字段
-    const processedTickets = tickets.map(ticket => ({
-      ...ticket,
-      relatedArticleIds: ticket.related_article_ids ? JSON.parse(ticket.related_article_ids) : [],
-      attachments: ticket.attachments ? JSON.parse(ticket.attachments) : []
-    }));
-
-    res.json(processedTickets);
+    // camelCase 中间件会自动转换键名
+    res.json(tickets);
   } catch (error) {
     console.error('获取工单列表失败:', error);
     res.status(500).json({ error: error.message });
@@ -58,7 +47,6 @@ router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    // 获取工单
     const [tickets] = await pool.query(`
       SELECT
         t.*,
@@ -74,7 +62,6 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: '工单不存在' });
     }
 
-    // 获取评论
     const [comments] = await pool.query(`
       SELECT
         c.*,
@@ -86,13 +73,7 @@ router.get('/:id', async (req, res) => {
       ORDER BY c.created_at ASC
     `, [id]);
 
-    const ticket = {
-      ...tickets[0],
-      relatedArticleIds: tickets[0].related_article_ids ? JSON.parse(tickets[0].related_article_ids) : [],
-      attachments: tickets[0].attachments ? JSON.parse(tickets[0].attachments) : [],
-      comments
-    };
-
+    const ticket = { ...tickets[0], comments };
     res.json(ticket);
   } catch (error) {
     console.error('获取工单详情失败:', error);
@@ -102,24 +83,24 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/tickets - 创建工单
 router.post('/', async (req, res) => {
-  const {
-    id,
-    title,
-    description,
-    category,
-    priority,
-    status,
-    assigneeId,
-    reporterId,
-    relatedArticleIds,
-    attachments
-  } = req.body;
-
-  if (!id || !title) {
-    return res.status(400).json({ error: '缺少必需字段: id 或 title' });
-  }
-
   try {
+    const {
+      id,
+      title,
+      description,
+      category,
+      priority,
+      status,
+      assigneeId,
+      reporterId,
+      relatedArticleIds,
+      attachments
+    } = req.body;
+
+    if (!id || !title) {
+      return res.status(400).json({ error: '缺少必需字段: id 或 title' });
+    }
+
     const ticketNo = await generateTicketNo();
     const now = Date.now();
 
@@ -147,13 +128,7 @@ router.post('/', async (req, res) => {
     );
 
     const [tickets] = await pool.query('SELECT * FROM tickets WHERE id = ?', [id]);
-    const ticket = {
-      ...tickets[0],
-      relatedArticleIds: tickets[0].related_article_ids ? JSON.parse(tickets[0].related_article_ids) : [],
-      attachments: tickets[0].attachments ? JSON.parse(tickets[0].attachments) : []
-    };
-
-    res.status(201).json(ticket);
+    res.status(201).json(tickets[0]);
   } catch (error) {
     console.error('创建工单失败:', error);
     res.status(500).json({ error: error.message });
@@ -169,7 +144,6 @@ router.put('/:id', async (req, res) => {
     const fields = [];
     const values = [];
 
-    // 动态构建更新字段
     const fieldMapping = {
       title: 'title',
       description: 'description',
@@ -199,10 +173,8 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: '没有提供更新字段' });
     }
 
-    // 总是更新 updated_at
     fields.push('updated_at = ?');
     values.push(Date.now());
-
     values.push(id);
 
     await pool.query(
@@ -216,13 +188,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: '工单不存在' });
     }
 
-    const ticket = {
-      ...tickets[0],
-      relatedArticleIds: tickets[0].related_article_ids ? JSON.parse(tickets[0].related_article_ids) : [],
-      attachments: tickets[0].attachments ? JSON.parse(tickets[0].attachments) : []
-    };
-
-    res.json(ticket);
+    res.json(tickets[0]);
   } catch (error) {
     console.error('更新工单失败:', error);
     res.status(500).json({ error: error.message });
@@ -257,7 +223,6 @@ router.post('/:id/comments', async (req, res) => {
   }
 
   try {
-    // 检查工单是否存在
     const [tickets] = await pool.query('SELECT id FROM tickets WHERE id = ?', [id]);
     if (tickets.length === 0) {
       return res.status(404).json({ error: '工单不存在' });
@@ -270,7 +235,6 @@ router.post('/:id/comments', async (req, res) => {
       [commentId, id, userId || null, text, now]
     );
 
-    // 更新工单的 updated_at
     await pool.query('UPDATE tickets SET updated_at = ? WHERE id = ?', [now, id]);
 
     const [comments] = await pool.query(`
@@ -304,7 +268,6 @@ router.delete('/:ticketId/comments/:commentId', async (req, res) => {
       return res.status(404).json({ error: '评论不存在' });
     }
 
-    // 更新工单的 updated_at
     await pool.query('UPDATE tickets SET updated_at = ? WHERE id = ?', [Date.now(), ticketId]);
 
     res.json({ success: true });

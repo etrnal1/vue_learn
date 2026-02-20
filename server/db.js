@@ -1,12 +1,12 @@
 import mysql from 'mysql2/promise';
 
-// MySQL 连接配置
+// 从环境变量读取配置（默认值用于向后兼容）
 const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: 'fcs',
-  database: 'itsm_db',
-  port: 3306,
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'fcs',
+  database: process.env.DB_NAME || 'itsm_db',
+  port: parseInt(process.env.DB_PORT || '3306'),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -21,7 +21,8 @@ const pool = mysql.createPool(dbConfig);
 async function testConnection() {
   try {
     const connection = await pool.getConnection();
-    console.log('✅ MySQL 数据库连接成功');
+    const env = process.env.NODE_ENV || 'development';
+    console.log(`✅ MySQL 数据库连接成功 [${env}] - ${dbConfig.database}`);
     connection.release();
     return true;
   } catch (error) {

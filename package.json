@@ -5,16 +5,27 @@
   "type": "module",
   "scripts": {
     "predev": "node scripts/gen-git-log.js",
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "npm run dev:test",
+    "dev:test": "concurrently \"npm run server:test\" \"npm run client:test\"",
+    "dev:prod": "concurrently \"npm run server:prod\" \"npm run client:prod\"",
     "server": "node server/index.js",
+    "server:test": "NODE_ENV=test node -r dotenv/config server/index.js dotenv_config_path=server/.env.test",
+    "server:prod": "NODE_ENV=production node -r dotenv/config server/index.js dotenv_config_path=server/.env.production",
     "client": "vite",
+    "client:test": "vite --port 5173",
+    "client:prod": "vite --port 5174",
+    "init-db:test": "cd server && npm run init-db:test",
+    "init-db:prod": "cd server && npm run init-db:prod",
+    "init-data:test": "NODE_ENV=test node -r dotenv/config scripts/init-test-data.js dotenv_config_path=server/.env.test",
     "prebuild": "node scripts/gen-git-log.js",
     "build": "vite build",
     "preview": "vite preview",
     "git-log": "node scripts/gen-git-log.js"
   },
   "dependencies": {
-    "vue": "^3.3.4"
+    "vue": "^3.3.4",
+    "mysql2": "^3.6.5",
+    "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",

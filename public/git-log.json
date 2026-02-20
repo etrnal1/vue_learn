@@ -1,17 +1,164 @@
 {
   "summary": {
-    "totalCommits": 11,
-    "totalFiles": 44,
-    "totalInsertions": 12923,
-    "totalDeletions": 61,
+    "totalCommits": 12,
+    "totalFiles": 62,
+    "totalInsertions": 18339,
+    "totalDeletions": 403,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-19 11:20:24 +0800",
-    "generatedAt": "2026-02-19T13:47:14.999Z"
+    "lastCommit": "2026-02-19 21:51:20 +0800",
+    "generatedAt": "2026-02-19T13:51:22.444Z"
   },
   "commits": [
+    {
+      "hash": "68e43ad",
+      "fullHash": "68e43ad606eb5ff82c9845b81cce5fe48fc6ea7d",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-19 21:51:20 +0800",
+      "subject": "完成: MySQL数据库迁移 + Git提交历史自动更新功能",
+      "body": "- 实现完整的 Express + MySQL 后端 (8个API路由)\n- 创建13张数据库表\n- 重构所有前端页面使用API\n- 添加Git提交历史自动检测和更新\n- 添加数据迁移工具",
+      "type": "其他",
+      "files": [
+        {
+          "path": "AUTO_UPDATE_GUIDE.md",
+          "status": "added",
+          "name": "AUTO_UPDATE_GUIDE.md"
+        },
+        {
+          "path": "MIGRATION_COMPLETE.md",
+          "status": "added",
+          "name": "MIGRATION_COMPLETE.md"
+        },
+        {
+          "path": "package-lock.json",
+          "status": "modified",
+          "name": "package-lock.json"
+        },
+        {
+          "path": "package.json",
+          "status": "modified",
+          "name": "package.json"
+        },
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        },
+        {
+          "path": "server/db.js",
+          "status": "added",
+          "name": "db.js"
+        },
+        {
+          "path": "server/index.js",
+          "status": "added",
+          "name": "index.js"
+        },
+        {
+          "path": "server/init-db.js",
+          "status": "added",
+          "name": "init-db.js"
+        },
+        {
+          "path": "server/package-lock.json",
+          "status": "added",
+          "name": "package-lock.json"
+        },
+        {
+          "path": "server/package.json",
+          "status": "added",
+          "name": "package.json"
+        },
+        {
+          "path": "server/routes/articles.js",
+          "status": "added",
+          "name": "articles.js"
+        },
+        {
+          "path": "server/routes/chats.js",
+          "status": "added",
+          "name": "chats.js"
+        },
+        {
+          "path": "server/routes/codeSnippets.js",
+          "status": "added",
+          "name": "codeSnippets.js"
+        },
+        {
+          "path": "server/routes/flows.js",
+          "status": "added",
+          "name": "flows.js"
+        },
+        {
+          "path": "server/routes/migrate.js",
+          "status": "added",
+          "name": "migrate.js"
+        },
+        {
+          "path": "server/routes/serviceRequests.js",
+          "status": "added",
+          "name": "serviceRequests.js"
+        },
+        {
+          "path": "server/routes/tickets.js",
+          "status": "added",
+          "name": "tickets.js"
+        },
+        {
+          "path": "server/routes/users.js",
+          "status": "added",
+          "name": "users.js"
+        },
+        {
+          "path": "src/components/itsm/CodeExecutor.vue",
+          "status": "modified",
+          "name": "CodeExecutor.vue"
+        },
+        {
+          "path": "src/pages/ChatHistory.vue",
+          "status": "modified",
+          "name": "ChatHistory.vue"
+        },
+        {
+          "path": "src/pages/itsm/CodePlaygroundSection.vue",
+          "status": "modified",
+          "name": "CodePlaygroundSection.vue"
+        },
+        {
+          "path": "src/pages/itsm/GitLogSection.vue",
+          "status": "modified",
+          "name": "GitLogSection.vue"
+        },
+        {
+          "path": "src/pages/itsm/ItsmPage.vue",
+          "status": "modified",
+          "name": "ItsmPage.vue"
+        },
+        {
+          "path": "src/utils/api.js",
+          "status": "added",
+          "name": "api.js"
+        },
+        {
+          "path": "test-auto-update.sh",
+          "status": "added",
+          "name": "test-auto-update.sh"
+        },
+        {
+          "path": "vite.config.js",
+          "status": "modified",
+          "name": "vite.config.js"
+        }
+      ],
+      "stats": {
+        "filesChanged": 26,
+        "insertions": 5416,
+        "deletions": 342
+      }
+    },
     {
       "hash": "3579148",
       "fullHash": "35791488c56d3a770f873326651a182a10c1dd4c",

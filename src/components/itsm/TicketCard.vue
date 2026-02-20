@@ -13,7 +13,7 @@
       <span class="meta-item">{{ categoryLabel }}</span>
       <span class="meta-item">{{ assigneeName }}</span>
       <span class="meta-item">{{ formatDate(ticket.createdAt) }}</span>
-      <span v-if="ticket.comments.length" class="meta-item">💬 {{ ticket.comments.length }}</span>
+      <span v-if="ticket.comments && ticket.comments.length" class="meta-item">💬 {{ ticket.comments.length }}</span>
     </div>
   </div>
 </template>

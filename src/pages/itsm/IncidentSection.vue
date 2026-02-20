@@ -96,7 +96,7 @@
       </div>
 
       <TicketComments
-        :comments="viewingTicket.comments"
+        :comments="viewingTicket.comments || []"
         :users="users"
         :current-user-id="currentUserId"
         @add-comment="addComment"
@@ -156,15 +156,16 @@ export default {
   computed: {
     filteredTickets() {
       return this.tickets.filter(t => {
-        const matchSearch = !this.searchQuery ||
-          t.ticketNo.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-          t.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-          t.description.toLowerCase().includes(this.searchQuery.toLowerCase())
+        const q = this.searchQuery ? this.searchQuery.toLowerCase() : ''
+        const matchSearch = !q ||
+          (t.ticketNo || '').toLowerCase().includes(q) ||
+          (t.title || '').toLowerCase().includes(q) ||
+          (t.description || '').toLowerCase().includes(q)
         const matchStatus = this.statusFilter === 'all' || t.status === this.statusFilter
         const matchPriority = this.priorityFilter === 'all' || t.priority === this.priorityFilter
         const matchCategory = this.categoryFilter === 'all' || t.category === this.categoryFilter
         return matchSearch && matchStatus && matchPriority && matchCategory
-      }).sort((a, b) => b.createdAt - a.createdAt)
+      }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     }
   },
   methods: {
@@ -222,7 +223,7 @@ export default {
     },
     addComment(text) {
       const comment = { id: 'c' + Date.now(), userId: this.currentUserId, text, createdAt: Date.now() }
-      const updated = { ...this.viewingTicket, comments: [...this.viewingTicket.comments, comment], updatedAt: Date.now() }
+      const updated = { ...this.viewingTicket, comments: [...(this.viewingTicket.comments || []), comment], updatedAt: Date.now() }
       this.$emit('update-ticket', updated)
       this.viewingTicket = updated
     },

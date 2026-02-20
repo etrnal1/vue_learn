@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import { testConnection } from './db.js';
+import { camelCaseResponse } from './utils.js';
 
 // 导入路由
 import usersRouter from './routes/users.js';
@@ -20,6 +21,9 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// 自动将所有 API 响应的 snake_case 键名转为 camelCase
+app.use('/api', camelCaseResponse);
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -58,7 +62,10 @@ async function startServer() {
   }
 
   app.listen(PORT, () => {
+    const env = process.env.NODE_ENV || 'development';
+    const envEmoji = env === 'production' ? '🔴' : '🟢';
     console.log(`\n🚀 ITSM 后端服务器启动成功！`);
+    console.log(`${envEmoji} 环境: ${env.toUpperCase()}`);
     console.log(`📍 监听端口: http://localhost:${PORT}`);
     console.log(`📊 API 基础路径: http://localhost:${PORT}/api`);
     console.log(`\n可用的 API 端点:`);

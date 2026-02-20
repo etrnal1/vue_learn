@@ -412,10 +412,10 @@ export default {
           }
         }
 
-        // 加载工单
+        // 加载工单（列表API不返回comments，需要补充默认值）
         try {
           const tickets = await api.tickets.getAll()
-          this.tickets = Array.isArray(tickets) ? tickets : []
+          this.tickets = Array.isArray(tickets) ? tickets.map(t => ({ comments: [], ...t })) : []
         } catch (e) {
           console.warn('加载工单失败:', e)
           this.tickets = []
@@ -424,7 +424,7 @@ export default {
         // 加载服务请求
         try {
           const requests = await api.requests.getAll()
-          this.serviceRequests = Array.isArray(requests) ? requests : []
+          this.serviceRequests = Array.isArray(requests) ? requests.map(r => ({ comments: [], ...r })) : []
         } catch (e) {
           console.warn('加载服务请求失败:', e)
           this.serviceRequests = []

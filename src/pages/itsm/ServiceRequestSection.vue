@@ -161,12 +161,13 @@ export default {
   computed: {
     filteredRequests() {
       return this.requests.filter(r => {
-        const matchSearch = !this.searchQuery ||
-          r.requestNo.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-          r.title.toLowerCase().includes(this.searchQuery.toLowerCase())
+        const q = this.searchQuery ? this.searchQuery.toLowerCase() : ''
+        const matchSearch = !q ||
+          (r.requestNo || '').toLowerCase().includes(q) ||
+          (r.title || '').toLowerCase().includes(q)
         const matchStatus = this.statusFilter === 'all' || r.status === this.statusFilter
         return matchSearch && matchStatus
-      }).sort((a, b) => b.createdAt - a.createdAt)
+      }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     },
     isApprover() {
       const user = this.users.find(u => u.id === this.currentUserId)
