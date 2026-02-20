@@ -36,6 +36,29 @@
       </div>
     </div>
 
+    <div class="remote-ops-section card">
+      <h2>☁️ 远程仓库操作</h2>
+      <div class="remote-ops-row">
+        <label class="remote-select-label">
+          远程仓库
+          <select v-model="selectedRemote" class="remote-select">
+            <option v-for="remote in remotes" :key="remote" :value="remote">
+              {{ remote }}
+            </option>
+          </select>
+        </label>
+        <button @click="fetchFromRemote(false)" class="btn btn-sm" :disabled="!selectedRemote">
+          拉取最新
+        </button>
+        <button @click="fetchFromRemote(true)" class="btn btn-sm" :disabled="!selectedRemote">
+          拉取并清理
+        </button>
+        <button @click="pushCurrentBranch" class="btn btn-sm btn-push" :disabled="!currentBranch || !selectedRemote">
+          推送当前分支
+        </button>
+      </div>
+    </div>
+
     <!-- 创建新分支 -->
     <div class="create-branch-section card">
       <h2>➕ 创建新分支</h2>
@@ -51,7 +74,7 @@
           <input type="checkbox" v-model="checkoutAfterCreate" />
           <span>创建后立即切换</span>
         </label>
-        <button @click="createBranch" class="btn btn-primary" :disabled="!newBranchName">
+        <button @click="createBranch" class="btn btn-primary" :disabled="!normalizedNewBranchName">
           创建分支
         </button>
       </div>
@@ -89,6 +112,17 @@
         >
           远程 ({{ remoteBranches.length }})
         </button>
+      </div>
+      <div class="branch-filter-tools">
+        <input
+          v-model.trim="branchKeyword"
+          type="text"
+          class="branch-search-input"
+          placeholder="搜索分支名（支持关键字）"
+        />
+        <span class="filter-summary">
+          显示 {{ filteredBranches.length }} / {{ branches.length }} 个分支
+        </span>
       </div>
 
       <div class="branches-list">
@@ -130,6 +164,14 @@
               文件
             </button>
             <button
+              @click="pushBranch(branch.name)"
+              class="btn btn-sm btn-push"
+              :disabled="!selectedRemote"
+              title="推送到远程"
+            >
+              推送
+            </button>
+            <button
               v-if="!branch.isCurrent && branch.name !== 'main' && branch.name !== 'master'"
               @click="confirmMerge(branch.name)"
               class="btn btn-sm btn-merge"
@@ -144,6 +186,16 @@
               title="删除分支"
             >
               删除
+            </button>
+          </div>
+          <div class="branch-actions" v-else>
+            <button
+              v-if="branch.name !== 'main' && branch.name !== 'master'"
+              @click="deleteRemoteBranch(branch)"
+              class="btn btn-sm btn-delete"
+              title="删除远程分支"
+            >
+              删远程
             </button>
           </div>
         </div>
@@ -182,6 +234,51 @@
             <strong class="branch-highlight">{{ currentBranch }}</strong>？
           </p>
           <p class="warning-text">合并后无法自动撤销，请确保已备份重要内容。</p>
+          <div class="merge-preview-box">
+            <div class="merge-preview-head">
+              <strong>冲突预检</strong>
+              <div class="merge-preview-actions">
+                <button @click="loadMergePreview" class="btn btn-sm">快速预检</button>
+                <button @click="loadPreciseMergePreview" class="btn btn-sm">精确预检</button>
+              </div>
+            </div>
+            <div v-if="loadingMergePreview" class="loading-state">⏳ 正在检测...</div>
+            <div v-else-if="mergePreviewError" class="warning-text">{{ mergePreviewError }}</div>
+            <div v-else-if="mergePreview" class="merge-preview-content">
+              <p>
+                可能冲突文件 <strong>{{ mergePreview.potentialConflictCount }}</strong> 个
+                （基于 merge-base 的重叠改动预估）
+              </p>
+              <div v-if="mergePreview.potentialConflictCount > 0" class="merge-conflict-list">
+                <code v-for="file in mergePreview.potentialConflicts.slice(0, 12)" :key="file">{{ file }}</code>
+              </div>
+              <p v-if="mergePreview.potentialConflictCount > 12" class="subtitle">
+                仅展示前 12 个文件
+              </p>
+            </div>
+            <div class="precise-preview-box">
+              <div v-if="loadingPrecisePreview" class="loading-state">⏳ 精确预检中...</div>
+              <div v-else-if="precisePreviewError" class="warning-text">{{ precisePreviewError }}</div>
+              <div v-else-if="precisePreview" class="merge-preview-content">
+                <p>
+                  精确结果：
+                  <strong v-if="precisePreview.hasConflicts" class="warning-text">发现 {{ precisePreview.conflictCount }} 个冲突文件</strong>
+                  <strong v-else>未发现冲突</strong>
+                </p>
+                <p class="subtitle">{{ precisePreview.message }}</p>
+                <div v-if="precisePreview.hasConflicts" class="merge-conflict-list">
+                  <button
+                    v-for="file in precisePreview.conflictedFiles.slice(0, 12)"
+                    :key="file"
+                    class="conflict-file-btn"
+                    @click="openConflictFileDiff(file)"
+                  >
+                    {{ file }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="modal-actions">
           <button @click="showMergeDialog = false" class="btn btn-cancel">取消</button>
@@ -214,6 +311,26 @@
           <button @click="deleteBranch && deleteBranchConfirmed(deleteBranch)" class="btn btn-danger">
             确认删除
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 冲突文件对比弹窗 -->
+    <div v-if="showConflictDiffModal" class="modal-overlay" @click="closeConflictDiffModal">
+      <div class="modal-content modal-file-detail" @click.stop>
+        <div class="modal-header">
+          <h3>🧩 冲突文件对比: {{ selectedConflictFile }}</h3>
+          <button @click="closeConflictDiffModal" class="btn-close">✕</button>
+        </div>
+        <div class="modal-body file-content-body">
+          <div v-if="loadingConflictDiff" class="loading-state">⏳ 加载中...</div>
+          <div v-else>
+            <div class="diff-stats" v-if="conflictDiffStats">
+              <span class="stat-add">+{{ conflictDiffStats.insertions }} 行</span>
+              <span class="stat-del">-{{ conflictDiffStats.deletions }} 行</span>
+            </div>
+            <pre class="code-block diff-block"><code>{{ conflictFileDiff }}</code></pre>
+          </div>
         </div>
       </div>
     </div>
@@ -319,6 +436,8 @@ export default {
   data() {
     return {
       branches: [],
+      remotes: [],
+      selectedRemote: 'origin',
       currentBranch: '',
       gitStatus: {
         hasChanges: false,
@@ -326,6 +445,7 @@ export default {
         files: []
       },
       newBranchName: '',
+      branchKeyword: '',
       checkoutAfterCreate: true,
       filterType: 'all', // 'all', 'local', 'remote'
       loading: false,
@@ -334,6 +454,13 @@ export default {
       commits: [],
       showMergeDialog: false,
       mergeBranch: null,
+      mergePreview: null,
+      loadingMergePreview: false,
+      mergePreviewError: '',
+      precisePreview: null,
+      loadingPrecisePreview: false,
+      precisePreviewError: '',
+      precisePreviewCache: {},
       showDeleteDialog: false,
       deleteBranch: null,
       forceDelete: false,
@@ -353,7 +480,14 @@ export default {
       fileDiff: '',
       fileDiffStats: null,
       loadingFileContent: false,
-      fileViewMode: 'content' // 'content' 或 'diff'
+      fileViewMode: 'content', // 'content' 或 'diff'
+
+      // 冲突文件对比
+      showConflictDiffModal: false,
+      selectedConflictFile: '',
+      conflictFileDiff: '',
+      conflictDiffStats: null,
+      loadingConflictDiff: false
     }
   },
   computed: {
@@ -364,17 +498,38 @@ export default {
       return this.branches.filter(b => b.isRemote)
     },
     filteredBranches() {
-      if (this.filterType === 'local') return this.localBranches
-      if (this.filterType === 'remote') return this.remoteBranches
-      return this.branches
+      let list = this.branches
+
+      if (this.filterType === 'local') list = this.localBranches
+      if (this.filterType === 'remote') list = this.remoteBranches
+
+      if (!this.branchKeyword) return list
+      const keyword = this.branchKeyword.toLowerCase()
+      return list.filter(branch => branch.name.toLowerCase().includes(keyword))
+    },
+    normalizedNewBranchName() {
+      return this.newBranchName.trim()
     }
   },
   methods: {
+    isValidBranchName(branchName) {
+      const pattern = /^[A-Za-z0-9._/-]+$/
+      return pattern.test(branchName) &&
+        !branchName.startsWith('-') &&
+        !branchName.includes('..') &&
+        !branchName.includes('//') &&
+        !branchName.endsWith('/') &&
+        !branchName.endsWith('.')
+    },
+    encodeRef(refName) {
+      return encodeURIComponent(refName)
+    },
     async refreshData() {
       this.loading = true
       try {
         await Promise.all([
           this.fetchBranches(),
+          this.fetchRemotes(),
           this.fetchCurrentBranch(),
           this.fetchGitStatus()
         ])
@@ -389,6 +544,17 @@ export default {
         this.branches = data.branches || []
       } catch (error) {
         this.showMessage('获取分支列表失败: ' + error.message, 'error')
+      }
+    },
+    async fetchRemotes() {
+      try {
+        const data = await api.get('/git/remotes')
+        this.remotes = data.remotes || []
+        if (!this.selectedRemote || !this.remotes.includes(this.selectedRemote)) {
+          this.selectedRemote = data.defaultRemote || this.remotes[0] || ''
+        }
+      } catch (error) {
+        this.showMessage('获取远程仓库失败: ' + error.message, 'error')
       }
     },
 
@@ -411,14 +577,26 @@ export default {
     },
 
     async createBranch() {
-      if (!this.newBranchName.trim()) {
+      const branchName = this.normalizedNewBranchName
+
+      if (!branchName) {
         this.showMessage('请输入分支名', 'warning')
+        return
+      }
+
+      if (!this.isValidBranchName(branchName)) {
+        this.showMessage('分支名格式不正确，请使用字母/数字/._-/ 且避免连续斜杠', 'warning')
+        return
+      }
+
+      if (this.branches.some(branch => branch.name === branchName)) {
+        this.showMessage('分支已存在，请更换名称', 'warning')
         return
       }
 
       try {
         const data = await api.post('/git/create-branch', {
-          branchName: this.newBranchName.trim(),
+          branchName,
           checkout: this.checkoutAfterCreate
         })
 
@@ -460,7 +638,7 @@ export default {
       this.showCommits = true
 
       try {
-        const data = await api.get(`/git/branch-commits/${branchName}?limit=20`)
+        const data = await api.get(`/git/branch-commits/${this.encodeRef(branchName)}?limit=20`)
         this.commits = data.commits || []
       } catch (error) {
         this.showMessage('获取提交历史失败: ' + error.message, 'error')
@@ -470,6 +648,55 @@ export default {
     confirmMerge(branchName) {
       this.mergeBranch = branchName
       this.showMergeDialog = true
+      this.mergePreview = null
+      this.mergePreviewError = ''
+      this.precisePreview = null
+      this.precisePreviewError = ''
+      this.loadMergePreview()
+    },
+    async loadMergePreview() {
+      if (!this.mergeBranch || !this.currentBranch) return
+      this.loadingMergePreview = true
+      this.mergePreviewError = ''
+      try {
+        const sourceBranch = this.encodeRef(this.mergeBranch)
+        const targetBranch = this.encodeRef(this.currentBranch)
+        const data = await api.get(`/git/merge-preview?sourceBranch=${sourceBranch}&targetBranch=${targetBranch}`)
+        this.mergePreview = data
+      } catch (error) {
+        this.mergePreview = null
+        this.mergePreviewError = '预检失败: ' + error.message
+      } finally {
+        this.loadingMergePreview = false
+      }
+    },
+    async loadPreciseMergePreview() {
+      if (!this.mergeBranch || !this.currentBranch) return
+      this.loadingPrecisePreview = true
+      this.precisePreviewError = ''
+      try {
+        const cacheKey = `${this.mergeBranch}::${this.currentBranch}`
+        const cached = this.precisePreviewCache[cacheKey]
+        const now = Date.now()
+        if (cached && now - cached.timestamp < 5 * 60 * 1000) {
+          this.precisePreview = cached.data
+          return
+        }
+
+        const sourceBranch = this.encodeRef(this.mergeBranch)
+        const targetBranch = this.encodeRef(this.currentBranch)
+        const data = await api.get(`/git/merge-preview-precise?sourceBranch=${sourceBranch}&targetBranch=${targetBranch}`)
+        this.precisePreview = data
+        this.precisePreviewCache[cacheKey] = {
+          timestamp: now,
+          data
+        }
+      } catch (error) {
+        this.precisePreview = null
+        this.precisePreviewError = '精确预检失败: ' + error.message
+      } finally {
+        this.loadingPrecisePreview = false
+      }
     },
 
     async mergeBranchConfirmed(branchName) {
@@ -498,7 +725,7 @@ export default {
       this.showDeleteDialog = false
 
       try {
-        const data = await api.delete(`/git/branch/${branchName}?force=${this.forceDelete}`)
+        const data = await api.delete(`/git/branch/${this.encodeRef(branchName)}?force=${this.forceDelete}`)
         this.showMessage(data.message, 'success')
         await this.refreshData()
       } catch (error) {
@@ -517,6 +744,98 @@ export default {
         this.showMessage('暂存失败: ' + error.message, 'error')
       }
     },
+    getRemoteFromBranch(branch) {
+      const match = (branch.fullName || '').match(/^remotes\/([^/]+)\//)
+      return match ? match[1] : this.selectedRemote
+    },
+    async fetchFromRemote(prune = false) {
+      if (!this.selectedRemote) {
+        this.showMessage('请先选择远程仓库', 'warning')
+        return
+      }
+      try {
+        const data = await api.post('/git/fetch', {
+          remote: this.selectedRemote,
+          prune
+        })
+        this.showMessage(data.message, 'success')
+        await this.refreshData()
+      } catch (error) {
+        this.showMessage('拉取失败: ' + error.message, 'error')
+      }
+    },
+    async pushBranch(branchName) {
+      if (!this.selectedRemote) {
+        this.showMessage('请先选择远程仓库', 'warning')
+        return
+      }
+      try {
+        const data = await api.post('/git/push', {
+          remote: this.selectedRemote,
+          branchName
+        })
+        this.showMessage(data.message, 'success')
+        await this.refreshData()
+      } catch (error) {
+        this.showMessage('推送失败: ' + error.message, 'error')
+      }
+    },
+    async pushCurrentBranch() {
+      if (!this.currentBranch) {
+        this.showMessage('当前分支为空，无法推送', 'warning')
+        return
+      }
+      await this.pushBranch(this.currentBranch)
+    },
+    async deleteRemoteBranch(branch) {
+      const remote = this.getRemoteFromBranch(branch)
+      if (!remote) {
+        this.showMessage('无法识别远程仓库名称', 'error')
+        return
+      }
+
+      const confirmed = window.confirm(`确定删除远程分支 ${remote}/${branch.name}？`)
+      if (!confirmed) return
+
+      try {
+        const branchName = this.encodeRef(branch.name)
+        const remoteName = this.encodeRef(remote)
+        const data = await api.delete(`/git/remote-branch/${branchName}?remote=${remoteName}`)
+        this.showMessage(data.message, 'success')
+        await this.refreshData()
+      } catch (error) {
+        this.showMessage('删除远程分支失败: ' + error.message, 'error')
+      }
+    },
+    async openConflictFileDiff(filePath) {
+      if (!this.mergeBranch || !this.currentBranch) {
+        this.showMessage('分支信息不完整，无法加载文件对比', 'warning')
+        return
+      }
+      this.showConflictDiffModal = true
+      this.selectedConflictFile = filePath
+      this.conflictFileDiff = ''
+      this.conflictDiffStats = null
+      this.loadingConflictDiff = true
+      try {
+        const path = encodeURIComponent(filePath)
+        const sourceBranch = this.encodeRef(this.mergeBranch)
+        const targetBranch = this.encodeRef(this.currentBranch)
+        const data = await api.get(`/git/compare-file?path=${path}&sourceBranch=${sourceBranch}&targetBranch=${targetBranch}`)
+        this.conflictFileDiff = data.diff
+        this.conflictDiffStats = data.stats
+      } catch (error) {
+        this.conflictFileDiff = `错误: ${error.message}`
+      } finally {
+        this.loadingConflictDiff = false
+      }
+    },
+    closeConflictDiffModal() {
+      this.showConflictDiffModal = false
+      this.selectedConflictFile = ''
+      this.conflictFileDiff = ''
+      this.conflictDiffStats = null
+    },
 
     showMessage(text, type = 'info') {
       this.message = { text, type }
@@ -533,7 +852,7 @@ export default {
       this.totalCommitsInBranch = 0
 
       try {
-        const data = await api.get(`/git/branch-files/${branchName}?mode=history`)
+        const data = await api.get(`/git/branch-files/${this.encodeRef(branchName)}?mode=history`)
         this.branchFiles = data.files || []
         this.totalCommitsInBranch = data.totalCommits || 0
       } catch (error) {
@@ -729,6 +1048,35 @@ export default {
   color: var(--app-text);
 }
 
+.remote-ops-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.remote-select-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95em;
+  color: var(--app-text-secondary);
+}
+
+.remote-select {
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 2px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card);
+  color: var(--app-text);
+}
+
+.remote-select:focus {
+  outline: none;
+  border-color: var(--app-primary);
+}
+
 /* 创建分支表单 */
 .create-form {
   display: flex;
@@ -791,6 +1139,33 @@ export default {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.branch-filter-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.branch-search-input {
+  min-width: 260px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 2px solid var(--app-border);
+  background: var(--app-card);
+  color: var(--app-text);
+}
+
+.branch-search-input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+}
+
+.filter-summary {
+  font-size: 0.9em;
+  color: var(--app-text-muted);
 }
 
 .filter-btn {
@@ -948,6 +1323,12 @@ export default {
   border-color: transparent;
 }
 
+.btn-push {
+  background: #0ea5e9;
+  color: white;
+  border-color: transparent;
+}
+
 .btn-delete,
 .btn-danger {
   background: #ef4444;
@@ -964,6 +1345,66 @@ export default {
   padding: 40px;
   color: var(--app-text-muted);
   font-style: italic;
+}
+
+.merge-preview-box {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card);
+}
+
+.merge-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.merge-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.merge-preview-content p {
+  margin: 4px 0;
+  font-size: 0.95em;
+}
+
+.precise-preview-box {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--app-border);
+}
+
+.merge-conflict-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.merge-conflict-list code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--app-border);
+  color: var(--app-text);
+}
+
+.conflict-file-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  background: var(--app-border);
+  color: var(--app-text);
+  cursor: pointer;
+  font-family: monospace;
+}
+
+.conflict-file-btn:hover {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
 }
 
 /* 模态框 */
