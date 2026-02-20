@@ -122,12 +122,15 @@
     <!-- 生成时间 -->
     <div v-if="summary" class="generated-at">
       <div>数据生成时间：{{ new Date(summary.generatedAt).toLocaleString('zh-CN') }}</div>
+      <div>数据来源：后端实时 Git 历史接口</div>
       <div class="auto-refresh-hint">🔄 自动检测更新中 (每 30 秒刷新一次)</div>
     </div>
   </div>
 </template>
 
 <script>
+import { api } from '../../utils/api'
+
 export default {
   name: 'GitLogSection',
   data() {
@@ -160,10 +163,7 @@ export default {
   methods: {
     async loadData(silent = false) {
       try {
-        // 添加时间戳避免缓存
-        const res = await fetch(`/git-log.json?t=${Date.now()}`)
-        if (!res.ok) throw new Error('无法加载 git-log.json，请先运行 npm run git-log')
-        const data = await res.json()
+        const data = await api.get(`/git/history?ref=HEAD&limit=500&_t=${Date.now()}`)
 
         // 检测是否有新的更新（通过 generatedAt 字段）
         const newGeneratedAt = data.summary.generatedAt
