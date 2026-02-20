@@ -312,7 +312,7 @@ router.post('/stash-pop', async (req, res) => {
 router.get('/branch-files/:branchName', async (req, res) => {
   try {
     const { branchName } = req.params;
-    const { base = 'main' } = req.query;
+    const { base = 'main', mode = 'diff' } = req.query;
 
     // 验证分支名和基准分支名
     if (!/^[a-zA-Z0-9\/_-]+$/.test(branchName)) {
@@ -322,6 +322,78 @@ router.get('/branch-files/:branchName', async (req, res) => {
       return res.status(400).json({ error: '无效的基准分支名' });
     }
 
+    // mode=history: 获取分支历史中所有修改过的文件
+    if (mode === 'history') {
+      const result = await runGitCommand(
+        `git log ${branchName} --name-status --pretty=format:"COMMIT|%h|%an|%ad|%s" --date=iso`
+      );
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      // 解析输出，聚合文件统计
+      const fileStats = new Map();
+      let currentCommit = null;
+
+      result.data.split('\n').forEach(line => {
+        if (line.startsWith('COMMIT|')) {
+          const parts = line.split('|');
+          currentCommit = {
+            hash: parts[1],
+            author: parts[2],
+            date: parts[3],
+            subject: parts[4]
+          };
+        } else if (/^[MADR]\t/.test(line)) {
+          const status = line[0];
+          const filePath = line.substring(2);
+
+          if (!fileStats.has(filePath)) {
+            fileStats.set(filePath, {
+              path: filePath,
+              name: filePath.split('/').pop(),
+              modifyCount: 0,
+              lastModifiedDate: '',
+              lastModifiedBy: '',
+              lastCommitHash: '',
+              lastCommitMessage: ''
+            });
+          }
+
+          const stat = fileStats.get(filePath);
+          stat.modifyCount++;
+
+          // 第一次遇到就是最新的修改（git log 是倒序）
+          if (!stat.lastModifiedDate) {
+            stat.lastModifiedDate = currentCommit.date;
+            stat.lastModifiedBy = currentCommit.author;
+            stat.lastCommitHash = currentCommit.hash;
+            stat.lastCommitMessage = currentCommit.subject;
+          }
+        }
+      });
+
+      // 转换为数组并按修改次数降序排列
+      const files = Array.from(fileStats.values())
+        .sort((a, b) => b.modifyCount - a.modifyCount);
+
+      // 获取分支提交总数
+      const commitCountResult = await runGitCommand(
+        `git rev-list --count ${branchName}`
+      );
+      const totalCommits = parseInt(commitCountResult.data) || 0;
+
+      return res.json({
+        branch: branchName,
+        mode: 'history',
+        totalCommits,
+        files,
+        count: files.length
+      });
+    }
+
+    // mode=diff（默认）: 获取相对于 base 分支的文件变更
     const result = await runGitCommand(
       `git diff --name-status ${base}...${branchName}`
     );
@@ -354,6 +426,7 @@ router.get('/branch-files/:branchName', async (req, res) => {
 
     res.json({
       branch: branchName,
+      mode: 'diff',
       base,
       files,
       count: files.length

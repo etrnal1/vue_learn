@@ -231,24 +231,32 @@
 
           <!-- 空状态 -->
           <div v-else-if="branchFiles.length === 0" class="empty-state">
-            该分支相对于 main 没有文件变更
+            该分支没有修改任何文件
           </div>
 
           <!-- 文件列表 -->
           <div v-else class="file-list">
             <div class="file-list-header">
-              共 {{ branchFiles.length }} 个文件变更：
+              该分支共 {{ totalCommitsInBranch }} 个提交，涉及 {{ branchFiles.length }} 个文件
             </div>
             <div
               v-for="file in branchFiles"
               :key="file.path"
-              class="file-item"
-              :class="'file-' + file.status"
+              class="file-item file-history"
               @click="viewFileDetail(file)"
             >
-              <span class="file-status-icon">{{ getFileStatusIcon(file.status) }}</span>
-              <span class="file-path">{{ file.path }}</span>
-              <span class="file-status-badge">{{ getFileStatusText(file.status) }}</span>
+              <div class="file-path">{{ file.path }}</div>
+              <div class="file-stats">
+                <span class="modify-count" :title="`在该分支上被修改 ${file.modifyCount} 次`">
+                  🔄 {{ file.modifyCount }}次
+                </span>
+                <span class="last-modified" :title="`最后修改：${file.lastModifiedDate}`">
+                  🕒 {{ formatDate(file.lastModifiedDate) }}
+                </span>
+                <span class="last-author" :title="`最后修改者：${file.lastModifiedBy}`">
+                  👤 {{ file.lastModifiedBy }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -336,6 +344,7 @@ export default {
       selectedBranchForFiles: '',
       branchFiles: [],
       loadingFiles: false,
+      totalCommitsInBranch: 0,
 
       // 文件详情相关
       showFileDetail: false,
@@ -521,10 +530,12 @@ export default {
       this.showFilesModal = true
       this.branchFiles = []
       this.loadingFiles = true
+      this.totalCommitsInBranch = 0
 
       try {
-        const data = await api.get(`/git/branch-files/${branchName}`)
+        const data = await api.get(`/git/branch-files/${branchName}?mode=history`)
         this.branchFiles = data.files || []
+        this.totalCommitsInBranch = data.totalCommits || 0
       } catch (error) {
         this.showMessage('获取文件列表失败: ' + error.message, 'error')
       } finally {
@@ -608,6 +619,16 @@ export default {
         'renamed': '重命名'
       }
       return texts[status] || status
+    },
+
+    formatDate(dateStr) {
+      if (!dateStr) return ''
+      const date = new Date(dateStr)
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+      return `${month}月${day}日 ${hour}:${minute}`
     }
   },
 
@@ -1176,6 +1197,50 @@ export default {
 
 .file-renamed .file-status-badge {
   background: #8b5cf6;
+}
+
+/* 文件历史列表 */
+.file-item.file-history {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+}
+
+.file-item.file-history:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.file-item.file-history .file-path {
+  flex: 1;
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+
+.file-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85em;
+  color: var(--app-text-muted);
+  width: 100%;
+}
+
+.modify-count {
+  font-weight: 600;
+  color: var(--app-primary);
+}
+
+.last-modified,
+.last-author {
+  color: var(--app-text-secondary);
+}
+
+/* 响应式：移动端堆叠显示 */
+@media (max-width: 768px) {
+  .file-stats {
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 
 /* 文件详情弹窗 */
