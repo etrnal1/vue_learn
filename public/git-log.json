@@ -1,17 +1,98 @@
 {
   "summary": {
-    "totalCommits": 15,
-    "totalFiles": 68,
-    "totalInsertions": 19171,
-    "totalDeletions": 550,
+    "totalCommits": 18,
+    "totalFiles": 70,
+    "totalInsertions": 20462,
+    "totalDeletions": 557,
     "authors": [
       "etrnal1"
     ],
     "firstCommit": "2026-02-16 09:53:59 +0800",
-    "lastCommit": "2026-02-20 11:25:06 +0800",
-    "generatedAt": "2026-02-20T03:25:07.162Z"
+    "lastCommit": "2026-02-20 14:58:56 +0800",
+    "generatedAt": "2026-02-20T06:58:57.900Z"
   },
   "commits": [
+    {
+      "hash": "8f38345",
+      "fullHash": "8f383454f87f16037a147412a38dc5f36837d06c",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 14:58:56 +0800",
+      "subject": "改进: 通用 API 请求方法导出",
+      "body": "在 API 工具类中导出通用的 get、post、put、delete 等方法，提高代码复用性。",
+      "type": "其他",
+      "files": [
+        {
+          "path": "src/utils/api.js",
+          "status": "modified",
+          "name": "api.js"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 14,
+        "deletions": 0
+      }
+    },
+    {
+      "hash": "44e8ad3",
+      "fullHash": "44e8ad34fb28abdbc8f4d7bcf593b74bb3a9c464",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 14:58:12 +0800",
+      "subject": "添加: Git 分支管理模块",
+      "body": "实现完整的 Git 分支管理功能，包括可视化界面和后端 API。支持创建、切换、合并、删除分支等操作。",
+      "type": "新功能",
+      "files": [
+        {
+          "path": "server/index.js",
+          "status": "modified",
+          "name": "index.js"
+        },
+        {
+          "path": "server/routes/git.js",
+          "status": "added",
+          "name": "git.js"
+        },
+        {
+          "path": "src/App.vue",
+          "status": "modified",
+          "name": "App.vue"
+        },
+        {
+          "path": "src/pages/GitBranchManager.vue",
+          "status": "added",
+          "name": "GitBranchManager.vue"
+        }
+      ],
+      "stats": {
+        "filesChanged": 4,
+        "insertions": 1250,
+        "deletions": 2
+      }
+    },
+    {
+      "hash": "9cf93df",
+      "fullHash": "9cf93df4800da99bf98f8f8ba75f8837db87e878",
+      "author": "etrnal1",
+      "email": "1026177564@qq.com",
+      "date": "2026-02-20 11:25:12 +0800",
+      "subject": "更新: Git 日志 (最终)",
+      "body": "",
+      "type": "更新",
+      "files": [
+        {
+          "path": "public/git-log.json",
+          "status": "modified",
+          "name": "git-log.json"
+        }
+      ],
+      "stats": {
+        "filesChanged": 1,
+        "insertions": 27,
+        "deletions": 5
+      }
+    },
     {
       "hash": "9cb4afe",
       "fullHash": "9cb4afebf17c817806ca2ad37d45f54e9e461297",
