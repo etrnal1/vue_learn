@@ -6,6 +6,7 @@ yarn-error.log
 # 构建输出
 dist/
 build/
+public/git-log.json
 
 # IDE
 .vscode/
