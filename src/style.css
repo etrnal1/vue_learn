@@ -1,3 +1,14 @@
+html {
+    height: 100%;
+}
+
+:root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -7,13 +18,28 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    min-height: 100vh;
-    padding: 20px;
+    min-height: 100%;
+    padding-top: max(20px, calc(var(--safe-area-top) + 8px));
+    padding-right: max(20px, calc(var(--safe-area-right) + 8px));
+    padding-bottom: max(20px, calc(var(--safe-area-bottom) + 8px));
+    padding-left: max(20px, calc(var(--safe-area-left) + 8px));
 }
 
 #app {
     max-width: 1400px;
     margin: 0 auto;
+}
+
+.modal-overlay,
+.diff-modal-overlay {
+    padding-top: calc(var(--safe-area-top) + 8px);
+    padding-bottom: calc(var(--safe-area-bottom) + 8px);
+}
+
+.modal,
+.modal-content,
+.diff-modal {
+    max-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 24px) !important;
 }
 
 /* 平滑过渡 */
@@ -37,4 +63,13 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #764ba2;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding-top: max(12px, calc(var(--safe-area-top) + 6px));
+        padding-right: max(12px, calc(var(--safe-area-right) + 6px));
+        padding-bottom: max(12px, calc(var(--safe-area-bottom) + 10px));
+        padding-left: max(12px, calc(var(--safe-area-left) + 6px));
+    }
 }
