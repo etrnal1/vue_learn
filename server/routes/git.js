@@ -45,6 +45,10 @@ function sanitizeFilePath(pathValue) {
   return { ok: true, value };
 }
 
+function toTopPathspec(pathValue) {
+  return `:(top)${pathValue}`;
+}
+
 function parseLimit(rawLimit, defaultLimit = 10, max = 100) {
   const parsed = Number.parseInt(rawLimit, 10);
   if (Number.isNaN(parsed) || parsed <= 0) {
@@ -74,6 +78,45 @@ function classifyCommitType(subject = '') {
   if (subject.startsWith('重构')) return '重构';
   if (subject.startsWith('移除')) return '移除';
   return '其他';
+}
+
+function parseCommitLogEntries(rawLog = '', parseLine) {
+  const entries = new Map();
+  let currentHash = '';
+
+  for (const line of rawLog.split('\n')) {
+    if (line.startsWith('COMMIT|')) {
+      const parts = line.split('|');
+      currentHash = parts[1] || '';
+      if (currentHash && !entries.has(currentHash)) {
+        entries.set(currentHash, {
+          fullHash: currentHash,
+          hash: parts[2] || currentHash.slice(0, 7),
+          author: parts[3] || '',
+          email: parts[4] || '',
+          date: parts[5] || '',
+          subject: parts.slice(6).join('|') || '',
+          filesMap: new Map(),
+          insertions: 0,
+          deletions: 0
+        });
+      }
+      continue;
+    }
+
+    if (!currentHash || !line) {
+      continue;
+    }
+
+    const entry = entries.get(currentHash);
+    if (!entry) {
+      continue;
+    }
+
+    parseLine(line, entry);
+  }
+
+  return entries;
 }
 
 async function runGitCommand(args, options = {}) {
@@ -211,18 +254,31 @@ router.get('/history', async (req, res) => {
     }
 
     const limit = parseLimit(req.query.limit, 200, 1000);
-    const logResult = await runGitCommand([
-      'log',
-      validatedRef.value,
-      `-${limit}`,
-      '--date=iso-strict',
-      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e',
-      '--name-status',
-      '--numstat'
+    const [statusLogResult, numstatLogResult] = await Promise.all([
+      runGitCommand([
+        'log',
+        validatedRef.value,
+        `-${limit}`,
+        '--date=iso-strict',
+        '--pretty=format:COMMIT|%H|%h|%an|%ae|%aI|%s',
+        '--name-status'
+      ]),
+      runGitCommand([
+        'log',
+        validatedRef.value,
+        `-${limit}`,
+        '--date=iso-strict',
+        '--pretty=format:COMMIT|%H|%h|%an|%ae|%aI|%s',
+        '--numstat'
+      ])
     ]);
 
-    if (!logResult.success) {
-      return sendGitError(res, logResult);
+    if (!statusLogResult.success) {
+      return sendGitError(res, statusLogResult);
+    }
+
+    if (!numstatLogResult.success) {
+      return sendGitError(res, numstatLogResult);
     }
 
     const statusMap = {
@@ -233,72 +289,97 @@ router.get('/history', async (req, res) => {
       C: 'renamed'
     };
 
-    const commits = (logResult.data || '')
-      .split('\u001e')
-      .map((chunk) => chunk.trim())
-      .filter(Boolean)
-      .map((chunk) => {
-        const lines = chunk.split('\n').filter(Boolean);
-        const header = lines.shift() || '';
-        const [fullHash, hash, author, email, date, subject] = header.split('\u001f');
+    const statusEntries = parseCommitLogEntries(statusLogResult.data || '', (line, entry) => {
+      if (!/^[A-Z]/.test(line)) {
+        return;
+      }
 
-        const filesMap = new Map();
-        let insertions = 0;
-        let deletions = 0;
+      const parts = line.split('\t');
+      const rawStatus = parts[0] || '';
+      const statusCode = rawStatus[0];
+      const filePath = (statusCode === 'R' || statusCode === 'C')
+        ? (parts[2] || parts[1])
+        : parts[1];
 
-        for (const line of lines) {
-          if (/^(\d+|-)\t(\d+|-)\t/.test(line)) {
-            const [addRaw, delRaw, filePath] = line.split('\t');
-            if (addRaw !== '-') insertions += Number.parseInt(addRaw, 10) || 0;
-            if (delRaw !== '-') deletions += Number.parseInt(delRaw, 10) || 0;
+      if (!filePath) {
+        return;
+      }
 
-            if (filePath && !filesMap.has(filePath)) {
-              filesMap.set(filePath, {
-                path: filePath,
-                status: 'modified',
-                name: filePath.split('/').pop()
-              });
-            }
-            continue;
+      entry.filesMap.set(filePath, {
+        path: filePath,
+        status: statusMap[statusCode] || 'modified',
+        name: filePath.split('/').pop()
+      });
+    });
+
+    const numstatEntries = parseCommitLogEntries(numstatLogResult.data || '', (line, entry) => {
+      if (!/^(\d+|-)\t(\d+|-)\t/.test(line)) {
+        return;
+      }
+
+      const [addRaw, delRaw, filePath] = line.split('\t');
+      if (!filePath) {
+        return;
+      }
+
+      if (addRaw !== '-') entry.insertions += Number.parseInt(addRaw, 10) || 0;
+      if (delRaw !== '-') entry.deletions += Number.parseInt(delRaw, 10) || 0;
+
+      if (!entry.filesMap.has(filePath)) {
+        entry.filesMap.set(filePath, {
+          path: filePath,
+          status: 'modified',
+          name: filePath.split('/').pop()
+        });
+      }
+    });
+
+    const commitOrder = [];
+    for (const line of (statusLogResult.data || '').split('\n')) {
+      if (!line.startsWith('COMMIT|')) continue;
+      const fullHash = line.split('|')[1] || '';
+      if (fullHash && !commitOrder.includes(fullHash)) {
+        commitOrder.push(fullHash);
+      }
+    }
+
+    for (const [fullHash, numstatEntry] of numstatEntries.entries()) {
+      if (!statusEntries.has(fullHash)) {
+        statusEntries.set(fullHash, numstatEntry);
+      } else {
+        const entry = statusEntries.get(fullHash);
+        entry.insertions = numstatEntry.insertions;
+        entry.deletions = numstatEntry.deletions;
+        for (const [filePath, fileInfo] of numstatEntry.filesMap.entries()) {
+          if (!entry.filesMap.has(filePath)) {
+            entry.filesMap.set(filePath, fileInfo);
           }
-
-          if (!/^[A-Z]\t/.test(line)) {
-            continue;
-          }
-
-          const parts = line.split('\t');
-          const rawStatus = parts[0] || '';
-          const statusCode = rawStatus[0];
-          const filePath = (statusCode === 'R' || statusCode === 'C')
-            ? (parts[2] || parts[1])
-            : parts[1];
-
-          if (!filePath) {
-            continue;
-          }
-
-          filesMap.set(filePath, {
-            path: filePath,
-            status: statusMap[statusCode] || 'modified',
-            name: filePath.split('/').pop()
-          });
         }
+      }
+      if (!commitOrder.includes(fullHash)) {
+        commitOrder.push(fullHash);
+      }
+    }
 
-        const files = Array.from(filesMap.values());
+    const commits = commitOrder
+      .map((fullHash) => statusEntries.get(fullHash))
+      .filter(Boolean)
+      .map((entry) => {
+        const files = Array.from(entry.filesMap.values());
         return {
-          hash,
-          fullHash,
-          author,
-          email,
-          date,
-          subject,
+          hash: entry.hash,
+          fullHash: entry.fullHash,
+          author: entry.author,
+          email: entry.email,
+          date: entry.date,
+          subject: entry.subject,
           body: '',
-          type: classifyCommitType(subject || ''),
+          type: classifyCommitType(entry.subject || ''),
           files,
           stats: {
             filesChanged: files.length,
-            insertions,
-            deletions
+            insertions: entry.insertions,
+            deletions: entry.deletions
           }
         };
       });
@@ -315,6 +396,74 @@ router.get('/history', async (req, res) => {
     };
 
     res.json({ ref: validatedRef.value, summary, commits });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/commit-file-diff', async (req, res) => {
+  try {
+    const validatedPath = sanitizeFilePath(req.query.path);
+    const validatedCommit = sanitizeRefName(req.query.commit, '提交 Hash');
+
+    if (!validatedPath.ok || !validatedCommit.ok) {
+      return res.status(400).json({ error: validatedPath.error || validatedCommit.error });
+    }
+
+    const topPathspec = toTopPathspec(validatedPath.value);
+    const diffAttempts = [
+      ['show', '--no-color', '--format=', validatedCommit.value, '--', topPathspec],
+      ['diff', '--no-color', `${validatedCommit.value}^!`, '--', topPathspec],
+      ['show', '--no-color', '-m', '--format=', validatedCommit.value, '--', topPathspec]
+    ];
+
+    let diffResult = null;
+    for (const args of diffAttempts) {
+      const result = await runGitCommand(args);
+      if (result.success && result.data) {
+        diffResult = result;
+        break;
+      }
+      if (!result.success && !diffResult) {
+        diffResult = result;
+      }
+    }
+
+    if (!diffResult || !diffResult.success) {
+      return sendGitError(res, diffResult || { error: '无法获取提交文件内容' }, '无法获取提交文件内容');
+    }
+
+    const statsAttempts = [
+      ['show', '--numstat', '--format=', validatedCommit.value, '--', topPathspec],
+      ['diff', '--numstat', `${validatedCommit.value}^!`, '--', topPathspec]
+    ];
+
+    let statsResult = { success: true, data: '' };
+    for (const args of statsAttempts) {
+      const result = await runGitCommand(args);
+      if (result.success && result.data) {
+        statsResult = result;
+        break;
+      }
+      if (!result.success && !statsResult.data) {
+        statsResult = result;
+      }
+    }
+
+    const stats = { insertions: 0, deletions: 0 };
+    if (statsResult.success && statsResult.data) {
+      const firstLine = statsResult.data.split('\n')[0] || '';
+      const [addRaw, delRaw] = firstLine.split('\t');
+      if (addRaw && addRaw !== '-') stats.insertions = Number.parseInt(addRaw, 10) || 0;
+      if (delRaw && delRaw !== '-') stats.deletions = Number.parseInt(delRaw, 10) || 0;
+    }
+
+    res.json({
+      path: validatedPath.value,
+      commit: validatedCommit.value,
+      diff: diffResult.data || '该文件在此提交中没有可显示的文本差异',
+      stats
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -917,9 +1066,10 @@ router.get('/compare-file', async (req, res) => {
     }
 
     const diffRange = `${targetRef.value}..${sourceRef.value}`;
+    const topPathspec = toTopPathspec(validatedPath.value);
     const [diffResult, statsResult] = await Promise.all([
-      runGitCommand(['diff', diffRange, '--', validatedPath.value]),
-      runGitCommand(['diff', '--numstat', diffRange, '--', validatedPath.value])
+      runGitCommand(['diff', diffRange, '--', topPathspec]),
+      runGitCommand(['diff', '--numstat', diffRange, '--', topPathspec])
     ]);
 
     if (!diffResult.success) {
@@ -996,10 +1146,11 @@ router.get('/file-diff', async (req, res) => {
     }
 
     const range = `${validatedBase.value}...${validatedBranch.value}`;
+    const topPathspec = toTopPathspec(validatedPath.value);
 
     const [diffResult, statsResult] = await Promise.all([
-      runGitCommand(['diff', range, '--', validatedPath.value]),
-      runGitCommand(['diff', '--numstat', range, '--', validatedPath.value])
+      runGitCommand(['diff', range, '--', topPathspec]),
+      runGitCommand(['diff', '--numstat', range, '--', topPathspec])
     ]);
 
     if (!diffResult.success) {
