@@ -27,6 +27,8 @@ const MAX_DEPTH = 20;
 const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
 const INITIAL_CHUNK_SIZE = 16 * 1024 * 1024; // 16MB for bytes=0-
 const OPTIMIZE_DIR = path.join(os.tmpdir(), 'vue-learning-video-cache');
+const VIDEO_DATA_DIR = path.resolve('server/data/videos');
+const VIDEO_LIBRARY_FILE = path.join(VIDEO_DATA_DIR, 'library.json');
 
 function isVideoFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -157,6 +159,102 @@ function resolveAndValidatePath(inputPath) {
   }
   return { ok: true, value: resolved };
 }
+
+async function ensureVideoDataDir() {
+  await fsp.mkdir(VIDEO_DATA_DIR, { recursive: true });
+}
+
+function normalizeVideoItem(item) {
+  if (!item || typeof item !== 'object') return null;
+
+  const now = Date.now();
+  const createdAt = Number(item.createdAt) || now;
+  const updatedAt = Number(item.updatedAt) || createdAt;
+  const title = String(item.title || '').trim();
+  const url = String(item.url || '').trim();
+  if (!title || !url) return null;
+
+  return {
+    id: String(item.id || `video_${updatedAt}`),
+    title,
+    url,
+    category: String(item.category || '').trim(),
+    status: ['watchlist', 'watching', 'completed'].includes(String(item.status))
+      ? String(item.status)
+      : 'watchlist',
+    tags: Array.isArray(item.tags)
+      ? item.tags.map((tag) => String(tag || '').trim()).filter(Boolean).slice(0, 20)
+      : [],
+    note: String(item.note || ''),
+    localPath: item.localPath ? String(item.localPath) : null,
+    optimizedPath: item.optimizedPath ? String(item.optimizedPath) : '',
+    createdAt,
+    updatedAt
+  };
+}
+
+function normalizeVideoList(items) {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const item of items) {
+    const parsed = normalizeVideoItem(item);
+    if (!parsed || seen.has(parsed.id)) continue;
+    seen.add(parsed.id);
+    normalized.push(parsed);
+  }
+  return normalized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+async function readVideoLibrary() {
+  try {
+    const raw = await fsp.readFile(VIDEO_LIBRARY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return normalizeVideoList(parsed?.items || []);
+  } catch (error) {
+    return [];
+  }
+}
+
+async function writeVideoLibrary(items) {
+  await ensureVideoDataDir();
+  const normalized = normalizeVideoList(items);
+  const payload = {
+    updatedAt: Date.now(),
+    count: normalized.length,
+    items: normalized
+  };
+  await fsp.writeFile(VIDEO_LIBRARY_FILE, JSON.stringify(payload, null, 2), 'utf8');
+  return normalized;
+}
+
+// GET /api/videos/library
+router.get('/library', async (req, res) => {
+  try {
+    const items = await readVideoLibrary();
+    res.json({
+      count: items.length,
+      items
+    });
+  } catch (error) {
+    console.error('读取视频库失败:', error);
+    res.status(500).json({ error: '读取视频库失败' });
+  }
+});
+
+// PUT /api/videos/library
+router.put('/library', async (req, res) => {
+  try {
+    const items = await writeVideoLibrary(req.body?.items || []);
+    res.json({
+      count: items.length,
+      items
+    });
+  } catch (error) {
+    console.error('保存视频库失败:', error);
+    res.status(500).json({ error: '保存视频库失败' });
+  }
+});
 
 // POST /api/videos/scan
 router.post('/scan', async (req, res) => {
