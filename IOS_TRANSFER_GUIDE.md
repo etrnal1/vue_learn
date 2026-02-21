@@ -28,10 +28,17 @@ git push -u origin dev/current-changes
 git clone <your-github-repo-url>
 cd <repo-folder>
 npm install
-npm run build
+VITE_API_BASE_URL=http://<backend-mac-lan-ip>:4000 npm run build
 npx cap sync ios
 npx cap open ios
 ```
+
+Example:
+```bash
+VITE_API_BASE_URL=http://192.168.31.12:4000 npm run build
+```
+
+This is required for iOS package builds because Vite dev proxy is not available in production app bundles.
 
 In Xcode:
 1. Select `App` target.
@@ -44,7 +51,7 @@ In Xcode:
 Run this on the Mac used for iOS testing:
 
 ```bash
-npm run build
+VITE_API_BASE_URL=http://<backend-mac-lan-ip>:4000 npm run build
 npx cap sync ios
 npx cap open ios
 ```

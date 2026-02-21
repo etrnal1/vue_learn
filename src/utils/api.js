@@ -1,9 +1,15 @@
 // API 辅助函数
-const API_BASE = '/api';
+const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const API_BASE = configuredBase ? `${configuredBase}/api` : '/api';
+
+export function getApiUrl(endpoint) {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${API_BASE}${normalizedEndpoint}`;
+}
 
 async function apiRequest(endpoint, options = {}) {
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(getApiUrl(endpoint), {
       headers: {
         'Content-Type': 'application/json',
         ...options.headers

@@ -67,6 +67,8 @@
 </template>
 
 <script>
+import { getApiUrl } from '../../utils/api.js'
+
 export default {
   name: 'CodeExecutor',
   props: {
@@ -134,7 +136,7 @@ export default {
       const startTime = performance.now()
 
       try {
-        const response = await fetch('/api/code/execute', {
+        const response = await fetch(getApiUrl('/code/execute'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
