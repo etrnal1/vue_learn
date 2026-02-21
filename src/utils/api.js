@@ -144,5 +144,26 @@ export const api = {
     scan: (payload) => apiRequest('/music/scan', { method: 'POST', body: JSON.stringify(payload) }),
     streamUrl: (filePath) => getApiUrl(`/music/stream?path=${encodeURIComponent(filePath)}`),
     downloadUrl: (filePath) => getApiUrl(`/music/download?path=${encodeURIComponent(filePath)}`)
+  },
+
+  // Document Scanner
+  docScanner: {
+    scan: (payload) => apiRequest('/doc-scanner/scan', { method: 'POST', body: JSON.stringify(payload) }),
+    read: (filePath) => apiRequest(`/doc-scanner/read?path=${encodeURIComponent(filePath)}`),
+    getScheduler: () => apiRequest('/doc-scanner/scheduler'),
+    startScheduler: (payload) => apiRequest('/doc-scanner/scheduler/start', { method: 'POST', body: JSON.stringify(payload) }),
+    stopScheduler: () => apiRequest('/doc-scanner/scheduler/stop', { method: 'POST' }),
+    runScheduler: () => apiRequest('/doc-scanner/scheduler/run', { method: 'POST' })
+  },
+
+  // Weibo Public Crawler
+  weibo: {
+    fetch: (payload) => apiRequest('/weibo/fetch', { method: 'POST', body: JSON.stringify(payload) }),
+    save: (payload) => apiRequest('/weibo/save', { method: 'POST', body: JSON.stringify(payload) }),
+    saved: (uid) => apiRequest(`/weibo/saved?uid=${encodeURIComponent(uid)}`),
+    scheduler: () => apiRequest('/weibo/scheduler'),
+    startScheduler: (payload) => apiRequest('/weibo/scheduler/start', { method: 'POST', body: JSON.stringify(payload) }),
+    stopScheduler: () => apiRequest('/weibo/scheduler/stop', { method: 'POST' }),
+    runScheduler: () => apiRequest('/weibo/scheduler/run', { method: 'POST' })
   }
 };

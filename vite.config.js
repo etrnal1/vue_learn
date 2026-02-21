@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { readFileSync } from 'node:fs'
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+const buildTime = new Date().toISOString()
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(buildTime)
+  },
   server: {
     port: 5173,
     host: true,
