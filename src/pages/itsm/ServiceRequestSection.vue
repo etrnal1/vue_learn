@@ -16,17 +16,15 @@
       </div>
     </div>
 
-    <!-- Service Catalog -->
     <div v-if="viewMode === 'catalog'" class="catalog-grid">
       <ServiceCatalogCard
-        v-for="s in serviceCatalog"
-        :key="s.id"
+        v-for="s in catalogItems"
+        :key="s.id || s.serviceType"
         :service="s"
         @select="openCreateFromCatalog"
       />
     </div>
 
-    <!-- Request List -->
     <div v-else>
       <SearchFilter
         v-model:searchQuery="searchQuery"
@@ -47,17 +45,15 @@
       </div>
     </div>
 
-    <!-- Create Modal -->
-    <ItsmModal v-if="showForm" title="提交服务请求" size="medium" @close="showForm = false">
-      <ServiceRequestForm v-model="formData" />
+    <ItsmModal v-if="showForm" title="提交服务请求" size="medium" @close="closeCreateForm">
+      <ServiceRequestForm v-model="formData" :catalog-item="selectedCatalogItem" />
       <template #footer>
-        <button @click="showForm = false" class="btn-secondary">取消</button>
+        <button @click="closeCreateForm" class="btn-secondary">取消</button>
         <button @click="saveDraft" class="btn-gray">保存草稿</button>
         <button @click="submitRequest" class="btn-primary">提交请求</button>
       </template>
     </ItsmModal>
 
-    <!-- Detail Modal -->
     <ItsmModal v-if="viewingRequest" :title="viewingRequest.requestNo" size="large" @close="viewingRequest = null">
       <div class="detail-header">
         <h3>{{ viewingRequest.title }}</h3>
@@ -71,6 +67,13 @@
         <PriorityBadge :priority="viewingRequest.priority" />
       </div>
       <div class="detail-desc">{{ viewingRequest.description }}</div>
+      <div v-if="hasFormData(normalizedFormData(viewingRequest.formData))" class="extra-fields">
+        <h4>扩展字段</h4>
+        <div v-for="(value, key) in normalizedFormData(viewingRequest.formData)" :key="key" class="extra-field-row">
+          <span class="k">{{ key }}</span>
+          <span class="v">{{ value }}</span>
+        </div>
+      </div>
 
       <div v-if="viewingRequest.approvalNote" class="approval-note">
         <strong>审批意见:</strong> {{ viewingRequest.approvalNote }}
@@ -91,7 +94,6 @@
       </template>
     </ItsmModal>
 
-    <!-- Approval Note Dialog -->
     <ItsmModal v-if="showApprovalDialog" title="审批意见" size="small" @close="showApprovalDialog = false">
       <div class="form-group">
         <label>审批意见</label>
@@ -119,13 +121,24 @@ const SERVICE_TYPE_MAP = {
   permission: '权限申请', vpn: 'VPN 配置', email: '邮箱服务', other: '其他'
 }
 
+const DEFAULT_SERVICE_CATALOG = [
+  { id: 'account', serviceType: 'account', icon: '👤', name: '账号管理', description: '创建、修改或删除系统账号', titleTemplate: '账号管理 - ', defaultPriority: 'medium', requiresApproval: true },
+  { id: 'software_install', serviceType: 'software_install', icon: '💿', name: '软件安装', description: '申请安装或更新软件', titleTemplate: '软件安装 - ', defaultPriority: 'medium', requiresApproval: true },
+  { id: 'hardware', serviceType: 'hardware', icon: '🖥️', name: '硬件申请', description: '申请电脑、显示器等设备', titleTemplate: '硬件申请 - ', defaultPriority: 'high', requiresApproval: true },
+  { id: 'permission', serviceType: 'permission', icon: '🔑', name: '权限申请', description: '申请系统或文件夹访问权限', titleTemplate: '权限申请 - ', defaultPriority: 'high', requiresApproval: true },
+  { id: 'vpn', serviceType: 'vpn', icon: '🔒', name: 'VPN 配置', description: '申请 VPN 账号或排障', titleTemplate: 'VPN 配置 - ', defaultPriority: 'medium', requiresApproval: false },
+  { id: 'email', serviceType: 'email', icon: '📧', name: '邮箱服务', description: '邮箱创建、密码重置、邮件组', titleTemplate: '邮箱服务 - ', defaultPriority: 'low', requiresApproval: false },
+  { id: 'other', serviceType: 'other', icon: '📝', name: '其他', description: '其他 IT 服务请求', titleTemplate: '其他请求 - ', defaultPriority: 'medium', requiresApproval: true }
+]
+
 export default {
   name: 'ServiceRequestSection',
   components: { SearchFilter, ServiceCatalogCard, ServiceRequestCard, ServiceRequestForm, ItsmModal, StatusBadge, PriorityBadge },
   props: {
     requests: { type: Array, required: true },
     users: { type: Array, required: true },
-    currentUserId: { type: String, required: true }
+    currentUserId: { type: String, required: true },
+    serviceCatalog: { type: Array, default: () => [] }
   },
   emits: ['create-request', 'update-request', 'delete-request'],
   data() {
@@ -137,6 +150,7 @@ export default {
       viewingRequest: null,
       showApprovalDialog: false,
       approvalNote: '',
+      selectedCatalogItem: null,
       formData: this.emptyForm(),
       statusFilters: [
         { value: 'all', label: '全部' },
@@ -146,19 +160,19 @@ export default {
         { value: 'in_progress', label: '处理中' },
         { value: 'completed', label: '已完成' },
         { value: 'rejected', label: '已拒绝' }
-      ],
-      serviceCatalog: [
-        { id: 'account', icon: '👤', name: '账号管理', description: '创建、修改或删除系统账号' },
-        { id: 'software_install', icon: '💿', name: '软件安装', description: '申请安装或更新软件' },
-        { id: 'hardware', icon: '🖥️', name: '硬件申请', description: '申请电脑、显示器等设备' },
-        { id: 'permission', icon: '🔑', name: '权限申请', description: '申请系统或文件夹访问权限' },
-        { id: 'vpn', icon: '🔒', name: 'VPN 配置', description: '申请 VPN 账号或排障' },
-        { id: 'email', icon: '📧', name: '邮箱服务', description: '邮箱创建、密码重置、邮件组' },
-        { id: 'other', icon: '📝', name: '其他', description: '其他 IT 服务请求' }
       ]
     }
   },
   computed: {
+    catalogItems() {
+      const source = this.serviceCatalog.length > 0 ? this.serviceCatalog : DEFAULT_SERVICE_CATALOG
+      return source
+        .filter(item => item.isActive !== false)
+        .map((item) => ({
+        ...item,
+        serviceType: item.serviceType || item.id
+      }))
+    },
     filteredRequests() {
       return this.requests.filter(r => {
         const q = this.searchQuery ? this.searchQuery.toLowerCase() : ''
@@ -176,10 +190,22 @@ export default {
   },
   methods: {
     emptyForm() {
-      return { serviceType: 'other', title: '', description: '', priority: 'medium' }
+      return { serviceType: 'other', title: '', description: '', priority: 'medium', formData: {} }
+    },
+    closeCreateForm() {
+      this.showForm = false
+      this.selectedCatalogItem = null
+      this.formData = this.emptyForm()
     },
     openCreateFromCatalog(service) {
-      this.formData = { ...this.emptyForm(), serviceType: service.id, title: service.name + ' - ' }
+      this.selectedCatalogItem = service
+      this.formData = {
+        ...this.emptyForm(),
+        serviceType: service.serviceType || service.id || 'other',
+        title: service.titleTemplate || (service.name ? `${service.name} - ` : ''),
+        priority: service.defaultPriority || 'medium',
+        formData: {}
+      }
       this.showForm = true
     },
     openDetail(request) {
@@ -188,12 +214,40 @@ export default {
     saveDraft() {
       if (!this.formData.title.trim()) { alert('请填写标题'); return }
       this.$emit('create-request', { ...this.formData, status: 'draft' })
-      this.showForm = false
+      this.closeCreateForm()
     },
     submitRequest() {
       if (!this.formData.title.trim() || !this.formData.description.trim()) { alert('请填写标题和描述'); return }
+      if (this.hasMissingRequiredDynamicFields()) { return }
       this.$emit('create-request', { ...this.formData, status: 'submitted' })
-      this.showForm = false
+      this.closeCreateForm()
+    },
+    hasMissingRequiredDynamicFields() {
+      const schema = Array.isArray(this.selectedCatalogItem?.formSchema) ? this.selectedCatalogItem.formSchema : []
+      for (const field of schema) {
+        if (!field?.required) continue
+        const value = (this.formData.formData || {})[field.key]
+        if (value === undefined || value === null || String(value).trim() === '') {
+          alert(`请填写必填字段: ${field.label}`)
+          return true
+        }
+      }
+      return false
+    },
+    hasFormData(formData) {
+      return formData && typeof formData === 'object' && Object.keys(formData).length > 0
+    },
+    normalizedFormData(raw) {
+      if (!raw) return {}
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw)
+          return parsed && typeof parsed === 'object' ? parsed : {}
+        } catch (error) {
+          return {}
+        }
+      }
+      return raw && typeof raw === 'object' ? raw : {}
     },
     submitExisting() {
       this.changeStatus('submitted')
@@ -298,6 +352,37 @@ export default {
 .detail-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; font-size: 0.85em; color: #666; align-items: center; }
 .detail-desc { background: #f9fafb; padding: 16px; border-radius: 8px; color: #555; line-height: 1.6; margin-bottom: 16px; white-space: pre-wrap; }
 
+.extra-fields {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.extra-fields h4 {
+  margin: 0 0 10px;
+  font-size: 0.92em;
+  color: #334155;
+}
+
+.extra-field-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 0.86em;
+}
+
+.extra-field-row .k {
+  color: #64748b;
+}
+
+.extra-field-row .v {
+  color: #111827;
+  font-weight: 600;
+}
+
 .approval-note {
   background: #eff6ff;
   border-left: 4px solid #3b82f6;
@@ -318,56 +403,42 @@ export default {
 .btn-blue { background: #3b82f6; } .btn-blue:hover { background: #2563eb; }
 .btn-green { background: #10b981; } .btn-green:hover { background: #059669; }
 .btn-red { background: #ef4444; } .btn-red:hover { background: #dc2626; }
-.btn-gray { padding: 8px 20px; background: #9ca3af; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
 
-.btn-primary { padding: 8px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-primary, .btn-secondary, .btn-gray, .btn-danger {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary { background: #3b82f6; color: white; }
 .btn-primary:hover { background: #2563eb; }
-.btn-secondary { padding: 8px 20px; background: #e5e7eb; color: #333; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
-.btn-danger { padding: 8px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-secondary { background: #e5e7eb; color: #333; }
+.btn-gray { background: #6b7280; color: white; }
+.btn-gray:hover { background: #4b5563; }
+.btn-danger { background: #ef4444; color: white; }
+.btn-danger:hover { background: #dc2626; }
 
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.9em; }
-.textarea-field { width: 100%; padding: 10px 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95em; font-family: inherit; resize: vertical; }
-.textarea-field:focus { outline: none; border-color: #3b82f6; }
-
-@media (max-width: 1024px) {
-  .catalog-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .requests-grid {
-    grid-template-columns: 1fr;
-  }
+.textarea-field {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.95em;
+  font-family: inherit;
 }
 
 @media (max-width: 768px) {
-  .sr-section {
-    padding: 0;
-  }
-
   .section-header {
     flex-direction: column;
-    gap: 10px;
     align-items: stretch;
-  }
-
-  .section-header h2 {
-    font-size: 1.1em;
-  }
-
-  .header-actions {
-    width: 100%;
-    gap: 6px;
-  }
-
-  .view-toggle {
-    flex: 1;
-    padding: 8px 12px;
-    font-size: 0.85em;
+    gap: 10px;
   }
 
   .catalog-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 12px;
   }
 
@@ -376,91 +447,9 @@ export default {
     gap: 12px;
   }
 
-  .detail-header {
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-  }
-
-  .detail-header h3 {
-    font-size: 1em;
-  }
-
   .detail-meta {
-    gap: 8px;
+    gap: 10px;
     font-size: 0.8em;
-    flex-direction: column;
-  }
-
-  .detail-desc {
-    padding: 12px;
-    font-size: 0.85em;
-  }
-
-  .approval-note {
-    padding: 10px 12px;
-    font-size: 0.85em;
-  }
-
-  .status-actions {
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px;
-  }
-
-  .btn-sm {
-    padding: 5px 10px;
-    font-size: 0.75em;
-  }
-
-  .btn-primary, .btn-secondary, .btn-danger, .btn-gray {
-    padding: 6px 14px;
-    font-size: 0.85em;
-  }
-
-  .form-group {
-    margin-bottom: 12px;
-  }
-
-  .form-group label {
-    font-size: 0.85em;
-  }
-
-  .textarea-field {
-    font-size: 0.85em;
-  }
-}
-
-@media (max-width: 480px) {
-  .section-header h2 {
-    font-size: 1em;
-  }
-
-  .view-toggle {
-    padding: 6px 10px;
-    font-size: 0.75em;
-  }
-
-  .catalog-grid, .requests-grid {
-    gap: 8px;
-  }
-
-  .detail-header h3 {
-    font-size: 0.95em;
-  }
-
-  .detail-meta {
-    font-size: 0.75em;
-  }
-
-  .btn-sm {
-    padding: 4px 8px;
-    font-size: 0.7em;
-  }
-
-  .btn-primary, .btn-secondary, .btn-danger, .btn-gray {
-    padding: 5px 12px;
-    font-size: 0.75em;
   }
 }
 </style>

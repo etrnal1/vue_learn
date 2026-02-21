@@ -3,6 +3,59 @@ import pool from '../db.js';
 
 const router = express.Router();
 
+async function getCatalogRule(serviceType) {
+  if (!serviceType) return null;
+
+  try {
+    const [rules] = await pool.query(`
+      SELECT
+        service_type,
+        default_priority,
+        requires_approval,
+        default_approver_role,
+        default_assignee_role
+      FROM service_catalog
+      WHERE service_type = ? AND is_active = TRUE
+      LIMIT 1
+    `, [serviceType]);
+
+    return rules.length > 0 ? rules[0] : null;
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function findUserByRole(role) {
+  if (!role) return null;
+
+  const [users] = await pool.query(`
+    SELECT id
+    FROM users
+    WHERE role = ?
+    ORDER BY created_at ASC
+    LIMIT 1
+  `, [role]);
+
+  if (users.length > 0) return users[0].id;
+
+  // 审批角色兜底到管理员，避免路由失败
+  if (role === 'approver') {
+    const [admins] = await pool.query(`
+      SELECT id
+      FROM users
+      WHERE role = 'admin'
+      ORDER BY created_at ASC
+      LIMIT 1
+    `);
+    if (admins.length > 0) return admins[0].id;
+  }
+
+  return null;
+}
+
 // 生成服务请求编号
 async function generateRequestNo() {
   const connection = await pool.getConnection();
@@ -91,6 +144,7 @@ router.post('/', async (req, res) => {
     serviceType,
     title,
     description,
+    formData,
     priority,
     status,
     requesterId,
@@ -106,29 +160,92 @@ router.post('/', async (req, res) => {
   try {
     const requestNo = await generateRequestNo();
     const now = Date.now();
+    const isDraft = status === 'draft';
 
-    await pool.query(
-      `INSERT INTO service_requests (
-        id, request_no, service_type, title, description, priority, status,
-        requester_id, approver_id, assignee_id, approval_note,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        requestNo,
-        serviceType || null,
-        title,
-        description || null,
-        priority || 'medium',
-        status || 'submitted',
-        requesterId || null,
-        approverId || null,
-        assigneeId || null,
-        approvalNote || null,
-        now,
-        now
-      ]
-    );
+    let finalPriority = priority || 'medium';
+    let finalStatus = status || 'submitted';
+    let finalApproverId = approverId || null;
+    let finalAssigneeId = assigneeId || null;
+    let finalApprovalNote = approvalNote || null;
+    let finalApprovedAt = null;
+
+    if (!isDraft) {
+      const catalogRule = await getCatalogRule(serviceType);
+      if (catalogRule) {
+        if (!priority && catalogRule.default_priority) {
+          finalPriority = catalogRule.default_priority;
+        }
+
+        if (!finalAssigneeId) {
+          finalAssigneeId = await findUserByRole(catalogRule.default_assignee_role);
+        }
+
+        if (!finalApproverId) {
+          finalApproverId = await findUserByRole(catalogRule.default_approver_role);
+        }
+
+        if (!catalogRule.requires_approval && finalStatus === 'submitted') {
+          finalStatus = 'approved';
+          finalApprovedAt = now;
+          finalApprovalNote = finalApprovalNote || '系统自动审批（服务目录规则）';
+        }
+      }
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO service_requests (
+          id, request_no, service_type, title, description, form_data, priority, status,
+          requester_id, approver_id, assignee_id, approval_note,
+          created_at, updated_at, approved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          requestNo,
+          serviceType || null,
+          title,
+          description || null,
+          JSON.stringify(formData || {}),
+          finalPriority,
+          finalStatus,
+          requesterId || null,
+          finalApproverId,
+          finalAssigneeId,
+          finalApprovalNote,
+          now,
+          now,
+          finalApprovedAt
+        ]
+      );
+    } catch (insertError) {
+      if (insertError.code !== 'ER_BAD_FIELD_ERROR') {
+        throw insertError;
+      }
+
+      await pool.query(
+        `INSERT INTO service_requests (
+          id, request_no, service_type, title, description, priority, status,
+          requester_id, approver_id, assignee_id, approval_note,
+          created_at, updated_at, approved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          requestNo,
+          serviceType || null,
+          title,
+          description || null,
+          finalPriority,
+          finalStatus,
+          requesterId || null,
+          finalApproverId,
+          finalAssigneeId,
+          finalApprovalNote,
+          now,
+          now,
+          finalApprovedAt
+        ]
+      );
+    }
 
     const [requests] = await pool.query('SELECT * FROM service_requests WHERE id = ?', [id]);
     res.status(201).json(requests[0]);
@@ -151,6 +268,7 @@ router.put('/:id', async (req, res) => {
       serviceType: 'service_type',
       title: 'title',
       description: 'description',
+      formData: 'form_data',
       priority: 'priority',
       status: 'status',
       requesterId: 'requester_id',
@@ -164,7 +282,7 @@ router.put('/:id', async (req, res) => {
     Object.keys(updates).forEach(key => {
       if (fieldMapping[key]) {
         fields.push(`${fieldMapping[key]} = ?`);
-        values.push(updates[key]);
+        values.push(key === 'formData' ? JSON.stringify(updates[key] || {}) : updates[key]);
       }
     });
 
@@ -176,10 +294,41 @@ router.put('/:id', async (req, res) => {
     values.push(Date.now());
     values.push(id);
 
-    await pool.query(
-      `UPDATE service_requests SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
+    try {
+      await pool.query(
+        `UPDATE service_requests SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+    } catch (updateError) {
+      const shouldRetryWithoutFormData = updateError.code === 'ER_BAD_FIELD_ERROR' && Object.prototype.hasOwnProperty.call(updates, 'formData');
+      if (!shouldRetryWithoutFormData) {
+        throw updateError;
+      }
+
+      const retryFields = [];
+      const retryValues = [];
+
+      Object.keys(updates).forEach(key => {
+        if (key === 'formData') return;
+        if (fieldMapping[key]) {
+          retryFields.push(`${fieldMapping[key]} = ?`);
+          retryValues.push(updates[key]);
+        }
+      });
+
+      if (retryFields.length === 0) {
+        return res.status(400).json({ error: '没有提供更新字段' });
+      }
+
+      retryFields.push('updated_at = ?');
+      retryValues.push(Date.now());
+      retryValues.push(id);
+
+      await pool.query(
+        `UPDATE service_requests SET ${retryFields.join(', ')} WHERE id = ?`,
+        retryValues
+      );
+    }
 
     const [requests] = await pool.query('SELECT * FROM service_requests WHERE id = ?', [id]);
 
