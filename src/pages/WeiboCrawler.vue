@@ -16,6 +16,10 @@
         <button class="btn" @click="loadSaved">读取已保存</button>
       </div>
 
+      <div class="cookie-row">
+        <input v-model.trim="cookie" class="input" placeholder="可选：微博 Cookie（遇到 432 时填写）">
+      </div>
+
       <div class="scheduler">
         <label>定时(分钟)
           <input v-model.number="intervalMinutes" type="number" min="1" max="1440" class="input tiny">
@@ -64,6 +68,7 @@ export default {
     return {
       uid: '',
       count: 20,
+      cookie: localStorage.getItem('weibo_cookie') || '',
       intervalMinutes: 30,
       autoSave: true,
       items: [],
@@ -96,7 +101,7 @@ export default {
       this.loading = true
       this.error = ''
       try {
-        const result = await api.weibo.fetch({ uid: this.uid, count: this.count })
+        const result = await api.weibo.fetch({ uid: this.uid, count: this.count, cookie: this.cookie })
         this.items = result.items || []
       } catch (error) {
         this.error = error.message || '抓取失败'
@@ -109,7 +114,7 @@ export default {
       this.saving = true
       this.error = ''
       try {
-        await api.weibo.save({ uid: this.uid, items: this.items })
+        await api.weibo.save({ uid: this.uid, items: this.items, cookie: this.cookie })
       } catch (error) {
         this.error = error.message || '保存失败'
       } finally {
@@ -157,7 +162,8 @@ export default {
           uid: this.uid,
           count: this.count,
           intervalMinutes: this.intervalMinutes,
-          autoSave: this.autoSave
+          autoSave: this.autoSave,
+          cookie: this.cookie
         })
       } catch (error) {
         this.error = error.message || '启动失败'
@@ -182,6 +188,11 @@ export default {
   },
   mounted() {
     this.refreshScheduler()
+  },
+  watch: {
+    cookie(value) {
+      localStorage.setItem('weibo_cookie', value || '')
+    }
   }
 }
 </script>
@@ -192,6 +203,7 @@ export default {
 .head p { margin: 6px 0 12px; color: var(--app-text-muted); font-size: 0.9em; }
 .panel { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 12px; padding: 12px; }
 .controls { display: grid; grid-template-columns: 1fr 120px auto auto auto; gap: 8px; margin-bottom: 10px; }
+.cookie-row { margin-bottom: 8px; }
 .input { border: 2px solid var(--app-border); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--app-card); color: var(--app-text); }
 .input.small { width: 120px; }
 .input.tiny { width: 96px; margin-left: 6px; }
