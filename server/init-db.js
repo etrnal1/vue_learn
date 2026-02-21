@@ -88,8 +88,9 @@ async function initDatabase() {
         service_type VARCHAR(100),
         title VARCHAR(500) NOT NULL,
         description TEXT,
+        form_data JSON,
         priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
-        status ENUM('submitted', 'approved', 'rejected', 'in_progress', 'completed') DEFAULT 'submitted',
+        status ENUM('draft', 'submitted', 'approved', 'rejected', 'in_progress', 'completed') DEFAULT 'submitted',
         requester_id VARCHAR(50),
         approver_id VARCHAR(50),
         assignee_id VARCHAR(50),
@@ -107,7 +108,70 @@ async function initDatabase() {
     `);
     console.log('✅ 表 service_requests 已创建');
 
-    // 5. 服务请求评论表
+    // 兼容旧版本：确保状态枚举包含 draft
+    await connection.query(`
+      ALTER TABLE service_requests
+      MODIFY COLUMN status ENUM('draft', 'submitted', 'approved', 'rejected', 'in_progress', 'completed')
+      DEFAULT 'submitted'
+    `);
+    console.log('✅ 表 service_requests 状态枚举已校准');
+
+    await connection.query(`
+      ALTER TABLE service_requests
+      ADD COLUMN IF NOT EXISTS form_data JSON
+      AFTER description
+    `);
+    console.log('✅ 表 service_requests 动态表单字段已校准');
+
+    // 5. 服务目录表（自助门户 + 自动路由）
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS service_catalog (
+        id VARCHAR(50) PRIMARY KEY,
+        service_type VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(120) NOT NULL,
+        icon VARCHAR(10),
+        description VARCHAR(500),
+        form_schema JSON,
+        title_template VARCHAR(200),
+        default_priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
+        requires_approval BOOLEAN NOT NULL DEFAULT TRUE,
+        default_approver_role ENUM('admin', 'approver', 'member') DEFAULT 'approver',
+        default_assignee_role ENUM('admin', 'approver', 'member') DEFAULT 'member',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_service_type (service_type),
+        INDEX idx_active_sort (is_active, sort_order)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 service_catalog 已创建');
+
+    await connection.query(`
+      ALTER TABLE service_catalog
+      ADD COLUMN IF NOT EXISTS form_schema JSON
+      AFTER description
+    `);
+    console.log('✅ 表 service_catalog 表单模板字段已校准');
+
+    const now = Date.now();
+    await connection.query(`
+      INSERT IGNORE INTO service_catalog (
+        id, service_type, name, icon, description, form_schema, title_template,
+        default_priority, requires_approval, default_approver_role, default_assignee_role,
+        is_active, sort_order, created_at, updated_at
+      ) VALUES
+      ('sc_account', 'account', '账号管理', '👤', '创建、修改或删除系统账号', '[{\"key\":\"targetUser\",\"label\":\"目标账号\",\"type\":\"text\",\"required\":true,\"placeholder\":\"输入账号或邮箱\"}]', '账号管理 - ', 'medium', TRUE, 'approver', 'member', TRUE, 10, ?, ?),
+      ('sc_software_install', 'software_install', '软件安装', '💿', '申请安装或更新软件', '[{\"key\":\"softwareName\",\"label\":\"软件名称\",\"type\":\"text\",\"required\":true},{\"key\":\"version\",\"label\":\"版本\",\"type\":\"text\"}]', '软件安装 - ', 'medium', TRUE, 'approver', 'member', TRUE, 20, ?, ?),
+      ('sc_hardware', 'hardware', '硬件申请', '🖥️', '申请电脑、显示器等设备', '[{\"key\":\"deviceType\",\"label\":\"设备类型\",\"type\":\"select\",\"required\":true,\"options\":[\"笔记本\",\"显示器\",\"键盘\",\"鼠标\",\"其他\"]},{\"key\":\"quantity\",\"label\":\"数量\",\"type\":\"number\",\"required\":true}]', '硬件申请 - ', 'high', TRUE, 'approver', 'member', TRUE, 30, ?, ?),
+      ('sc_permission', 'permission', '权限申请', '🔑', '申请系统或文件夹访问权限', '[{\"key\":\"systemName\",\"label\":\"系统/资源名称\",\"type\":\"text\",\"required\":true},{\"key\":\"permissionLevel\",\"label\":\"权限级别\",\"type\":\"select\",\"required\":true,\"options\":[\"只读\",\"读写\",\"管理员\"]}]', '权限申请 - ', 'high', TRUE, 'approver', 'admin', TRUE, 40, ?, ?),
+      ('sc_vpn', 'vpn', 'VPN 配置', '🔒', '申请 VPN 账号或排障', '[{\"key\":\"issueType\",\"label\":\"类型\",\"type\":\"select\",\"required\":true,\"options\":[\"新开通\",\"无法连接\",\"重置密码\",\"其他\"]}]', 'VPN 配置 - ', 'medium', FALSE, 'approver', 'member', TRUE, 50, ?, ?),
+      ('sc_email', 'email', '邮箱服务', '📧', '邮箱创建、密码重置、邮件组', '[{\"key\":\"emailAction\",\"label\":\"操作类型\",\"type\":\"select\",\"required\":true,\"options\":[\"新建邮箱\",\"重置密码\",\"创建邮件组\",\"其他\"]}]', '邮箱服务 - ', 'low', FALSE, 'approver', 'member', TRUE, 60, ?, ?),
+      ('sc_other', 'other', '其他', '📝', '其他 IT 服务请求', '[]', '其他请求 - ', 'medium', TRUE, 'approver', 'member', TRUE, 999, ?, ?)
+    `, [now, now, now, now, now, now, now, now, now, now, now, now, now, now]);
+    console.log('✅ 服务目录默认数据初始化完成');
+
+    // 6. 服务请求评论表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS request_comments (
         id VARCHAR(50) PRIMARY KEY,
@@ -122,7 +186,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 request_comments 已创建');
 
-    // 6. 知识库文章表
+    // 7. 知识库文章表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS articles (
         id VARCHAR(50) PRIMARY KEY,
@@ -142,7 +206,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 articles 已创建');
 
-    // 7. 流程表
+    // 8. 流程表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS flows (
         id VARCHAR(50) PRIMARY KEY,
@@ -158,7 +222,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 flows 已创建');
 
-    // 8. 流程步骤表
+    // 9. 流程步骤表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS flow_steps (
         id VARCHAR(50) PRIMARY KEY,
@@ -175,7 +239,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 flow_steps 已创建');
 
-    // 9. 聊天记录表
+    // 10. 聊天记录表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS chats (
         id BIGINT PRIMARY KEY,
@@ -188,7 +252,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 chats 已创建');
 
-    // 10. 聊天评论表
+    // 11. 聊天评论表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS chat_comments (
         id BIGINT PRIMARY KEY,
@@ -201,7 +265,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 chat_comments 已创建');
 
-    // 11. 代码片段表
+    // 12. 代码片段表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS code_snippets (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -216,7 +280,7 @@ async function initDatabase() {
     `);
     console.log('✅ 表 code_snippets 已创建');
 
-    // 12. 计数器表
+    // 13. 计数器表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS counters (
         id VARCHAR(50) PRIMARY KEY,
@@ -235,7 +299,7 @@ async function initDatabase() {
     `);
     console.log('✅ 计数器初始化完成');
 
-    // 13. 用户设置表
+    // 14. 用户设置表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
         setting_key VARCHAR(50) PRIMARY KEY,
