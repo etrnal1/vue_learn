@@ -23,13 +23,16 @@
     "git-log": "node scripts/gen-git-log.js"
   },
   "dependencies": {
-    "vue": "^3.3.4",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "dotenv": "^17.3.1",
     "mysql2": "^3.6.5",
-    "dotenv": "^17.3.1"
+    "vue": "^3.3.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",
-    "vite": "^4.3.9",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "vite": "^4.3.9"
   }
 }
