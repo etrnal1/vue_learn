@@ -222,6 +222,7 @@ export default {
       liveLogs: [],
       autoOptimizeOnPlay: true,
       optimizing: false,
+      storageMode: 'unknown',
       form: this.emptyForm()
     }
   },
@@ -282,23 +283,109 @@ export default {
         .map((t) => t.trim())
         .filter(Boolean)
     },
+    normalizeVideos(list) {
+      if (!Array.isArray(list)) return []
+      const seen = new Set()
+      const now = Date.now()
+      return list
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null
+          const title = String(item.title || '').trim()
+          const url = String(item.url || '').trim()
+          if (!title || !url) return null
+          const createdAt = Number(item.createdAt) || now
+          const updatedAt = Number(item.updatedAt) || createdAt
+          const id = String(item.id || `video_${updatedAt}`)
+          if (seen.has(id)) return null
+          seen.add(id)
+          return {
+            id,
+            title,
+            url,
+            category: String(item.category || '').trim(),
+            status: ['watchlist', 'watching', 'completed'].includes(String(item.status))
+              ? String(item.status)
+              : 'watchlist',
+            tags: Array.isArray(item.tags)
+              ? item.tags.map((tag) => String(tag || '').trim()).filter(Boolean).slice(0, 20)
+              : [],
+            note: String(item.note || ''),
+            localPath: item.localPath ? String(item.localPath) : null,
+            optimizedPath: item.optimizedPath ? String(item.optimizedPath) : '',
+            createdAt,
+            updatedAt
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    },
     looksLikeLocalPath(input) {
       if (!input) return false
       return /^\/(Users|Volumes|private)\//.test(input) || /^[a-zA-Z]:\\/.test(input)
     },
-    persist() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.videos))
+    async persist() {
+      const normalized = this.normalizeVideos(this.videos)
+      this.videos = normalized
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+      if (this.storageMode !== 'server') return
+      try {
+        await api.videos.saveLibrary(normalized)
+      } catch (error) {
+        this.storageMode = 'local'
+        this.recordLog({
+          module: 'video',
+          action: 'library_save_fallback_local',
+          status: 'error',
+          durationMs: 0,
+          detail: error?.message || 'save library failed'
+        })
+      }
     },
-    load() {
+    async load() {
+      let localItems = []
       try {
         const raw = localStorage.getItem(STORAGE_KEY)
-        if (!raw) return
-        const list = JSON.parse(raw)
-        if (Array.isArray(list)) {
-          this.videos = list
+        if (raw) {
+          localItems = this.normalizeVideos(JSON.parse(raw))
+          this.videos = localItems
         }
       } catch (error) {
         console.warn('加载视频数据失败', error)
+      }
+
+      try {
+        const remote = await api.videos.getLibrary()
+        const remoteItems = this.normalizeVideos(remote?.items || [])
+        this.storageMode = 'server'
+
+        if (remoteItems.length > 0) {
+          this.videos = remoteItems
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteItems))
+          return
+        }
+
+        if (localItems.length > 0) {
+          const saved = await api.videos.saveLibrary(localItems)
+          const merged = this.normalizeVideos(saved?.items || localItems)
+          this.videos = merged
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+          this.recordLog({
+            module: 'video',
+            action: 'library_migrated_to_server',
+            status: 'ok',
+            durationMs: 0,
+            detail: `count=${merged.length}`
+          })
+        }
+      } catch (error) {
+        this.storageMode = 'local'
+        this.recordLog({
+          module: 'video',
+          action: 'library_load_fallback_local',
+          status: 'error',
+          durationMs: 0,
+          detail: error?.message || 'load library failed'
+        })
       }
     },
     recordLog(payload) {
