@@ -53,6 +53,7 @@
       :requests="serviceRequests"
       :users="users"
       :current-user-id="currentUser.id"
+      :service-catalog="serviceCatalog"
       @create-request="createRequest"
       @update-request="updateRequest"
       @delete-request="deleteRequest"
@@ -75,9 +76,13 @@
     <ItsmSettings
       v-if="activeTab === 'settings'"
       :users="users"
+      :service-catalog="serviceCatalog"
       @add-user="addUser"
       @update-user="updateUser"
       @remove-user="removeUser"
+      @create-service-catalog-item="createServiceCatalogItem"
+      @update-service-catalog-item="updateServiceCatalogItem"
+      @delete-service-catalog-item="deleteServiceCatalogItem"
       @import-data="importData"
       @clear-data="clearData"
     />
@@ -102,6 +107,16 @@ const DEFAULT_USERS = [
   { id: 'u1', name: '张三', role: 'admin', avatar: '👨‍💻', email: 'zhangsan@example.com', createdAt: Date.now() },
   { id: 'u2', name: '李四', role: 'approver', avatar: '👩‍💻', email: 'lisi@example.com', createdAt: Date.now() },
   { id: 'u3', name: '王五', role: 'member', avatar: '🧑‍💼', email: 'wangwu@example.com', createdAt: Date.now() }
+]
+
+const DEFAULT_SERVICE_CATALOG = [
+  { id: 'sc_account', serviceType: 'account', icon: '👤', name: '账号管理', description: '创建、修改或删除系统账号', formSchema: [], titleTemplate: '账号管理 - ', defaultPriority: 'medium', requiresApproval: true },
+  { id: 'sc_software_install', serviceType: 'software_install', icon: '💿', name: '软件安装', description: '申请安装或更新软件', formSchema: [], titleTemplate: '软件安装 - ', defaultPriority: 'medium', requiresApproval: true },
+  { id: 'sc_hardware', serviceType: 'hardware', icon: '🖥️', name: '硬件申请', description: '申请电脑、显示器等设备', formSchema: [], titleTemplate: '硬件申请 - ', defaultPriority: 'high', requiresApproval: true },
+  { id: 'sc_permission', serviceType: 'permission', icon: '🔑', name: '权限申请', description: '申请系统或文件夹访问权限', formSchema: [], titleTemplate: '权限申请 - ', defaultPriority: 'high', requiresApproval: true },
+  { id: 'sc_vpn', serviceType: 'vpn', icon: '🔒', name: 'VPN 配置', description: '申请 VPN 账号或排障', formSchema: [], titleTemplate: 'VPN 配置 - ', defaultPriority: 'medium', requiresApproval: false },
+  { id: 'sc_email', serviceType: 'email', icon: '📧', name: '邮箱服务', description: '邮箱创建、密码重置、邮件组', formSchema: [], titleTemplate: '邮箱服务 - ', defaultPriority: 'low', requiresApproval: false },
+  { id: 'sc_other', serviceType: 'other', icon: '📝', name: '其他', description: '其他 IT 服务请求', formSchema: [], titleTemplate: '其他请求 - ', defaultPriority: 'medium', requiresApproval: true }
 ]
 
 export default {
@@ -130,10 +145,25 @@ export default {
       tickets: [],
       serviceRequests: [],
       articles: [],
-      flows: []
+      flows: [],
+      serviceCatalog: [...DEFAULT_SERVICE_CATALOG]
     }
   },
   methods: {
+    normalizeCatalogItem(item) {
+      const normalized = { ...item }
+      if (typeof normalized.formSchema === 'string') {
+        try {
+          normalized.formSchema = JSON.parse(normalized.formSchema)
+        } catch (error) {
+          normalized.formSchema = []
+        }
+      }
+      if (!Array.isArray(normalized.formSchema)) {
+        normalized.formSchema = []
+      }
+      return normalized
+    },
     // === User Management ===
     async switchUser(user) {
       try {
@@ -184,6 +214,38 @@ export default {
       } catch (error) {
         console.error('删除用户失败:', error)
         alert('删除用户失败: ' + error.message)
+      }
+    },
+    async createServiceCatalogItem(item) {
+      try {
+        const created = this.normalizeCatalogItem(await api.serviceCatalog.create(item))
+        this.serviceCatalog.push(created)
+        this.serviceCatalog.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+      } catch (error) {
+        console.error('创建服务目录失败:', error)
+        alert('创建服务目录失败: ' + error.message)
+      }
+    },
+    async updateServiceCatalogItem(item) {
+      try {
+        const updated = this.normalizeCatalogItem(await api.serviceCatalog.update(item.id, item))
+        const idx = this.serviceCatalog.findIndex(s => s.id === item.id)
+        if (idx !== -1) {
+          this.serviceCatalog[idx] = updated
+          this.serviceCatalog.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+        }
+      } catch (error) {
+        console.error('更新服务目录失败:', error)
+        alert('更新服务目录失败: ' + error.message)
+      }
+    },
+    async deleteServiceCatalogItem(id) {
+      try {
+        await api.serviceCatalog.delete(id)
+        this.serviceCatalog = this.serviceCatalog.filter(s => s.id !== id)
+      } catch (error) {
+        console.error('删除服务目录失败:', error)
+        alert('删除服务目录失败: ' + error.message)
       }
     },
 
@@ -249,6 +311,7 @@ export default {
           serviceType: data.serviceType,
           title: data.title,
           description: data.description,
+          formData: data.formData || {},
           priority: data.priority,
           status: data.status || 'submitted',
           requesterId: this.currentUser.id,
@@ -289,8 +352,9 @@ export default {
     // === Articles ===
     async createArticle(data) {
       try {
+        const uniqueId = `kb${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
         const article = {
-          id: 'kb' + Date.now(),
+          id: uniqueId,
           title: data.title,
           content: data.content,
           category: data.category,
@@ -430,6 +494,17 @@ export default {
           this.serviceRequests = []
         }
 
+        // 加载服务目录
+        try {
+          const catalog = await api.serviceCatalog.getAll({ includeInactive: true })
+          this.serviceCatalog = Array.isArray(catalog) && catalog.length > 0
+            ? catalog.map(this.normalizeCatalogItem)
+            : [...DEFAULT_SERVICE_CATALOG]
+        } catch (e) {
+          console.warn('加载服务目录失败:', e)
+          this.serviceCatalog = [...DEFAULT_SERVICE_CATALOG]
+        }
+
         // 加载文章
         try {
           const articles = await api.articles.getAll()
@@ -457,6 +532,7 @@ export default {
         this.serviceRequests = []
         this.articles = []
         this.flows = []
+        this.serviceCatalog = [...DEFAULT_SERVICE_CATALOG]
       }
     },
     async importData(data) {
@@ -506,6 +582,7 @@ export default {
         this.serviceRequests = []
         this.articles = []
         this.flows = []
+        this.serviceCatalog = [...DEFAULT_SERVICE_CATALOG]
 
         alert('数据清空成功！')
       } catch (error) {
