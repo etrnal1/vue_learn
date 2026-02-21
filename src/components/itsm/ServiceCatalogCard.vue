@@ -3,6 +3,12 @@
     <div class="catalog-icon">{{ service.icon }}</div>
     <h4>{{ service.name }}</h4>
     <p>{{ service.description }}</p>
+    <div class="catalog-tags">
+      <span class="tag priority">{{ priorityLabel }}</span>
+      <span class="tag approval" :class="{ noApproval: service.requiresApproval === false }">
+        {{ service.requiresApproval === false ? '免审批' : '需审批' }}
+      </span>
+    </div>
   </div>
 </template>
 
@@ -12,7 +18,13 @@ export default {
   props: {
     service: { type: Object, required: true }
   },
-  emits: ['select']
+  emits: ['select'],
+  computed: {
+    priorityLabel() {
+      const map = { low: '低优先级', medium: '中优先级', high: '高优先级' }
+      return map[this.service.defaultPriority] || '中优先级'
+    }
+  }
 }
 </script>
 
@@ -50,5 +62,35 @@ p {
   font-size: 0.85em;
   margin: 0;
   line-height: 1.4;
+}
+
+.catalog-tags {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 700;
+}
+
+.priority {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.approval {
+  background: #ecfeff;
+  color: #0e7490;
+}
+
+.approval.noApproval {
+  background: #ecfdf5;
+  color: #047857;
 }
 </style>
