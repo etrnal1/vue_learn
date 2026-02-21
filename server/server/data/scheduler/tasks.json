@@ -1,5 +1,5 @@
 {
-  "updatedAt": 1771679880947,
+  "updatedAt": 1771680018110,
   "tasks": [
     {
       "id": "1771677791685_tw1phx",
@@ -27,9 +27,9 @@
         "cwd": ""
       },
       "enabled": true,
-      "runCount": 140,
-      "lastRunAt": 1771679880918,
-      "lastMatchedSecond": "2026-2-21 21:18:0",
+      "runCount": 149,
+      "lastRunAt": 1771680015108,
+      "lastMatchedSecond": "2026-2-21 21:20:15",
       "createdAt": 1771677791685,
       "runAt": null,
       "intervalMinutes": null,
@@ -38,6 +38,114 @@
     }
   ],
   "logs": [
+    {
+      "id": "1771680015130_hk2clb",
+      "time": 1771680015130,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771680015130_99b8oq",
+      "time": 1771680015130,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771680000114_bgpf3t",
+      "time": 1771680000114,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771680000114_ftaig3",
+      "time": 1771680000114,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679985096_2xk83s",
+      "time": 1771679985096,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679985096_3i2o3p",
+      "time": 1771679985096,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679970068_24nl3s",
+      "time": 1771679970068,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679970068_0a74gb",
+      "time": 1771679970068,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679955048_9rexqu",
+      "time": 1771679955048,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679955048_zg5zez",
+      "time": 1771679955048,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679940031_wbvcra",
+      "time": 1771679940031,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679940031_2asyx4",
+      "time": 1771679940031,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679926011_jsgo2p",
+      "time": 1771679926011,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679926011_yijzf3",
+      "time": 1771679926011,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679910997_9oly5l",
+      "time": 1771679910997,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679910997_0pojkt",
+      "time": 1771679910997,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
+    {
+      "id": "1771679895969_o6mtl4",
+      "time": 1771679895969,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679895969_mfoi7w",
+      "time": 1771679895969,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
     {
       "id": "1771679880947_zhv2qs",
       "time": 1771679880947,
