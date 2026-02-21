@@ -102,6 +102,12 @@
               >
                 <span class="file-status-icon">{{ fileIcon(file.status) }}</span>
                 <span class="file-path">{{ file.path }}</span>
+                <button
+                  class="file-diff-btn"
+                  @click.stop="openCommitFileDiff(commit, file)"
+                >
+                  查看变更内容
+                </button>
               </div>
             </div>
 
@@ -125,6 +131,24 @@
       <div>数据来源：后端实时 Git 历史接口</div>
       <div class="auto-refresh-hint">🔄 自动检测更新中 (每 30 秒刷新一次)</div>
     </div>
+
+    <div v-if="showFileDiffModal" class="diff-modal-overlay" @click="closeFileDiffModal">
+      <div class="diff-modal" @click.stop>
+        <div class="diff-modal-header">
+          <h3>{{ selectedDiffTitle }}</h3>
+          <button class="diff-close-btn" @click="closeFileDiffModal">✕</button>
+        </div>
+        <div class="diff-modal-body">
+          <div class="diff-stats" v-if="selectedDiffStats">
+            <span class="stat-add">+{{ selectedDiffStats.insertions }} 行</span>
+            <span class="stat-del">-{{ selectedDiffStats.deletions }} 行</span>
+          </div>
+          <div v-if="diffLoading" class="loading">正在加载文件变更...</div>
+          <div v-else-if="selectedDiffError" class="error-msg">{{ selectedDiffError }}</div>
+          <pre v-else class="diff-code"><code>{{ selectedDiffContent }}</code></pre>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -143,6 +167,12 @@ export default {
       activeFilter: 'all',
       lastGeneratedAt: null,
       autoRefreshInterval: null,
+      showFileDiffModal: false,
+      diffLoading: false,
+      selectedDiffTitle: '',
+      selectedDiffContent: '',
+      selectedDiffError: '',
+      selectedDiffStats: null,
       typeFilters: [
         { value: 'all', label: '全部', icon: '📋' },
         { value: '新功能', label: '新功能', icon: '✨' },
@@ -203,6 +233,34 @@ export default {
     },
     toggleExpand(hash) {
       this.expandedHash = this.expandedHash === hash ? null : hash
+    },
+    async openCommitFileDiff(commit, file) {
+      this.showFileDiffModal = true
+      this.diffLoading = true
+      this.selectedDiffTitle = `${file.path} (${commit.hash})`
+      this.selectedDiffContent = ''
+      this.selectedDiffError = ''
+      this.selectedDiffStats = null
+
+      try {
+        const path = encodeURIComponent(file.path)
+        const commitHash = encodeURIComponent(commit.fullHash || commit.hash)
+        const data = await api.get(`/git/commit-file-diff?path=${path}&commit=${commitHash}`)
+        this.selectedDiffContent = data.diff || '该文件在此提交中没有可显示的文本差异'
+        this.selectedDiffStats = data.stats || { insertions: 0, deletions: 0 }
+      } catch (e) {
+        this.selectedDiffError = e.message
+      } finally {
+        this.diffLoading = false
+      }
+    },
+    closeFileDiffModal() {
+      this.showFileDiffModal = false
+      this.diffLoading = false
+      this.selectedDiffTitle = ''
+      this.selectedDiffContent = ''
+      this.selectedDiffError = ''
+      this.selectedDiffStats = null
     },
     formatDate(dateStr) {
       const d = new Date(dateStr)
@@ -564,6 +622,21 @@ export default {
   font-size: 0.9em;
   color: #555;
   word-break: break-all;
+  flex: 1;
+}
+
+.file-diff-btn {
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.75em;
+  cursor: pointer;
+}
+
+.file-diff-btn:hover {
+  background: #dbeafe;
 }
 
 .commit-meta-detail {
@@ -610,6 +683,77 @@ export default {
 @keyframes pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
+}
+
+.diff-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 12px;
+}
+
+.diff-modal {
+  background: #fff;
+  border-radius: 10px;
+  width: min(1200px, 96vw);
+  max-height: 88vh;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 8px;
+}
+
+.diff-modal-header h3 {
+  margin: 0;
+  font-size: 0.9em;
+  color: #111827;
+  word-break: break-all;
+}
+
+.diff-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 1.1em;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.diff-modal-body {
+  padding: 10px 14px 14px;
+  overflow: auto;
+}
+
+.diff-stats {
+  margin-bottom: 8px;
+  display: flex;
+  gap: 12px;
+  font-size: 0.82em;
+}
+
+.diff-code {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.78em;
+  line-height: 1.45;
+  color: #1f2937;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
 }
 
 /* === 响应式 === */
@@ -677,6 +821,14 @@ export default {
 
   .change-bar {
     max-width: 120px;
+  }
+
+  .file-item {
+    flex-wrap: wrap;
+  }
+
+  .file-diff-btn {
+    width: 100%;
   }
 }
 
