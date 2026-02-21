@@ -41,6 +41,7 @@
     <VideoManager v-if="activeTab === 'video'" />
     <MusicManager v-if="activeTab === 'music'" />
     <LogCenter v-if="activeTab === 'logs'" />
+    <WeiboCrawler v-if="activeTab === 'weibo'" />
   </div>
 </template>
 
@@ -55,6 +56,7 @@ import GitBranchManager from './pages/GitBranchManager.vue'
 import VideoManager from './pages/VideoManager.vue'
 import MusicManager from './pages/MusicManager.vue'
 import LogCenter from './pages/LogCenter.vue'
+import WeiboCrawler from './pages/WeiboCrawler.vue'
 
 export default {
   components: {
@@ -67,7 +69,8 @@ export default {
     GitBranchManager,
     VideoManager,
     MusicManager,
-    LogCenter
+    LogCenter,
+    WeiboCrawler
   },
   data() {
     return {
@@ -82,7 +85,8 @@ export default {
         { id: 'git', label: '🌿 Git 管理' },
         { id: 'video', label: '🎬 视频管理' },
         { id: 'music', label: '🎵 音乐管理' },
-        { id: 'logs', label: '📈 日志中心' }
+        { id: 'logs', label: '📈 日志中心' },
+        { id: 'weibo', label: '📰 微博抓取' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
