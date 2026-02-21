@@ -133,6 +133,8 @@ export const api = {
 
   // Local Videos
   videos: {
+    getLibrary: () => apiRequest('/videos/library'),
+    saveLibrary: (items) => apiRequest('/videos/library', { method: 'PUT', body: JSON.stringify({ items }) }),
     scan: (payload) => apiRequest('/videos/scan', { method: 'POST', body: JSON.stringify(payload) }),
     optimize: (payload) => apiRequest('/videos/optimize', { method: 'POST', body: JSON.stringify(payload) }),
     streamUrl: (filePath) => getApiUrl(`/videos/stream?path=${encodeURIComponent(filePath)}`),
@@ -165,5 +167,24 @@ export const api = {
     startScheduler: (payload) => apiRequest('/weibo/scheduler/start', { method: 'POST', body: JSON.stringify(payload) }),
     stopScheduler: () => apiRequest('/weibo/scheduler/stop', { method: 'POST' }),
     runScheduler: () => apiRequest('/weibo/scheduler/run', { method: 'POST' })
+  },
+
+  // Script Runner
+  scriptRunner: {
+    execute: (payload) => apiRequest('/script-runner/execute', { method: 'POST', body: JSON.stringify(payload) })
+  },
+
+  // Scheduler Tasks
+  schedulerTasks: {
+    getAll: () => apiRequest('/scheduler-tasks'),
+    create: (task) => apiRequest('/scheduler-tasks', { method: 'POST', body: JSON.stringify(task) }),
+    update: (id, task) => apiRequest(`/scheduler-tasks/${id}`, { method: 'PUT', body: JSON.stringify(task) }),
+    remove: (id) => apiRequest(`/scheduler-tasks/${id}`, { method: 'DELETE' }),
+    run: (id) => apiRequest(`/scheduler-tasks/${id}/run`, { method: 'POST' }),
+    toggle: (id) => apiRequest(`/scheduler-tasks/${id}/toggle`, { method: 'POST' }),
+    toggleAll: (enabled) => apiRequest('/scheduler-tasks/toggle-all', { method: 'POST', body: JSON.stringify({ enabled }) }),
+    logsAll: () => apiRequest('/scheduler-tasks/logs/all'),
+    clearLogs: () => apiRequest('/scheduler-tasks/logs', { method: 'DELETE' }),
+    importLegacyDocScheduler: (status) => apiRequest('/scheduler-tasks/import-legacy-doc-scheduler', { method: 'POST', body: JSON.stringify({ status }) })
   }
 };

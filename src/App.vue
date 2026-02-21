@@ -42,6 +42,7 @@
     <MusicManager v-if="activeTab === 'music'" />
     <LogCenter v-if="activeTab === 'logs'" />
     <WeiboCrawler v-if="activeTab === 'weibo'" />
+    <ScheduledTaskManager v-if="activeTab === 'scheduler'" />
   </div>
 </template>
 
@@ -57,6 +58,7 @@ import VideoManager from './pages/VideoManager.vue'
 import MusicManager from './pages/MusicManager.vue'
 import LogCenter from './pages/LogCenter.vue'
 import WeiboCrawler from './pages/WeiboCrawler.vue'
+import ScheduledTaskManager from './pages/ScheduledTaskManager.vue'
 
 export default {
   components: {
@@ -70,7 +72,8 @@ export default {
     VideoManager,
     MusicManager,
     LogCenter,
-    WeiboCrawler
+    WeiboCrawler,
+    ScheduledTaskManager
   },
   data() {
     return {
@@ -86,7 +89,8 @@ export default {
         { id: 'video', label: '🎬 视频管理' },
         { id: 'music', label: '🎵 音乐管理' },
         { id: 'logs', label: '📈 日志中心' },
-        { id: 'weibo', label: '📰 微博抓取' }
+        { id: 'weibo', label: '📰 微博抓取' },
+        { id: 'scheduler', label: '⏰ 定时任务' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },

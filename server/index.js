@@ -19,6 +19,8 @@ import videosRouter from './routes/videos.js';
 import musicRouter from './routes/music.js';
 import docScannerRouter from './routes/docScanner.js';
 import weiboCrawlerRouter from './routes/weiboCrawler.js';
+import scriptRunnerRouter from './routes/scriptRunner.js';
+import schedulerTasksRouter from './routes/schedulerTasks.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -56,6 +58,8 @@ app.use('/api/videos', videosRouter);
 app.use('/api/music', musicRouter);
 app.use('/api/doc-scanner', docScannerRouter);
 app.use('/api/weibo', weiboCrawlerRouter);
+app.use('/api/script-runner', scriptRunnerRouter);
+app.use('/api/scheduler-tasks', schedulerTasksRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -100,6 +104,8 @@ async function startServer() {
     console.log(`  - /api/music`);
     console.log(`  - /api/doc-scanner`);
     console.log(`  - /api/weibo`);
+    console.log(`  - /api/script-runner`);
+    console.log(`  - /api/scheduler-tasks`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 }
