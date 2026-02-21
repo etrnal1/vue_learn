@@ -1516,7 +1516,7 @@ export default {
 /* 提示消息 */
 .toast {
   position: fixed;
-  bottom: 30px;
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
   right: 30px;
   padding: 16px 24px;
   border-radius: 10px;
