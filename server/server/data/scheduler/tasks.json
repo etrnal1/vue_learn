@@ -1,5 +1,5 @@
 {
-  "updatedAt": 1771679872906,
+  "updatedAt": 1771679880947,
   "tasks": [
     {
       "id": "1771677791685_tw1phx",
@@ -27,9 +27,9 @@
         "cwd": ""
       },
       "enabled": true,
-      "runCount": 139,
-      "lastRunAt": 1771679865900,
-      "lastMatchedSecond": "2026-2-21 21:17:45",
+      "runCount": 140,
+      "lastRunAt": 1771679880918,
+      "lastMatchedSecond": "2026-2-21 21:18:0",
       "createdAt": 1771677791685,
       "runAt": null,
       "intervalMinutes": null,
@@ -38,6 +38,18 @@
     }
   ],
   "logs": [
+    {
+      "id": "1771679880947_zhv2qs",
+      "time": 1771679880947,
+      "level": "info",
+      "message": "任务「测试脚本」已触发（自动）"
+    },
+    {
+      "id": "1771679880947_fn8slc",
+      "time": 1771679880947,
+      "level": "info",
+      "message": "任务「测试脚本」脚本执行成功：hello world"
+    },
     {
       "id": "1771679865922_tu66xu",
       "time": 1771679865922,
