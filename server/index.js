@@ -14,6 +14,9 @@ import chatsRouter from './routes/chats.js';
 import codeSnippetsRouter from './routes/codeSnippets.js';
 import migrateRouter from './routes/migrate.js';
 import gitRouter from './routes/git.js';
+import serviceCatalogRouter from './routes/serviceCatalog.js';
+import videosRouter from './routes/videos.js';
+import musicRouter from './routes/music.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -31,6 +34,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// 健康检查（API 路径，便于前端代理访问）
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
 // API 路由
 app.use('/api/users', usersRouter);
 app.use('/api/tickets', ticketsRouter);
@@ -41,6 +49,9 @@ app.use('/api/chats', chatsRouter);
 app.use('/api/code-snippets', codeSnippetsRouter);
 app.use('/api/migrate', migrateRouter);
 app.use('/api/git', gitRouter);
+app.use('/api/service-catalog', serviceCatalogRouter);
+app.use('/api/videos', videosRouter);
+app.use('/api/music', musicRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -80,6 +91,9 @@ async function startServer() {
     console.log(`  - /api/code-snippets`);
     console.log(`  - /api/migrate`);
     console.log(`  - /api/git`);
+    console.log(`  - /api/service-catalog`);
+    console.log(`  - /api/videos`);
+    console.log(`  - /api/music`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 }

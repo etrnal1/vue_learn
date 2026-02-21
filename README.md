@@ -92,6 +92,40 @@ npm run build
 - ✏️ 文本函数 - CONCATENATE、LEFT 等
 - 📅 日期函数 - TODAY、NOW 等
 
+### 媒体管理（Video / Music / Logs）
+- 🎬 视频管理：视频库、播放器、本地扫描三分区，支持播放/暂停、快进后退、全屏、下载
+- 🎵 音乐管理：音乐库、播放器、本地扫描三分区，支持播放/暂停、快进后退、下载
+- 📈 日志中心：记录 `play_click`、`metadata_loaded`、`play_start`、`play_error`、`scan`，支持慢加载高亮与 Top10
+
+## 🧠 媒体模块知识点总结
+
+1. 本地扫描与播放链路
+- 前端通过 `POST /api/videos/scan`、`POST /api/music/scan` 扫描本地绝对路径目录
+- 扫描结果返回 `streamUrl` / `downloadUrl`，导入后可直接在页面播放与下载
+
+2. 流式播放与大文件支持
+- 后端 `GET /api/videos/stream`、`GET /api/music/stream` 支持 `Range` 请求
+- 视频流采用分片策略（首段更大、后续分片）降低首播等待，适配大文件快进拖动
+- 按文件扩展名返回正确 `Content-Type`，提升浏览器兼容性
+
+3. 慢加载观测方法
+- `metadata_loaded`：用于判断“拿到元数据”耗时
+- `play_start`：用于判断“可开始播放”总耗时
+- 经验阈值：`play_start > 10000ms` 可判定为慢加载，优先排查文件与磁盘 I/O
+
+4. 自动优化（点击播放触发）
+- `POST /api/videos/optimize`：本地视频可在播放前自动执行 `ffmpeg -movflags +faststart`
+- 优化文件缓存到系统临时目录，首次可能等待，后续同文件复用缓存并加速首播
+- 若 `ffmpeg` 不可用，会回退原始播放并记录 `optimize_error`
+
+5. 输入与运行防呆
+- 手工添加视频时拦截“把本地目录当 URL”误填，提示改用“本地扫描”
+- 播放本地视频前检查后端健康状态，后端不可用时提示先启动服务
+
+6. 依赖与启动要求
+- 本地媒体播放需前后端同时运行（`npm run dev`）
+- 自动优化依赖 `ffmpeg` 安装可用（命令行可执行 `ffmpeg -version`）
+
 ## 💡 核心组件说明
 
 ### App.vue (根组件)

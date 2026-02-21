@@ -117,5 +117,32 @@ export const api = {
   migrate: {
     import: (data) => apiRequest('/migrate', { method: 'POST', body: JSON.stringify(data) }),
     export: () => apiRequest('/migrate/export')
+  },
+
+  // Service Catalog
+  serviceCatalog: {
+    getAll: (options = {}) => {
+      const query = options.includeInactive ? '?includeInactive=1' : ''
+      return apiRequest(`/service-catalog${query}`)
+    },
+    getOne: (serviceType) => apiRequest(`/service-catalog/${serviceType}`),
+    create: (item) => apiRequest('/service-catalog', { method: 'POST', body: JSON.stringify(item) }),
+    update: (id, item) => apiRequest(`/service-catalog/${id}`, { method: 'PUT', body: JSON.stringify(item) }),
+    delete: (id) => apiRequest(`/service-catalog/${id}`, { method: 'DELETE' })
+  },
+
+  // Local Videos
+  videos: {
+    scan: (payload) => apiRequest('/videos/scan', { method: 'POST', body: JSON.stringify(payload) }),
+    optimize: (payload) => apiRequest('/videos/optimize', { method: 'POST', body: JSON.stringify(payload) }),
+    streamUrl: (filePath) => getApiUrl(`/videos/stream?path=${encodeURIComponent(filePath)}`),
+    downloadUrl: (filePath) => getApiUrl(`/videos/download?path=${encodeURIComponent(filePath)}`)
+  },
+
+  // Local Music
+  music: {
+    scan: (payload) => apiRequest('/music/scan', { method: 'POST', body: JSON.stringify(payload) }),
+    streamUrl: (filePath) => getApiUrl(`/music/stream?path=${encodeURIComponent(filePath)}`),
+    downloadUrl: (filePath) => getApiUrl(`/music/download?path=${encodeURIComponent(filePath)}`)
   }
 };

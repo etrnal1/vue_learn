@@ -38,6 +38,9 @@
     <ChatHistory v-if="activeTab === 'chat'" />
     <ItsmPage v-if="activeTab === 'itsm'" />
     <GitBranchManager v-if="activeTab === 'git'" />
+    <VideoManager v-if="activeTab === 'video'" />
+    <MusicManager v-if="activeTab === 'music'" />
+    <LogCenter v-if="activeTab === 'logs'" />
   </div>
 </template>
 
@@ -49,6 +52,9 @@ import ExcelReference from './pages/ExcelReference.vue'
 import ChatHistory from './pages/ChatHistory.vue'
 import ItsmPage from './pages/itsm/ItsmPage.vue'
 import GitBranchManager from './pages/GitBranchManager.vue'
+import VideoManager from './pages/VideoManager.vue'
+import MusicManager from './pages/MusicManager.vue'
+import LogCenter from './pages/LogCenter.vue'
 
 export default {
   components: {
@@ -58,7 +64,10 @@ export default {
     ExcelReference,
     ChatHistory,
     ItsmPage,
-    GitBranchManager
+    GitBranchManager,
+    VideoManager,
+    MusicManager,
+    LogCenter
   },
   data() {
     return {
@@ -70,7 +79,10 @@ export default {
         { id: 'excel', label: '📊 Excel 参考' },
         { id: 'chat', label: '💬 聊天记录' },
         { id: 'itsm', label: '🔧 IT 服务管理' },
-        { id: 'git', label: '🌿 Git 管理' }
+        { id: 'git', label: '🌿 Git 管理' },
+        { id: 'video', label: '🎬 视频管理' },
+        { id: 'music', label: '🎵 音乐管理' },
+        { id: 'logs', label: '📈 日志中心' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
