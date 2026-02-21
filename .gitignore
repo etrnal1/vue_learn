@@ -24,3 +24,7 @@ public/git-log.json
 server/.env
 server/.env.test
 server/.env.production
+
+# 运行时数据
+server/server/data/scheduler/tasks.json
+server/server/data/videos/library.json
