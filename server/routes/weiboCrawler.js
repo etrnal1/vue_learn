@@ -35,6 +35,11 @@ function normalizeCount(input) {
   return Math.min(n, MAX_COUNT);
 }
 
+function normalizeCookie(input) {
+  const s = String(input || '').trim();
+  return s || '';
+}
+
 function normalizeInterval(input) {
   const n = Number.parseInt(input, 10);
   if (Number.isNaN(n) || n <= 0) return 30;
@@ -110,25 +115,54 @@ function toCsv(items) {
   return lines.join('\n');
 }
 
-async function fetchPublicWeibo(uid, count) {
+async function fetchPublicWeibo(uid, count, cookieInput = '') {
   ensureFetchAvailable();
-  const containerId = `107603${uid}`;
-  const url = `https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}&containerid=${containerId}`;
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-      Accept: 'application/json,text/plain,*/*'
-    }
-  });
+  const cookie = normalizeCookie(cookieInput);
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+    Accept: 'application/json,text/plain,*/*',
+    Referer: `https://m.weibo.cn/u/${uid}`,
+    Origin: 'https://m.weibo.cn',
+    'X-Requested-With': 'XMLHttpRequest',
+    'MWeibo-Pwa': '1'
+  };
+  if (cookie) headers.Cookie = cookie;
 
-  if (!response.ok) {
-    throw new Error(`微博接口请求失败: HTTP ${response.status}`);
+  const tryUrls = [
+    `https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}&containerid=107603${uid}`,
+    `https://m.weibo.cn/api/container/getIndex?containerid=107603${uid}`,
+    `https://m.weibo.cn/api/container/getIndex?containerid=107603${uid}&page=1`
+  ];
+
+  let cards = null;
+  let lastStatus = 0;
+  let lastError = '';
+
+  for (const url of tryUrls) {
+    try {
+      const response = await fetch(url, { headers });
+      lastStatus = response.status;
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}`;
+        continue;
+      }
+      const data = await response.json();
+      const maybeCards = data?.data?.cards;
+      if (Array.isArray(maybeCards) && maybeCards.length > 0) {
+        cards = maybeCards;
+        break;
+      }
+      lastError = 'empty cards';
+    } catch (error) {
+      lastError = error.message || 'fetch error';
+    }
   }
 
-  const data = await response.json();
-  const cards = data?.data?.cards;
-  if (!Array.isArray(cards)) {
-    throw new Error('微博接口未返回有效卡片数据（可能被限制或 uid 无效）');
+  if (!cards) {
+    if (lastStatus === 432) {
+      throw new Error('微博接口触发反爬限制(HTTP 432)，请在页面填写 Cookie 后重试，或稍后再试');
+    }
+    throw new Error(`微博接口请求失败: ${lastError || `HTTP ${lastStatus}`}`);
   }
 
   const items = [];
@@ -163,8 +197,8 @@ async function fetchPublicWeibo(uid, count) {
 
 async function runSchedulerOnce() {
   if (!scheduler.config) return;
-  const { uid, count, autoSave } = scheduler.config;
-  const fetched = await fetchPublicWeibo(uid, count);
+  const { uid, count, autoSave, cookie } = scheduler.config;
+  const fetched = await fetchPublicWeibo(uid, count, cookie);
   scheduler.lastRunAt = Date.now();
   scheduler.lastCount = fetched.length;
   scheduler.lastError = '';
@@ -197,10 +231,11 @@ function schedulerPayload() {
 router.post('/fetch', async (req, res) => {
   const uid = normalizeUid(req.body?.uid);
   const count = normalizeCount(req.body?.count);
+  const cookie = normalizeCookie(req.body?.cookie);
   if (!uid) return res.status(400).json({ error: 'uid 必须是数字' });
 
   try {
-    const items = await fetchPublicWeibo(uid, count);
+    const items = await fetchPublicWeibo(uid, count, cookie);
     res.json({ uid, count: items.length, items });
   } catch (error) {
     console.error('抓取微博失败:', error);
@@ -210,10 +245,11 @@ router.post('/fetch', async (req, res) => {
 
 router.post('/save', async (req, res) => {
   const uid = normalizeUid(req.body?.uid);
+  const cookie = normalizeCookie(req.body?.cookie);
   if (!uid) return res.status(400).json({ error: 'uid 必须是数字' });
 
   try {
-    const items = Array.isArray(req.body?.items) ? req.body.items : await fetchPublicWeibo(uid, normalizeCount(req.body?.count));
+    const items = Array.isArray(req.body?.items) ? req.body.items : await fetchPublicWeibo(uid, normalizeCount(req.body?.count), cookie);
     const old = await readSaved(uid);
     const merged = mergeById(old, items);
     await writeSaved(uid, merged);
@@ -272,7 +308,8 @@ router.post('/scheduler/start', async (req, res) => {
     uid,
     count: normalizeCount(req.body?.count),
     intervalMinutes: normalizeInterval(req.body?.intervalMinutes),
-    autoSave: req.body?.autoSave !== false
+    autoSave: req.body?.autoSave !== false,
+    cookie: normalizeCookie(req.body?.cookie)
   };
 
   stopScheduler();
