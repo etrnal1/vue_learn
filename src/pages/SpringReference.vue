@@ -221,154 +221,152 @@ export default {
 
 <style scoped>
 .spring-reference {
-  animation: fadeIn 0.5s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  color: var(--app-text);
 }
 
 .view-tabs {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 30px;
-  border-bottom: 2px solid #e5e7eb;
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-group-bg);
   flex-wrap: wrap;
 }
 
 .view-tab {
-  padding: 15px 25px;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  font-size: 1em;
-  font-weight: 700;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 0.86em;
+  font-weight: 600;
   cursor: pointer;
-  color: #666;
-  transition: all 0.3s;
+  color: var(--app-text-secondary);
+  transition: all 0.2s;
 }
 
 .view-tab:hover {
-  color: #10b981;
+  color: var(--app-primary);
+  background: var(--app-card-elevated);
 }
 
 .view-tab.active {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
   border-color: transparent;
-  box-shadow: 0 5px 15px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .search-section {
-  background: white;
-  border-radius: 12px;
-  padding: 25px;
-  margin-bottom: 30px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .search-input {
   width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1em;
-  margin-bottom: 15px;
-  transition: all 0.3s;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  font-size: 0.92em;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .filter-group {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .filter-btn {
-  padding: 8px 16px;
-  border: 2px solid #e5e7eb;
-  background: white;
-  border-radius: 20px;
+  padding: 7px 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   font-weight: 600;
-  color: #666;
+  color: var(--app-text-secondary);
+  font-size: 0.82em;
 }
 
 .filter-btn:hover {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: var(--app-primary);
+  color: var(--app-primary);
 }
 
 .filter-btn.active {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  border-color: transparent;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .concepts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  gap: 12px;
 }
 
 .concepts-view,
 .flows-view {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  padding: 14px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .no-results {
   text-align: center;
-  padding: 60px 20px;
-  color: #999;
-  font-size: 1.2em;
+  padding: 36px 20px;
+  color: var(--app-text-muted);
+  font-size: 0.96em;
 }
 
 .flow-buttons {
   display: flex;
-  gap: 10px;
-  margin-bottom: 25px;
+  gap: 8px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
 .flow-btn {
-  padding: 10px 20px;
-  border: 2px solid #e5e7eb;
-  background: white;
-  border-radius: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 700;
-  color: #666;
-  transition: all 0.3s;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  transition: all 0.2s;
+  font-size: 0.84em;
 }
 
 .flow-btn:hover {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: var(--app-primary);
+  color: var(--app-primary);
 }
 
 .flow-btn.active {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  border-color: transparent;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 @media (max-width: 768px) {
@@ -379,6 +377,12 @@ export default {
   .view-tabs,
   .filter-group {
     flex-wrap: wrap;
+  }
+
+  .concepts-view,
+  .flows-view,
+  .search-section {
+    padding: 10px;
   }
 }
 </style>

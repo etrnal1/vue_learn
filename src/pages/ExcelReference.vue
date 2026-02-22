@@ -134,96 +134,89 @@ export default {
 
 <style scoped>
 .excel-reference {
-  animation: fadeIn 0.5s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  color: var(--app-text);
 }
 
 .search-section {
-  background: white;
-  border-radius: 12px;
-  padding: 25px;
-  margin-bottom: 40px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .search-input {
   width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1em;
-  margin-bottom: 15px;
-  transition: all 0.3s;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  font-size: 0.92em;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 10px rgba(102, 126, 234, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .filter-group {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .filter-btn {
-  padding: 8px 16px;
-  border: 2px solid #e5e7eb;
-  background: white;
-  border-radius: 20px;
+  padding: 7px 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   font-weight: 600;
-  color: #666;
+  color: var(--app-text-secondary);
+  font-size: 0.82em;
 }
 
 .filter-btn:hover {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: var(--app-primary);
+  color: var(--app-primary);
 }
 
 .filter-btn.active {
-  background: #667eea;
-  color: white;
-  border-color: #667eea;
-  box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  border-color: transparent;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .category-section {
-  margin-bottom: 50px;
+  margin-bottom: 18px;
 }
 
 .category-title {
-  font-size: 1.8em;
-  color: #333;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 3px solid #667eea;
+  font-size: 1.1em;
+  color: var(--app-text);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .functions-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  gap: 12px;
 }
 
 .no-results {
   text-align: center;
-  padding: 60px 20px;
-  color: #999;
-  font-size: 1.2em;
+  padding: 36px 20px;
+  color: var(--app-text-muted);
+  font-size: 0.96em;
 }
 
 @media (max-width: 768px) {
@@ -232,7 +225,7 @@ export default {
   }
 
   .search-section {
-    padding: 15px;
+    padding: 10px;
   }
 }
 </style>
