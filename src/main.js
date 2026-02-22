@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import App from './App.vue'
 import './style.css'
+import './ios-unified.css'
 
 console.info('[boot]', {
   platform: Capacitor.getPlatform(),
