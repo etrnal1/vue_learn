@@ -6,8 +6,8 @@
         <span class="chat-date">{{ formatDate(chat.createdAt) }}</span>
       </div>
       <div class="chat-actions">
-        <button @click="$emit('edit')" class="btn-edit" title="编辑">✏️</button>
-        <button @click="deleteChat" class="btn-delete" title="删除">🗑️</button>
+        <button @click="$emit('edit')" class="btn-edit" title="编辑">编辑</button>
+        <button @click="deleteChat" class="btn-delete" title="删除">删除</button>
       </div>
     </div>
 
@@ -17,7 +17,7 @@
 
     <div class="chat-footer">
       <button @click="$emit('toggle-comments')" class="btn-toggle-comments">
-        💬 评论 ({{ (chat.comments || []).length }})
+        评论 ({{ (chat.comments || []).length }})
       </button>
     </div>
 
@@ -53,14 +53,14 @@
                 class="btn-comment-edit"
                 title="编辑"
               >
-                {{ editingCommentId === comment.id ? '✕' : '✏️' }}
+                {{ editingCommentId === comment.id ? '取消' : '编辑' }}
               </button>
               <button
                 @click="deleteCommentHandler(comment.id)"
                 class="btn-comment-delete"
                 title="删除"
               >
-                🗑️
+                删除
               </button>
             </div>
           </div>
@@ -180,39 +180,26 @@ export default {
 
 <style scoped>
 .chat-card {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s;
-  border: 1px solid #e5e7eb;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  background: var(--app-card);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--app-soft-shadow);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  border: 1px solid var(--app-border);
 }
 
 .chat-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border-color: #667eea;
+  border-color: color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+  transform: translateY(-1px);
 }
 
-/* 聊天头部 */
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 2px solid #f0f0f0;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .chat-title-section {
@@ -220,295 +207,248 @@ export default {
 }
 
 .chat-title {
-  font-size: 1.1em;
-  color: #333;
-  margin: 0 0 8px 0;
+  font-size: 1em;
+  color: var(--app-text);
+  margin: 0 0 5px 0;
   word-break: break-word;
 }
 
 .chat-date {
-  font-size: 0.85em;
-  color: #999;
+  font-size: 0.77em;
+  color: var(--app-text-muted);
 }
 
 .chat-actions {
   display: flex;
-  gap: 8px;
-  margin-left: 10px;
+  gap: 6px;
+  margin-left: 8px;
 }
 
 .btn-edit,
 .btn-delete {
-  background: none;
-  border: none;
-  font-size: 1.1em;
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  font-size: 0.78em;
   cursor: pointer;
   padding: 5px 8px;
-  border-radius: 6px;
-  transition: all 0.2s;
+  border-radius: 9px;
+  transition: transform 0.15s ease;
+  font-weight: 600;
 }
 
 .btn-edit {
-  color: #667eea;
-}
-
-.btn-edit:hover {
-  background: rgba(102, 126, 234, 0.1);
+  color: var(--app-primary);
 }
 
 .btn-delete {
-  color: #ef4444;
+  color: #ff3b30;
 }
 
-.btn-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-/* 聊天内容 */
 .chat-content {
-  color: #555;
+  color: var(--app-text-secondary);
   line-height: 1.6;
-  margin-bottom: 15px;
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: var(--app-card-elevated);
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
   word-break: break-word;
   white-space: pre-wrap;
+  font-size: 0.9em;
 }
 
-/* 聊天页脚 */
 .chat-footer {
   display: flex;
   justify-content: center;
 }
 
 .btn-toggle-comments {
-  background: #f0f0f0;
-  color: #333;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border: 1px solid var(--app-border);
+  padding: 8px 12px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.3s;
+  transition: transform 0.2s ease;
+  font-size: 0.82em;
 }
 
 .btn-toggle-comments:hover {
-  background: #e5e7eb;
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
-/* 评论部分 */
 .comments-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 2px solid #f0f0f0;
-  animation: expandComments 0.3s ease;
-}
-
-@keyframes expandComments {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 1000px;
-  }
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border);
 }
 
 .comments-header {
-  margin-bottom: 15px;
+  margin-bottom: 10px;
 }
 
 .comments-header h4 {
   margin: 0;
-  color: #333;
-  font-size: 1em;
+  color: var(--app-text);
+  font-size: 0.9em;
 }
 
-/* 添加评论表单 */
 .add-comment-form {
-  margin-bottom: 20px;
-  padding: 15px;
-  background: #f9fafb;
-  border-radius: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: var(--app-card-elevated);
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
 }
 
 .comment-input {
   width: 100%;
-  padding: 10px 12px;
-  border: 2px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 0.95em;
+  padding: 9px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  font-size: 0.9em;
   font-family: inherit;
   resize: vertical;
-  margin-bottom: 10px;
-  transition: all 0.3s;
+  margin-bottom: 8px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: var(--app-card);
+  color: var(--app-text);
 }
 
 .comment-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 8px rgba(102, 126, 234, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .btn-add-comment {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--app-primary);
   color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 6px;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.3s;
+  font-size: 0.82em;
 }
 
-.btn-add-comment:hover {
-  box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
-}
-
-/* 没有评论 */
 .no-comments {
   text-align: center;
-  padding: 20px 10px;
-  color: #999;
+  padding: 12px 10px;
+  color: var(--app-text-muted);
+  font-size: 0.84em;
 }
 
-/* 评论列表 */
 .comments-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .comment-item {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
-  transition: all 0.3s;
-}
-
-.comment-item:hover {
-  border-color: #667eea;
-  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.1);
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px;
 }
 
 .comment-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .comment-date {
-  font-size: 0.8em;
-  color: #999;
+  font-size: 0.75em;
+  color: var(--app-text-muted);
 }
 
 .comment-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .btn-comment-edit,
 .btn-comment-delete {
-  background: none;
-  border: none;
-  font-size: 0.9em;
+  background: var(--app-card);
+  border: 1px solid var(--app-border);
+  font-size: 0.72em;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  transition: all 0.2s;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-weight: 600;
 }
 
 .btn-comment-edit {
-  color: #667eea;
-}
-
-.btn-comment-edit:hover {
-  background: rgba(102, 126, 234, 0.1);
+  color: var(--app-primary);
 }
 
 .btn-comment-delete {
-  color: #ef4444;
+  color: #ff3b30;
 }
 
-.btn-comment-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-/* 评论文本 */
 .comment-text {
-  color: #555;
+  color: var(--app-text-secondary);
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
+  font-size: 0.86em;
 }
 
-/* 编辑模式 */
 .comment-edit-mode {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .comment-edit-input {
   width: 100%;
-  padding: 10px 12px;
-  border: 2px solid #667eea;
-  border-radius: 6px;
-  font-size: 0.95em;
+  padding: 9px 10px;
+  border: 1px solid var(--app-primary);
+  border-radius: 10px;
+  font-size: 0.88em;
   font-family: inherit;
   resize: vertical;
-  margin-bottom: 8px;
-  transition: all 0.3s;
+  margin-bottom: 6px;
+  background: var(--app-card);
+  color: var(--app-text);
 }
 
 .comment-edit-input:focus {
   outline: none;
-  box-shadow: 0 0 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .edit-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
 }
 
 .btn-save,
 .btn-cancel {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.3s;
-  font-size: 0.85em;
+  font-size: 0.78em;
 }
 
 .btn-save {
-  background: #10b981;
+  background: #34c759;
+  border-color: transparent;
   color: white;
 }
 
-.btn-save:hover {
-  background: #059669;
-  transform: translateY(-2px);
-}
-
 .btn-cancel {
-  background: #e5e7eb;
-  color: #333;
+  background: var(--app-card);
+  color: var(--app-text-secondary);
 }
 
-.btn-cancel:hover {
-  background: #d1d5db;
-}
-
-/* 响应式设计 */
 @media (max-width: 640px) {
   .chat-card {
-    padding: 15px;
+    padding: 12px;
   }
 
   .chat-header {
@@ -523,7 +463,7 @@ export default {
   }
 
   .chat-title {
-    font-size: 1em;
+    font-size: 0.94em;
   }
 
   .comment-input {

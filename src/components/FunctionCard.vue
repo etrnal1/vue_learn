@@ -41,18 +41,18 @@ export default {
 
 <style scoped>
 .function-card {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: var(--app-soft-shadow);
   cursor: pointer;
-  transition: all 0.3s;
-  border-left: 4px solid #667eea;
+  transition: all 0.2s;
+  border: 1px solid var(--app-border);
+  border-left: 3px solid var(--app-primary);
 }
 
 .function-card:hover {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  transform: translateY(-5px);
+  transform: translateY(-1px);
 }
 
 .function-header {
@@ -63,9 +63,9 @@ export default {
 }
 
 .function-name {
-  font-size: 1.3em;
-  font-weight: bold;
-  color: #667eea;
+  font-size: 1.04em;
+  font-weight: 700;
+  color: var(--app-primary);
 }
 
 .function-badges {
@@ -76,16 +76,16 @@ export default {
 
 .badge {
   display: inline-block;
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
   font-size: 0.7em;
-  font-weight: bold;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .badge-common {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
 }
 
 .badge-beginner {
@@ -104,9 +104,9 @@ export default {
 }
 
 .function-description {
-  color: #666;
-  font-size: 0.95em;
-  margin-bottom: 15px;
+  color: var(--app-text-secondary);
+  font-size: 0.88em;
+  margin-bottom: 10px;
   line-height: 1.5;
 }
 
@@ -121,32 +121,31 @@ export default {
 }
 
 .detail-label {
-  font-weight: bold;
-  color: #667eea;
-  margin-bottom: 8px;
-  font-size: 0.85em;
-  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--app-primary);
+  margin-bottom: 6px;
+  font-size: 0.8em;
 }
 
 .detail-code {
   font-family: 'Courier New', monospace;
-  background: #f5f5f5;
-  color: #333;
-  padding: 10px;
-  border-radius: 6px;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+  padding: 9px;
+  border-radius: 10px;
   overflow-x: auto;
-  font-size: 0.85em;
-  margin-bottom: 12px;
-  border-left: 3px solid #667eea;
+  font-size: 0.8em;
+  margin-bottom: 10px;
+  border: 1px solid var(--app-border);
 }
 
 .result-code {
   font-family: 'Courier New', monospace;
-  background: #e6f7ed;
+  background: color-mix(in srgb, #34c759 15%, var(--app-card));
   color: #059669;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 0.85em;
-  border-left: 3px solid #10b981;
+  padding: 9px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  border: 1px solid color-mix(in srgb, #34c759 38%, var(--app-border));
 }
 </style>
