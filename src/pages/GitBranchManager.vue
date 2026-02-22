@@ -59,6 +59,37 @@
       </div>
     </div>
 
+    <div class="commit-section card">
+      <h2>✅ 本地提交</h2>
+      <textarea
+        v-model.trim="commitMessage"
+        class="commit-message-input"
+        rows="3"
+        placeholder="输入提交说明（例如：feat: 增加分支管理提交能力）"
+      />
+      <div class="commit-tools">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="pushAfterCommit" :disabled="!selectedRemote || !currentBranch" />
+          <span>提交后自动推送到 {{ selectedRemote || '远程仓库' }}</span>
+        </label>
+        <button
+          @click="commitChanges"
+          class="btn btn-primary"
+          :disabled="!normalizedCommitMessage || !gitStatus.hasChanges || committing"
+        >
+          <span v-if="!committing">{{ pushAfterCommit ? '提交并推送' : '仅本地提交' }}</span>
+          <span v-else>提交中...</span>
+        </button>
+      </div>
+      <div v-if="gitStatus.files.length > 0" class="changed-files">
+        <span class="changed-files-label">待提交文件 ({{ gitStatus.files.length }})</span>
+        <code v-for="file in gitStatus.files.slice(0, 8)" :key="file.file">
+          {{ file.status.trim() || 'M' }} {{ file.file }}
+        </code>
+        <span v-if="gitStatus.files.length > 8" class="subtitle">仅展示前 8 个文件</span>
+      </div>
+    </div>
+
     <!-- 创建新分支 -->
     <div class="create-branch-section card">
       <h2>➕ 创建新分支</h2>
@@ -446,6 +477,9 @@ export default {
       },
       newBranchName: '',
       branchKeyword: '',
+      commitMessage: '',
+      pushAfterCommit: false,
+      committing: false,
       checkoutAfterCreate: true,
       filterType: 'all', // 'all', 'local', 'remote'
       loading: false,
@@ -509,6 +543,9 @@ export default {
     },
     normalizedNewBranchName() {
       return this.newBranchName.trim()
+    },
+    normalizedCommitMessage() {
+      return this.commitMessage.trim()
     }
   },
   methods: {
@@ -787,6 +824,39 @@ export default {
       }
       await this.pushBranch(this.currentBranch)
     },
+    async commitChanges() {
+      const message = this.normalizedCommitMessage
+
+      if (!message) {
+        this.showMessage('请输入提交说明', 'warning')
+        return
+      }
+      if (!this.gitStatus.hasChanges) {
+        this.showMessage('当前没有可提交的变更', 'warning')
+        return
+      }
+
+      this.committing = true
+      try {
+        const commitRes = await api.post('/git/commit', { message })
+        this.showMessage(commitRes.message, 'success')
+        this.commitMessage = ''
+
+        if (this.pushAfterCommit) {
+          if (!this.selectedRemote || !this.currentBranch) {
+            this.showMessage('已本地提交，但缺少远程仓库或分支信息，未执行推送', 'warning')
+          } else {
+            await this.pushBranch(this.currentBranch)
+          }
+        } else {
+          await this.refreshData()
+        }
+      } catch (error) {
+        this.showMessage('提交失败: ' + error.message, 'error')
+      } finally {
+        this.committing = false
+      }
+    },
     async deleteRemoteBranch(branch) {
       const remote = this.getRemoteFromBranch(branch)
       if (!remote) {
@@ -1050,6 +1120,57 @@ export default {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.commit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.commit-message-input {
+  width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  resize: vertical;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+  font-size: 0.9em;
+}
+
+.commit-message-input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
+}
+
+.commit-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.changed-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.changed-files-label {
+  font-size: 0.88em;
+  color: var(--app-text-muted);
+}
+
+.changed-files code {
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  color: var(--app-text-secondary);
 }
 
 .remote-select-label {

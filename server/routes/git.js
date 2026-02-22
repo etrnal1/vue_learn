@@ -631,6 +631,48 @@ router.get('/status', async (req, res) => {
   }
 });
 
+router.post('/commit', async (req, res) => {
+  try {
+    const rawMessage = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+    if (!rawMessage) {
+      return res.status(400).json({ error: '提交说明不能为空' });
+    }
+    if (rawMessage.length > 200) {
+      return res.status(400).json({ error: '提交说明不能超过 200 个字符' });
+    }
+
+    const statusResult = await runGitCommand(['status', '--porcelain']);
+    if (!statusResult.success) {
+      return sendGitError(res, statusResult);
+    }
+    if (!statusResult.data) {
+      return res.status(400).json({ error: '没有可提交的变更' });
+    }
+
+    const addResult = await runGitCommand(['add', '-A']);
+    if (!addResult.success) {
+      return sendGitError(res, addResult, '暂存变更失败');
+    }
+
+    const commitResult = await runGitCommand(['commit', '-m', rawMessage]);
+    if (!commitResult.success) {
+      return sendGitError(res, commitResult, '提交失败，请检查 Git 用户信息或钩子配置');
+    }
+
+    const hashResult = await runGitCommand(['rev-parse', '--short', 'HEAD']);
+    const commitHash = hashResult.success ? hashResult.data : '';
+
+    res.json({
+      success: true,
+      message: commitHash ? `本地提交成功 (${commitHash})` : '本地提交成功',
+      commitHash,
+      output: commitResult.data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/stash', async (req, res) => {
   try {
     const rawMessage = typeof req.body.message === 'string' ? req.body.message.trim() : '';
