@@ -92,30 +92,31 @@ export default {
 
 <style scoped>
 .header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(165deg, #0a84ff 0%, #0066cc 100%);
   color: white;
-  padding: 60px 40px;
-  border-radius: 15px;
-  margin-bottom: 40px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  text-align: center;
+  padding: 42px 32px;
+  border-radius: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 18px 38px rgba(0, 102, 204, 0.28);
+  text-align: left;
 }
 
 .header h1 {
-  font-size: 3em;
-  margin-bottom: 15px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  font-size: 2.35em;
+  line-height: 1.15;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
 }
 
 .header p {
-  font-size: 1.3em;
-  opacity: 0.95;
+  font-size: 1.06em;
+  opacity: 0.9;
 }
 
 .build-info {
-  margin-top: 16px;
+  margin-top: 14px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -123,12 +124,12 @@ export default {
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 6px 11px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.32);
   font-size: 0.8em;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .status-chip.status-ok {
@@ -156,8 +157,8 @@ export default {
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.28);
   font-size: 0.78em;
   text-align: left;
@@ -165,15 +166,17 @@ export default {
 
 @media (max-width: 768px) {
   .header h1 {
-    font-size: 2em;
+    font-size: 1.7em;
   }
 
   .header p {
-    font-size: 1em;
+    font-size: 0.93em;
   }
 
   .header {
-    padding: 40px 20px;
+    padding: 30px 20px;
+    border-radius: 18px;
+    margin-bottom: 12px;
   }
 
   .chip {
