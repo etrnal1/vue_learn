@@ -452,7 +452,7 @@ export default {
 
 .subtabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .subtab { border: 1px solid var(--app-border); background: var(--app-card); color: var(--app-text-secondary); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 700; }
-.subtab.active { background: var(--app-gradient); color: #fff; border-color: transparent; }
+.subtab.active { background: var(--app-primary); color: var(--app-on-primary); border-color: transparent; box-shadow: 0 6px 16px var(--app-shadow); }
 
 .layout { display: grid; grid-template-columns: 360px 1fr; gap: 14px; }
 .panel { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 12px; padding: 14px; box-shadow: 0 2px 8px var(--app-shadow-light); }
@@ -466,7 +466,7 @@ export default {
 
 .actions { display: flex; gap: 8px; margin-top: 6px; }
 .btn { border: 1px solid var(--app-border); background: var(--app-card); color: var(--app-text-secondary); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
-.btn-primary { background: var(--app-gradient); border-color: transparent; color: #fff; }
+.btn-primary { background: var(--app-primary); border-color: transparent; color: var(--app-on-primary); box-shadow: 0 8px 18px var(--app-shadow); }
 .btn-danger { background: #ef4444; border-color: #ef4444; color: #fff; }
 .btn-sm { padding: 6px 8px; font-size: 0.8em; }
 
