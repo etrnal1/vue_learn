@@ -1,5 +1,6 @@
-html {
-    height: 100%;
+html,
+body {
+    min-height: 100%;
 }
 
 :root {
@@ -16,18 +17,26 @@ html {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    min-height: 100%;
-    padding-top: max(20px, calc(var(--safe-area-top) + 8px));
-    padding-right: max(20px, calc(var(--safe-area-right) + 8px));
-    padding-bottom: max(20px, calc(var(--safe-area-bottom) + 8px));
-    padding-left: max(20px, calc(var(--safe-area-left) + 8px));
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+    color: #1c1c1e;
+    background: radial-gradient(circle at top, #ffffff 0%, #f2f2f7 56%, #e9ecf5 100%);
+    padding-top: max(16px, calc(var(--safe-area-top) + 8px));
+    padding-right: max(16px, calc(var(--safe-area-right) + 8px));
+    padding-bottom: max(16px, calc(var(--safe-area-bottom) + 8px));
+    padding-left: max(16px, calc(var(--safe-area-left) + 8px));
+    -webkit-font-smoothing: antialiased;
 }
 
 #app {
-    max-width: 1400px;
+    max-width: 1320px;
     margin: 0 auto;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
 }
 
 .modal-overlay,
@@ -42,34 +51,29 @@ body {
     max-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 24px) !important;
 }
 
-/* 平滑过渡 */
-* {
-    transition: all 0.3s ease;
-}
-
-/* 滚动条美化 */
 ::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #667eea;
-    border-radius: 5px;
+    background: rgba(120, 120, 128, 0.35);
+    border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #764ba2;
+    background: rgba(120, 120, 128, 0.52);
 }
 
 @media (max-width: 768px) {
     body {
-        padding-top: max(12px, calc(var(--safe-area-top) + 6px));
-        padding-right: max(12px, calc(var(--safe-area-right) + 6px));
-        padding-bottom: max(12px, calc(var(--safe-area-bottom) + 10px));
-        padding-left: max(12px, calc(var(--safe-area-left) + 6px));
+        padding-top: max(10px, calc(var(--safe-area-top) + 6px));
+        padding-right: max(10px, calc(var(--safe-area-right) + 6px));
+        padding-bottom: max(10px, calc(var(--safe-area-bottom) + 10px));
+        padding-left: max(10px, calc(var(--safe-area-left) + 6px));
     }
 }
