@@ -36,7 +36,7 @@
     </div>
 
     <div class="info-section">
-      <h2>🎯 项目特点</h2>
+      <h2>项目特点</h2>
       <div class="features-grid">
         <div class="feature-item">
           <div class="feature-number">1</div>
@@ -62,7 +62,7 @@
     </div>
 
     <div class="tech-stack">
-      <h2>🛠️ 技术栈</h2>
+      <h2>技术栈</h2>
       <div class="tech-items">
         <span class="tech-tag">Vue 3</span>
         <span class="tech-tag">Vite</span>
@@ -82,196 +82,172 @@ export default {
 
 <style scoped>
 .home-page {
-  animation: fadeIn 0.5s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  color: var(--app-text);
 }
 
 .cards-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 30px;
-  margin-bottom: 50px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
 .card {
-  background: white;
-  border-radius: 15px;
-  padding: 40px 30px;
-  text-align: center;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s;
-  border-top: 5px solid;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-}
-
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s;
-}
-
-.card:hover::before {
-  left: 100%;
+  background: var(--app-card);
+  border-radius: 18px;
+  padding: 24px 20px;
+  text-align: left;
+  box-shadow: var(--app-soft-shadow);
+  border: 1px solid var(--app-border);
+  cursor: default;
 }
 
 .card:hover {
-  transform: translateY(-10px);
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
 }
 
 .card.spring {
-  border-top-color: #10b981;
+  border-left: 4px solid #34c759;
 }
 
 .card.excel {
-  border-top-color: #667eea;
+  border-left: 4px solid #007aff;
 }
 
 .card.project {
-  border-top-color: #f59e0b;
+  border-left: 4px solid #ff9500;
 }
 
 .card-icon {
-  font-size: 4em;
-  margin-bottom: 20px;
+  font-size: 2.1em;
+  margin-bottom: 10px;
 }
 
 .card h2 {
-  font-size: 1.8em;
-  margin-bottom: 15px;
-  color: #333;
+  font-size: 1.2em;
+  margin-bottom: 8px;
+  color: var(--app-text);
 }
 
 .card p {
-  color: #666;
-  font-size: 1em;
+  color: var(--app-text-secondary);
+  font-size: 0.93em;
   line-height: 1.6;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
 }
 
 .feature-list {
-  font-size: 0.9em;
-  color: #999;
-  margin-top: 20px;
+  font-size: 0.84em;
+  color: var(--app-text-muted);
+  margin-top: 8px;
+  line-height: 1.8;
 }
 
-/* 信息部分 */
 .info-section {
-  background: white;
-  border-radius: 15px;
-  padding: 50px 40px;
-  margin-bottom: 40px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 18px;
+  border: 1px solid var(--app-border);
+  padding: 26px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .info-section h2 {
-  font-size: 2em;
-  margin-bottom: 40px;
-  color: #333;
-  text-align: center;
+  font-size: 1.2em;
+  margin-bottom: 14px;
+  color: var(--app-text);
 }
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
 }
 
 .feature-item {
-  text-align: center;
-  padding: 20px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
 }
 
 .feature-number {
-  display: inline-block;
-  width: 50px;
-  height: 50px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--app-primary);
   color: white;
   border-radius: 50%;
-  line-height: 50px;
-  font-size: 1.5em;
-  font-weight: bold;
-  margin-bottom: 15px;
+  line-height: 1;
+  font-size: 0.82em;
+  font-weight: 700;
+  margin-bottom: 8px;
 }
 
 .feature-item h3 {
-  font-size: 1.2em;
-  margin-bottom: 10px;
-  color: #333;
+  font-size: 0.98em;
+  margin-bottom: 6px;
+  color: var(--app-text);
 }
 
 .feature-item p {
-  color: #666;
-  font-size: 0.95em;
+  color: var(--app-text-secondary);
+  font-size: 0.86em;
 }
 
-/* 技术栈 */
 .tech-stack {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 15px;
-  padding: 50px 40px;
-  text-align: center;
+  background: var(--app-card);
+  color: var(--app-text);
+  border-radius: 18px;
+  border: 1px solid var(--app-border);
+  padding: 26px 20px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .tech-stack h2 {
-  font-size: 2em;
-  margin-bottom: 30px;
+  font-size: 1.2em;
+  margin-bottom: 12px;
 }
 
 .tech-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 15px;
-  justify-content: center;
+  gap: 8px;
 }
 
 .tech-tag {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
   font-weight: 600;
+  font-size: 0.84em;
 }
 
 @media (max-width: 768px) {
   .cards-container {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .info-section {
-    padding: 30px 20px;
+    padding: 18px 14px;
   }
 
   .info-section h2 {
-    font-size: 1.5em;
+    font-size: 1.05em;
   }
 
   .features-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .tech-stack {
-    padding: 30px 20px;
+    padding: 18px 14px;
   }
 }
 </style>

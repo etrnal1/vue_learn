@@ -2,7 +2,7 @@
   <div class="chat-history">
     <!-- 新增聊天记录表单 -->
     <div class="add-chat-section">
-      <h2>➕ 新增聊天记录</h2>
+      <h2>新增聊天记录</h2>
       <div class="form-group">
         <input
           v-model="newChat.title"
@@ -16,13 +16,13 @@
           class="textarea-field"
           rows="4"
         ></textarea>
-        <button @click="addChat" class="btn-primary">💾 保存</button>
+        <button @click="addChat" class="btn-primary">保存</button>
       </div>
     </div>
 
     <!-- 聊天记录列表 -->
     <div class="chats-section">
-      <h2>📋 聊天记录 ({{ chats.length }})</h2>
+      <h2>聊天记录 ({{ chats.length }})</h2>
 
       <div class="search-bar">
         <input
@@ -34,7 +34,7 @@
       </div>
 
       <div v-if="filteredChats.length === 0" class="empty-state">
-        <p>😴 还没有聊天记录，快去创建一个吧！</p>
+        <p>还没有聊天记录，先新增一条吧。</p>
       </div>
 
       <div class="chats-grid">
@@ -57,7 +57,7 @@
     <div v-if="editingChat" class="modal-overlay" @click="cancelEdit">
       <div class="modal" @click.stop>
         <div class="modal-header">
-          <h3>✏️ 编辑聊天记录</h3>
+          <h3>编辑聊天记录</h3>
           <button @click="cancelEdit" class="btn-close">✕</button>
         </div>
         <div class="modal-body">
@@ -275,248 +275,222 @@ export default {
 
 <style scoped>
 .chat-history {
-  animation: fadeIn 0.5s ease;
+  color: var(--app-text);
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* 新增聊天表单 */
 .add-chat-section {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  margin-bottom: 40px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #667eea;
+  background: var(--app-card);
+  border-radius: 18px;
+  padding: 22px;
+  margin-bottom: 14px;
+  box-shadow: var(--app-soft-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .add-chat-section h2 {
-  font-size: 1.5em;
-  color: #333;
-  margin-bottom: 20px;
+  font-size: 1.12em;
+  color: var(--app-text);
+  margin-bottom: 12px;
 }
 
 .form-group {
-  margin-bottom: 15px;
+  margin-bottom: 10px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-weight: 600;
-  color: #333;
+  color: var(--app-text-secondary);
+  font-size: 0.88em;
 }
 
 .input-field,
 .textarea-field {
   width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1em;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  font-size: 0.95em;
   font-family: inherit;
-  transition: all 0.3s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
 }
 
 .input-field:focus,
 .textarea-field:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 10px rgba(102, 126, 234, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .textarea-field {
   resize: vertical;
 }
 
-/* 按钮 */
 .btn-primary,
 .btn-secondary,
 .btn-danger,
 .btn-warning {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
-  font-size: 0.95em;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  font-size: 0.86em;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: var(--app-primary);
+  border-color: transparent;
   color: white;
-  margin-top: 15px;
+  margin-top: 6px;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #d1d5db;
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: #ff3b30;
+  border-color: transparent;
   color: white;
-  padding: 8px 15px;
-  font-size: 0.85em;
-}
-
-.btn-danger:hover {
-  background: #dc2626;
+  box-shadow: 0 8px 18px rgba(255, 59, 48, 0.24);
 }
 
 .btn-warning {
-  background: #f59e0b;
+  background: #ff9500;
+  border-color: transparent;
   color: white;
-  padding: 8px 15px;
-  font-size: 0.85em;
-}
-
-.btn-warning:hover {
-  background: #d97706;
 }
 
 .btn-close {
   background: none;
   border: none;
-  font-size: 1.5em;
+  font-size: 1.2em;
   cursor: pointer;
-  color: #999;
+  color: var(--app-text-muted);
+  padding: 4px 8px;
+  border-radius: 10px;
 }
 
 .btn-close:hover {
-  color: #333;
+  color: var(--app-text);
+  background: var(--app-card-elevated);
 }
 
-/* 聊天列表 */
 .chats-section {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  background: var(--app-card);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: var(--app-soft-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .chats-section h2 {
-  font-size: 1.5em;
-  color: #333;
-  margin-bottom: 20px;
+  font-size: 1.12em;
+  color: var(--app-text);
+  margin-bottom: 12px;
 }
 
 .search-bar {
-  margin-bottom: 25px;
+  margin-bottom: 14px;
 }
 
 .search-input {
   width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1em;
-  transition: all 0.3s;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  font-size: 0.95em;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 10px rgba(102, 126, 234, 0.2);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px var(--app-shadow-light);
 }
 
 .chats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 20px;
+  gap: 12px;
 }
 
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
-  color: #999;
-  font-size: 1.2em;
+  padding: 36px 20px;
+  color: var(--app-text-muted);
+  font-size: 0.96em;
+  border: 1px dashed var(--app-border);
+  border-radius: 14px;
+  background: var(--app-card-elevated);
 }
 
-/* 模态框 */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.3s ease;
 }
 
 .modal {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  background: var(--app-card);
+  border-radius: 20px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--app-border);
   max-width: 600px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(50px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 2px solid #e5e7eb;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .modal-header h3 {
   margin: 0;
-  font-size: 1.3em;
-  color: #333;
+  font-size: 1.02em;
+  color: var(--app-text);
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 16px 18px;
 }
 
 .modal-footer {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  padding: 20px;
-  border-top: 2px solid #e5e7eb;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--app-border);
 }
 
 .modal-footer button {
-  min-width: 100px;
+  min-width: 88px;
 }
 
 @media (max-width: 768px) {
@@ -526,11 +500,12 @@ export default {
 
   .add-chat-section,
   .chats-section {
-    padding: 20px;
+    padding: 14px;
   }
 
   .modal {
-    width: 95%;
+    width: 96%;
+    border-radius: 16px;
   }
 }
 </style>
