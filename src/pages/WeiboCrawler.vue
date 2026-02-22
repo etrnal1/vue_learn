@@ -199,26 +199,26 @@ export default {
 
 <style scoped>
 .weibo-page { color: var(--app-text); }
-.head h2 { margin: 0; }
-.head p { margin: 6px 0 12px; color: var(--app-text-muted); font-size: 0.9em; }
-.panel { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 12px; padding: 12px; }
+.head h2 { margin: 0; font-size: 1.14em; }
+.head p { margin: 4px 0 10px; color: var(--app-text-muted); font-size: 0.84em; }
+.panel { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 16px; padding: 12px; box-shadow: var(--app-soft-shadow); }
 .controls { display: grid; grid-template-columns: 1fr 120px auto auto auto; gap: 8px; margin-bottom: 10px; }
 .cookie-row { margin-bottom: 8px; }
-.input { border: 2px solid var(--app-border); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--app-card); color: var(--app-text); }
+.input { border: 1px solid var(--app-border); border-radius: 11px; padding: 9px 10px; font: inherit; background: var(--app-card-elevated); color: var(--app-text); font-size: 0.86em; }
 .input.small { width: 120px; }
 .input.tiny { width: 96px; margin-left: 6px; }
-.btn { border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-card); color: var(--app-text-secondary); padding: 8px 10px; cursor: pointer; }
-.btn-primary { background: var(--app-gradient); color: #fff; border-color: transparent; }
-.btn-danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+.btn { border: 1px solid var(--app-border); border-radius: 11px; background: var(--app-card-elevated); color: var(--app-text-secondary); padding: 8px 10px; cursor: pointer; font-size: 0.84em; font-weight: 600; }
+.btn-primary { background: var(--app-primary); color: var(--app-on-primary); border-color: transparent; box-shadow: 0 8px 18px var(--app-shadow); }
+.btn-danger { background: #ff3b30; color: #fff; border-color: transparent; box-shadow: 0 8px 18px rgba(255, 59, 48, 0.24); }
 .scheduler { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .downloads { display: flex; gap: 8px; margin-bottom: 8px; }
-.status { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.85em; color: var(--app-text-muted); margin-bottom: 8px; }
-.err { color: #ef4444; }
+.status { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.8em; color: var(--app-text-muted); margin-bottom: 8px; }
+.err { color: #ff3b30; }
 .list { display: grid; gap: 8px; }
-.card { border: 1px solid var(--app-border); border-radius: 10px; padding: 10px; background: var(--app-card); }
-.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 0.86em; }
+.card { border: 1px solid var(--app-border); border-radius: 12px; padding: 10px; background: var(--app-card-elevated); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 0.82em; }
 .text { margin: 8px 0; white-space: pre-wrap; }
-.meta { font-size: 0.8em; color: var(--app-text-muted); }
+.meta { font-size: 0.76em; color: var(--app-text-muted); }
 @media (max-width: 960px) {
   .controls { grid-template-columns: 1fr; }
   .input.small { width: 100%; }

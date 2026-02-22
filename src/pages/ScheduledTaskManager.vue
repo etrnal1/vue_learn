@@ -1285,7 +1285,7 @@ export default {
 
 <style scoped>
 .scheduler-page { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
-.hero { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: 16px; padding: 18px; background: linear-gradient(120deg, color-mix(in srgb, var(--app-primary) 86%, #fff), color-mix(in srgb, var(--app-primary-dark) 88%, #fff)); color: #fff; }
+.hero { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: 16px; padding: 18px; background: linear-gradient(120deg, color-mix(in srgb, var(--app-primary) 86%, #fff), color-mix(in srgb, var(--app-primary-dark) 88%, #fff)); color: var(--app-on-primary); }
 .hero h2 { margin: 0; }
 .hero p { margin-top: 4px; opacity: 0.95; }
 .hero-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -1329,7 +1329,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .btn { border: 1px solid var(--app-border); border-radius: 10px; padding: 8px 12px; background: var(--app-card); color: var(--app-text-secondary); font-weight: 700; cursor: pointer; }
 .btn:hover { border-color: var(--app-primary); color: var(--app-primary); }
 .btn.active { background: color-mix(in srgb, var(--app-primary) 15%, var(--app-card)); border-color: var(--app-primary); color: var(--app-primary); }
-.btn-primary { border: none; color: #fff; background: var(--app-gradient); }
+.btn-primary { border: none; color: var(--app-on-primary); background: var(--app-primary); box-shadow: 0 8px 18px var(--app-shadow); }
 .btn-danger { color: #dc2626; border-color: #fecaca; }
 .ghost { color: #fff; border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.1); }
 .ghost:hover { color: #fff; border-color: #fff; }
