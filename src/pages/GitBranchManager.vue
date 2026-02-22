@@ -961,39 +961,36 @@ export default {
 .git-manager {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 6px;
 }
 
 .page-header {
-  text-align: center;
-  margin-bottom: 30px;
+  text-align: left;
+  margin-bottom: 12px;
 }
 
 .page-header h1 {
-  font-size: 2.5em;
-  margin-bottom: 10px;
-  background: var(--app-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.42em;
+  margin-bottom: 4px;
+  color: var(--app-text);
 }
 
 .subtitle {
   color: var(--app-text-muted);
-  font-size: 1.1em;
+  font-size: 0.9em;
 }
 
 /* 状态卡片 */
 .status-card {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
-  gap: 20px;
-  padding: 20px;
+  gap: 10px;
+  padding: 14px;
   background: var(--app-card);
-  border-radius: 12px;
-  border: 2px solid var(--app-border);
-  margin-bottom: 30px;
-  box-shadow: 0 4px 12px var(--app-shadow-light);
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  margin-bottom: 12px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .status-item {
@@ -1003,13 +1000,13 @@ export default {
 }
 
 .status-label {
-  font-size: 0.85em;
+  font-size: 0.78em;
   color: var(--app-text-muted);
   font-weight: 600;
 }
 
 .status-value {
-  font-size: 1.3em;
+  font-size: 1.05em;
   font-weight: 700;
   color: var(--app-text);
 }
@@ -1027,24 +1024,24 @@ export default {
 
 .status-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
 /* 卡片 */
 .card {
   background: var(--app-card);
-  border-radius: 12px;
-  border: 2px solid var(--app-border);
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 4px 12px var(--app-shadow-light);
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--app-soft-shadow);
 }
 
 .card h2 {
   margin-top: 0;
-  margin-bottom: 20px;
-  font-size: 1.5em;
+  margin-bottom: 10px;
+  font-size: 1.05em;
   color: var(--app-text);
 }
 
@@ -1066,9 +1063,9 @@ export default {
 .remote-select {
   min-width: 180px;
   padding: 8px 10px;
-  border: 2px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-card);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
   color: var(--app-text);
 }
 
@@ -1089,12 +1086,12 @@ export default {
 .branch-input {
   flex: 1;
   min-width: 300px;
-  padding: 12px 16px;
-  border: 2px solid var(--app-border);
-  border-radius: 8px;
-  font-size: 1em;
-  transition: all 0.3s;
-  background: var(--app-card);
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 11px;
+  font-size: 0.9em;
+  transition: all 0.2s;
+  background: var(--app-card-elevated);
   color: var(--app-text);
 }
 
@@ -1122,16 +1119,17 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  font-size: 0.9em;
+  font-size: 0.82em;
   color: var(--app-text-muted);
 }
 
 .tip {
-  padding: 4px 10px;
-  background: var(--app-border);
-  border-radius: 6px;
+  padding: 3px 8px;
+  background: var(--app-card-elevated);
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
   font-family: monospace;
-  font-size: 0.85em;
+  font-size: 0.75em;
 }
 
 /* 分支过滤 */
@@ -1152,9 +1150,9 @@ export default {
 .branch-search-input {
   min-width: 260px;
   padding: 8px 12px;
-  border-radius: 8px;
-  border: 2px solid var(--app-border);
-  background: var(--app-card);
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
   color: var(--app-text);
 }
 
@@ -1169,14 +1167,15 @@ export default {
 }
 
 .filter-btn {
-  padding: 8px 16px;
-  border: 2px solid var(--app-border);
-  background: var(--app-card);
-  border-radius: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
   color: var(--app-text-secondary);
-  transition: all 0.3s;
+  transition: all 0.2s;
+  font-size: 0.82em;
 }
 
 .filter-btn:hover {
@@ -1185,9 +1184,10 @@ export default {
 }
 
 .filter-btn.active {
-  background: var(--app-gradient);
+  background: var(--app-primary);
   border-color: transparent;
-  color: white;
+  color: var(--app-on-primary);
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 /* 分支列表 */
@@ -1201,11 +1201,11 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 18px;
-  border: 2px solid var(--app-border);
-  border-radius: 10px;
-  transition: all 0.3s;
-  background: var(--app-card);
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  transition: all 0.2s;
+  background: var(--app-card-elevated);
 }
 
 .branch-item:hover {
@@ -1214,14 +1214,15 @@ export default {
 }
 
 .branch-item.current {
-  background: linear-gradient(to right, var(--app-primary), var(--app-primary-dark));
+  background: var(--app-primary);
   border-color: transparent;
-  color: white;
+  color: var(--app-on-primary);
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .branch-item.current .branch-name,
 .branch-item.current .current-badge {
-  color: white;
+  color: var(--app-on-primary);
 }
 
 .branch-info {
@@ -1242,7 +1243,7 @@ export default {
 
 .current-badge {
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.26);
   border-radius: 6px;
   font-size: 0.75em;
   font-weight: 700;
@@ -1255,15 +1256,16 @@ export default {
 
 /* 按钮 */
 .btn {
-  padding: 10px 20px;
-  border: 2px solid var(--app-border);
-  background: var(--app-card);
-  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   color: var(--app-text-secondary);
   white-space: nowrap;
+  font-size: 0.84em;
 }
 
 .btn:hover {
@@ -1278,14 +1280,14 @@ export default {
 }
 
 .btn-primary {
-  background: var(--app-gradient);
+  background: var(--app-primary);
   border-color: transparent;
-  color: white;
+  color: var(--app-on-primary);
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 4px 12px var(--app-shadow);
-  color: white;
+  color: var(--app-on-primary);
 }
 
 .btn-sm {
@@ -1295,45 +1297,48 @@ export default {
 
 .btn-refresh {
   background: var(--app-primary);
-  color: white;
+  color: var(--app-on-primary);
   border-color: transparent;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .btn-stash {
   background: #f59e0b;
-  color: white;
+  color: #2b1d00;
   border-color: transparent;
 }
 
 .btn-checkout {
   background: var(--app-primary);
-  color: white;
+  color: var(--app-on-primary);
   border-color: transparent;
+  box-shadow: 0 8px 18px var(--app-shadow);
 }
 
 .btn-view {
   background: #8b5cf6;
-  color: white;
+  color: #fff;
   border-color: transparent;
 }
 
 .btn-merge {
   background: #10b981;
-  color: white;
+  color: #fff;
   border-color: transparent;
 }
 
 .btn-push {
   background: #0ea5e9;
-  color: white;
+  color: #fff;
   border-color: transparent;
 }
 
 .btn-delete,
 .btn-danger {
-  background: #ef4444;
-  color: white;
+  background: #ff3b30;
+  color: #fff;
   border-color: transparent;
+  box-shadow: 0 8px 18px rgba(255, 59, 48, 0.24);
 }
 
 .btn-cancel {
@@ -1414,30 +1419,31 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(10px);
 }
 
 .modal-content {
   background: var(--app-card);
-  border-radius: 16px;
+  border-radius: 18px;
   max-width: 600px;
   width: 90%;
   max-height: 80vh;
   overflow: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--app-border);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  border-bottom: 2px solid var(--app-border);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .modal-header h3 {
@@ -1467,7 +1473,7 @@ export default {
 }
 
 .modal-body {
-  padding: 24px;
+  padding: 14px 16px;
 }
 
 .modal-body p {
@@ -1490,8 +1496,8 @@ export default {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  padding: 16px 24px;
-  border-top: 2px solid var(--app-border);
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--app-border);
 }
 
 /* 提交历史 */
@@ -1539,28 +1545,28 @@ export default {
 
 .toast.success {
   background: #10b981;
-  color: white;
+  color: #fff;
 }
 
 .toast.error {
-  background: #ef4444;
-  color: white;
+  background: #ff3b30;
+  color: #fff;
 }
 
 .toast.warning {
   background: #f59e0b;
-  color: white;
+  color: #2b1d00;
 }
 
 .toast.info {
   background: var(--app-primary);
-  color: white;
+  color: var(--app-on-primary);
 }
 
 /* 文件列表按钮 */
 .btn-files {
   background: #f59e0b;
-  color: white;
+  color: #2b1d00;
   border-color: transparent;
 }
 
@@ -1620,7 +1626,7 @@ export default {
   border-radius: 6px;
   font-size: 0.8em;
   font-weight: 600;
-  color: white;
+  color: #fff;
   white-space: nowrap;
 }
 
@@ -1727,7 +1733,7 @@ export default {
 
 .tab-btn.active {
   background: var(--app-primary);
-  color: white;
+  color: var(--app-on-primary);
 }
 
 .file-content-body {
