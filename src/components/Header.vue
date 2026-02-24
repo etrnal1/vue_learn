@@ -6,17 +6,23 @@
       <span class="chip">v{{ appVersion }}</span>
       <span class="chip">构建时间 {{ buildTimeText }}</span>
       <button class="chip status-chip" :class="statusClass" @click="toggleStatusDetail">{{ statusText }}</button>
+      <span v-if="pwaInfo.installed" class="chip pwa-chip" :title="pwaStatusDetail">📱 PWA 已安装</span>
+      <span v-else-if="pwaInfo.isPWACapable" class="chip pwa-chip-capable" :title="pwaStatusDetail">📱 PWA 就绪</span>
     </div>
     <div v-if="showStatusDetail" class="status-detail">
       <div>最近检查：{{ lastCheckedText }}</div>
       <div>接口：`/api/health`</div>
       <div v-if="lastError">错误：{{ lastError }}</div>
     </div>
+    <div v-if="showPWADetail && (pwaInfo.installed || pwaInfo.isPWACapable)" class="pwa-detail">
+      <div>{{ pwaDetailLines }}</div>
+    </div>
   </div>
 </template>
 
 <script>
 import { getApiUrl } from '../utils/api.js'
+import { detectPWA, getPWAStatusDetail } from '../utils/pwa.js'
 
 export default {
   name: 'Header',
@@ -26,7 +32,16 @@ export default {
       healthTimer: null,
       showStatusDetail: false,
       lastCheckedAt: null,
-      lastError: ''
+      lastError: '',
+      pwaInfo: {
+        installed: false,
+        mode: null,
+        displayMode: null,
+        standalone: false,
+        hasServiceWorker: false,
+        isPWACapable: false
+      },
+      showPWADetail: false
     }
   },
   computed: {
@@ -50,11 +65,27 @@ export default {
     lastCheckedText() {
       if (!this.lastCheckedAt) return '尚未完成'
       return new Date(this.lastCheckedAt).toLocaleString('zh-CN', { hour12: false })
+    },
+    pwaStatusDetail() {
+      return getPWAStatusDetail(this.pwaInfo).replace(/\n/g, ' | ')
+    },
+    pwaDetailLines() {
+      return getPWAStatusDetail(this.pwaInfo)
     }
   },
   mounted() {
     this.checkBackendHealth()
     this.healthTimer = setInterval(this.checkBackendHealth, 30000)
+
+    // 检测 PWA 状态
+    this.pwaInfo = detectPWA()
+
+    // 监听 PWA 安装事件
+    if (typeof window !== 'undefined') {
+      window.addEventListener('appinstalled', () => {
+        this.pwaInfo.installed = true
+      })
+    }
   },
   beforeUnmount() {
     if (this.healthTimer) {
@@ -65,6 +96,9 @@ export default {
   methods: {
     toggleStatusDetail() {
       this.showStatusDetail = !this.showStatusDetail
+      if (this.showStatusDetail) {
+        this.showPWADetail = false
+      }
     },
     async checkBackendHealth() {
       const controller = new AbortController()
@@ -162,6 +196,44 @@ export default {
   border: 1px solid rgba(255, 255, 255, 0.28);
   font-size: 0.78em;
   text-align: left;
+}
+
+.pwa-chip {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: rgba(34, 197, 94, 0.45);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pwa-chip:hover {
+  background: rgba(34, 197, 94, 0.35);
+  border-color: rgba(34, 197, 94, 0.65);
+}
+
+.pwa-chip-capable {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.45);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pwa-chip-capable:hover {
+  background: rgba(59, 130, 246, 0.35);
+  border-color: rgba(59, 130, 246, 0.65);
+}
+
+.pwa-detail {
+  margin-top: 10px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  font-size: 0.78em;
+  text-align: left;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 768px) {
