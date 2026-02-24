@@ -1,5 +1,5 @@
 <template>
-  <div class="app" :data-theme="currentTheme">
+  <div class="app" :data-theme="currentTheme" :style="appStyleVars">
     <Header />
 
     <!-- Global Theme Switcher -->
@@ -20,49 +20,155 @@
       </div>
     </div>
 
+    <div class="global-adjust-bar">
+      <div class="adjust-item">
+        <label class="adjust-label" for="font-scale">字体</label>
+        <input
+          id="font-scale"
+          type="range"
+          min="85"
+          max="125"
+          step="1"
+          v-model.number="appearance.fontScale"
+          @input="onAppearanceChange"
+          class="range-input"
+        />
+        <span class="adjust-value">{{ appearance.fontScale }}%</span>
+      </div>
+
+      <div class="adjust-item adjust-toggle">
+        <label class="checkbox-inline">
+          <input
+            type="checkbox"
+            v-model="appearance.useCustomColors"
+            @change="onCustomColorsToggle"
+          />
+          <span>启用自定义颜色</span>
+        </label>
+      </div>
+
+      <div class="adjust-item">
+        <label class="adjust-label">主色</label>
+        <input
+          type="color"
+          v-model="appearance.primaryColor"
+          :disabled="!appearance.useCustomColors"
+          @input="onAppearanceChange"
+          class="color-input"
+        />
+      </div>
+
+      <div class="adjust-item">
+        <label class="adjust-label">文字</label>
+        <input
+          type="color"
+          v-model="appearance.textColor"
+          :disabled="!appearance.useCustomColors"
+          @input="onAppearanceChange"
+          class="color-input"
+        />
+      </div>
+
+      <div class="adjust-item">
+        <label class="adjust-label">背景</label>
+        <input
+          type="color"
+          v-model="appearance.bgColor"
+          :disabled="!appearance.useCustomColors"
+          @input="onAppearanceChange"
+          class="color-input"
+        />
+      </div>
+
+      <button class="reset-adjust-btn" @click="resetAppearance">重置外观</button>
+    </div>
+
     <div class="tabs-container">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         class="tab-btn"
         :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
+        @click="onTabClick(tab.id)"
+        @mouseenter="preloadTab(tab.id)"
+        @touchstart.passive="preloadTab(tab.id)"
       >
         {{ tab.label }}
       </button>
     </div>
 
     <HomePage v-if="activeTab === 'home'" />
-    <SpringReference v-if="activeTab === 'spring'" />
-    <ExcelReference v-if="activeTab === 'excel'" />
-    <ChatHistory v-if="activeTab === 'chat'" />
-    <ItsmPage v-if="activeTab === 'itsm'" />
-    <GitBranchManager v-if="activeTab === 'git'" />
-    <VideoManager v-if="activeTab === 'video'" />
-    <MusicManager v-if="activeTab === 'music'" />
-    <LogCenter v-if="activeTab === 'logs'" />
-    <WeiboCrawler v-if="activeTab === 'weibo'" />
-    <ScheduledTaskManager v-if="activeTab === 'scheduler'" />
+    <KeepAlive :max="8" v-else>
+      <component :is="currentAsyncComponent" :key="activeTab" />
+    </KeepAlive>
   </div>
 </template>
 
 <script>
+import { KeepAlive, defineAsyncComponent } from 'vue'
 import Header from './components/Header.vue'
 import HomePage from './pages/HomePage.vue'
-import SpringReference from './pages/SpringReference.vue'
-import ExcelReference from './pages/ExcelReference.vue'
-import ChatHistory from './pages/ChatHistory.vue'
-import ItsmPage from './pages/itsm/ItsmPage.vue'
-import GitBranchManager from './pages/GitBranchManager.vue'
-import VideoManager from './pages/VideoManager.vue'
-import MusicManager from './pages/MusicManager.vue'
-import LogCenter from './pages/LogCenter.vue'
-import WeiboCrawler from './pages/WeiboCrawler.vue'
-import ScheduledTaskManager from './pages/ScheduledTaskManager.vue'
+
+const AsyncLoadingView = {
+  template: '<div class="tab-loading">页面加载中...</div>'
+}
+
+const AsyncErrorView = {
+  props: ['error'],
+  template: '<div class="tab-loading tab-loading-error">页面加载失败，请重试切换标签或刷新页面</div>'
+}
+
+const tabLoaders = {
+  spring: () => import('./pages/SpringReference.vue'),
+  excel: () => import('./pages/ExcelReference.vue'),
+  chat: () => import('./pages/ChatHistory.vue'),
+  itsm: () => import('./pages/itsm/ItsmPage.vue'),
+  git: () => import('./pages/GitBranchManager.vue'),
+  video: () => import('./pages/VideoManager.vue'),
+  music: () => import('./pages/MusicManager.vue'),
+  album: () => import('./pages/AlbumManager.vue'),
+  wiki: () => import('./pages/WikiCenter.vue'),
+  logs: () => import('./pages/LogCenter.vue'),
+  weibo: () => import('./pages/WeiboCrawler.vue'),
+  scheduler: () => import('./pages/ScheduledTaskManager.vue')
+}
+
+function createAsyncPage(loader) {
+  return defineAsyncComponent({
+    loader,
+    loadingComponent: AsyncLoadingView,
+    errorComponent: AsyncErrorView,
+    delay: 120,
+    timeout: 20000,
+    suspensible: false,
+    onError(error, retry, fail, attempts) {
+      if (attempts <= 2) {
+        retry()
+        return
+      }
+      console.error('页面异步加载失败', error)
+      fail()
+    }
+  })
+}
+
+const SpringReference = createAsyncPage(tabLoaders.spring)
+const ExcelReference = createAsyncPage(tabLoaders.excel)
+const ChatHistory = createAsyncPage(tabLoaders.chat)
+const ItsmPage = createAsyncPage(tabLoaders.itsm)
+const GitBranchManager = createAsyncPage(tabLoaders.git)
+const VideoManager = createAsyncPage(tabLoaders.video)
+const MusicManager = createAsyncPage(tabLoaders.music)
+const AlbumManager = createAsyncPage(tabLoaders.album)
+const WikiCenter = createAsyncPage(tabLoaders.wiki)
+const LogCenter = createAsyncPage(tabLoaders.logs)
+const WeiboCrawler = createAsyncPage(tabLoaders.weibo)
+const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 
 export default {
   components: {
     Header,
+    KeepAlive,
     HomePage,
     SpringReference,
     ExcelReference,
@@ -71,6 +177,8 @@ export default {
     GitBranchManager,
     VideoManager,
     MusicManager,
+    AlbumManager,
+    WikiCenter,
     LogCenter,
     WeiboCrawler,
     ScheduledTaskManager
@@ -88,6 +196,8 @@ export default {
         { id: 'git', label: 'Git 管理' },
         { id: 'video', label: '视频管理' },
         { id: 'music', label: '音乐管理' },
+        { id: 'album', label: '相册管理' },
+        { id: 'wiki', label: '维基百科' },
         { id: 'logs', label: '日志中心' },
         { id: 'weibo', label: '微博抓取' },
         { id: 'scheduler', label: '定时任务' }
@@ -99,29 +209,233 @@ export default {
         { id: 'orange', name: '暖阳橙', preview: 'linear-gradient(135deg, #f59e0b, #d97706)' },
         { id: 'pink', name: '樱花粉', preview: 'linear-gradient(135deg, #ec4899, #be185d)' },
         { id: 'dark', name: '暗夜', preview: 'linear-gradient(135deg, #374151, #111827)' }
-      ]
+      ],
+      appearance: {
+        fontScale: 100,
+        useCustomColors: false,
+        primaryColor: '#007aff',
+        textColor: '#1c1c1e',
+        bgColor: '#f2f2f7'
+      },
+      prefetchedTabs: {}
+    }
+  },
+  computed: {
+    currentAsyncComponent() {
+      const componentMap = {
+        spring: SpringReference,
+        excel: ExcelReference,
+        chat: ChatHistory,
+        itsm: ItsmPage,
+        git: GitBranchManager,
+        video: VideoManager,
+        music: MusicManager,
+        album: AlbumManager,
+        wiki: WikiCenter,
+        logs: LogCenter,
+        weibo: WeiboCrawler,
+        scheduler: ScheduledTaskManager
+      }
+      return componentMap[this.activeTab] || HomePage
+    },
+    appStyleVars() {
+      const styleVars = {
+        '--app-font-scale': String((this.appearance.fontScale || 100) / 100)
+      }
+
+      if (!this.appearance.useCustomColors) {
+        return styleVars
+      }
+
+      const primary = this.ensureHex(this.appearance.primaryColor, '#007aff')
+      const text = this.ensureHex(this.appearance.textColor, '#1c1c1e')
+      const bg = this.ensureHex(this.appearance.bgColor, '#f2f2f7')
+      const isBgDark = this.getLuminance(bg) < 0.5
+      const card = isBgDark ? this.mixHex(bg, '#ffffff', 0.08) : this.mixHex(bg, '#ffffff', 0.76)
+      const cardElevated = isBgDark ? this.mixHex(bg, '#ffffff', 0.14) : this.mixHex(bg, '#ffffff', 0.9)
+      const border = isBgDark ? this.mixHex(bg, '#ffffff', 0.18) : this.mixHex(bg, '#000000', 0.14)
+
+      styleVars['--app-primary'] = primary
+      styleVars['--app-primary-dark'] = this.mixHex(primary, '#000000', 0.22)
+      styleVars['--app-shadow'] = this.withAlpha(primary, 0.28)
+      styleVars['--app-shadow-light'] = this.withAlpha(primary, 0.14)
+      styleVars['--app-gradient'] = `linear-gradient(160deg, ${this.mixHex(primary, '#ffffff', 0.2)}, ${this.mixHex(primary, '#000000', 0.2)})`
+      styleVars['--app-bg'] = bg
+      styleVars['--app-card'] = card
+      styleVars['--app-card-elevated'] = cardElevated
+      styleVars['--app-group-bg'] = this.withAlpha(cardElevated, 0.82)
+      styleVars['--app-text'] = text
+      styleVars['--app-text-secondary'] = this.mixHex(text, bg, 0.28)
+      styleVars['--app-text-muted'] = this.mixHex(text, bg, 0.5)
+      styleVars['--app-border'] = border
+      styleVars['--app-on-primary'] = this.getLuminance(primary) > 0.54 ? '#111827' : '#ffffff'
+      styleVars['--app-soft-shadow'] = isBgDark
+        ? `0 14px 30px ${this.withAlpha('#000000', 0.38)}`
+        : `0 10px 28px ${this.withAlpha('#1c1c1e', 0.08)}`
+
+      return styleVars
     }
   },
   methods: {
     switchTheme(id) {
       this.currentTheme = id
       localStorage.setItem('app_theme', id)
-      // Sync body background
+      this.$nextTick(() => {
+        if (!this.appearance.useCustomColors) {
+          this.syncAppearanceWithThemeVars()
+        }
+        this.syncBodyBackground()
+      })
+    },
+    syncBodyBackground() {
       document.body.style.background = getComputedStyle(this.$el).getPropertyValue('--app-bg').trim()
       document.body.style.transition = 'background 0.5s ease'
+    },
+    onCustomColorsToggle() {
+      if (this.appearance.useCustomColors) {
+        this.syncAppearanceWithThemeVars()
+      }
+      this.onAppearanceChange()
+    },
+    onAppearanceChange() {
+      this.saveAppearancePrefs()
+      this.$nextTick(() => {
+        this.syncBodyBackground()
+      })
+    },
+    resetAppearance() {
+      this.appearance.fontScale = 100
+      this.appearance.useCustomColors = false
+      this.syncAppearanceWithThemeVars()
+      this.saveAppearancePrefs()
+      this.$nextTick(() => {
+        this.syncBodyBackground()
+      })
+    },
+    saveAppearancePrefs() {
+      localStorage.setItem('app_appearance', JSON.stringify(this.appearance))
+    },
+    syncAppearanceWithThemeVars() {
+      if (!this.$el) return
+      const css = getComputedStyle(this.$el)
+      this.appearance.primaryColor = this.ensureHex(css.getPropertyValue('--app-primary').trim(), '#007aff')
+      this.appearance.textColor = this.ensureHex(css.getPropertyValue('--app-text').trim(), '#1c1c1e')
+      this.appearance.bgColor = this.ensureHex(css.getPropertyValue('--app-bg').trim(), '#f2f2f7')
+    },
+    ensureHex(color, fallback) {
+      if (typeof color !== 'string' || !color.trim()) return fallback
+      const value = color.trim().toLowerCase()
+      if (/^#[0-9a-f]{6}$/.test(value)) return value
+      if (/^#[0-9a-f]{3}$/.test(value)) {
+        return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
+      }
+      const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (rgbMatch) {
+        return this.rgbToHex(
+          Number.parseInt(rgbMatch[1], 10),
+          Number.parseInt(rgbMatch[2], 10),
+          Number.parseInt(rgbMatch[3], 10)
+        )
+      }
+      return fallback
+    },
+    hexToRgb(hex) {
+      const normalized = this.ensureHex(hex, '#000000')
+      return {
+        r: Number.parseInt(normalized.slice(1, 3), 16),
+        g: Number.parseInt(normalized.slice(3, 5), 16),
+        b: Number.parseInt(normalized.slice(5, 7), 16)
+      }
+    },
+    rgbToHex(r, g, b) {
+      const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)))
+      return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`
+    },
+    mixHex(a, b, ratio = 0.5) {
+      const p = Math.max(0, Math.min(1, ratio))
+      const c1 = this.hexToRgb(a)
+      const c2 = this.hexToRgb(b)
+      return this.rgbToHex(
+        c1.r + (c2.r - c1.r) * p,
+        c1.g + (c2.g - c1.g) * p,
+        c1.b + (c2.b - c1.b) * p
+      )
+    },
+    withAlpha(hex, alpha) {
+      const { r, g, b } = this.hexToRgb(hex)
+      const a = Math.max(0, Math.min(1, alpha))
+      return `rgba(${r}, ${g}, ${b}, ${a})`
+    },
+    getLuminance(hex) {
+      const { r, g, b } = this.hexToRgb(hex)
+      const toLinear = (c) => {
+        const v = c / 255
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+      }
+      return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+    },
+    onTabClick(tabId) {
+      this.activeTab = tabId
+      this.preloadNextTabs(tabId)
+    },
+    preloadTab(tabId) {
+      if (!tabId || tabId === 'home') return
+      if (this.prefetchedTabs[tabId]) return
+      const loader = tabLoaders[tabId]
+      if (!loader) return
+      this.prefetchedTabs[tabId] = true
+      loader().catch(() => {
+        this.prefetchedTabs[tabId] = false
+      })
+    },
+    preloadNextTabs(tabId) {
+      const index = this.tabs.findIndex((item) => item.id === tabId)
+      if (index < 0) return
+      const next = this.tabs[index + 1]?.id
+      const next2 = this.tabs[index + 2]?.id
+      this.preloadTab(next)
+      this.preloadTab(next2)
+    },
+    warmupCommonTabs() {
+      const warm = () => {
+        this.preloadTab('wiki')
+        this.preloadTab('album')
+        this.preloadTab('logs')
+      }
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(warm, { timeout: 1200 })
+      } else {
+        setTimeout(warm, 400)
+      }
     }
   },
   mounted() {
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
+    const savedAppearance = localStorage.getItem('app_appearance')
+    if (savedAppearance) {
+      try {
+        const parsed = JSON.parse(savedAppearance)
+        this.appearance = {
+          ...this.appearance,
+          ...parsed
+        }
+      } catch (error) {
+        console.warn('解析外观设置失败，已使用默认值', error)
+      }
+    }
     this.$nextTick(() => {
-      document.body.style.background = getComputedStyle(this.$el).getPropertyValue('--app-bg').trim()
+      if (!this.appearance.useCustomColors) {
+        this.syncAppearanceWithThemeVars()
+      }
+      this.syncBodyBackground()
     })
+    this.warmupCommonTabs()
   },
   watch: {
     currentTheme() {
       this.$nextTick(() => {
-        document.body.style.background = getComputedStyle(this.$el).getPropertyValue('--app-bg').trim()
+        this.syncBodyBackground()
       })
     }
   }
@@ -134,6 +448,7 @@ export default {
   margin: 0 auto;
   transition: color 0.2s ease;
   color: var(--app-text);
+  font-size: calc(16px * var(--app-font-scale, 1));
 }
 
 .global-theme-bar {
@@ -214,6 +529,76 @@ export default {
   flex-wrap: wrap;
 }
 
+.global-adjust-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--app-group-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow: var(--app-soft-shadow);
+}
+
+.adjust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adjust-label {
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  font-weight: 600;
+}
+
+.adjust-value {
+  min-width: 40px;
+  font-size: 0.82em;
+  color: var(--app-text-secondary);
+  font-weight: 600;
+}
+
+.range-input {
+  width: 120px;
+}
+
+.color-input {
+  width: 36px;
+  height: 28px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card-elevated);
+  cursor: pointer;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84em;
+  color: var(--app-text-secondary);
+  font-weight: 600;
+}
+
+.reset-adjust-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reset-adjust-btn:hover {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
 .tab-btn {
   padding: 9px 14px;
   background: transparent;
@@ -238,6 +623,20 @@ export default {
   box-shadow: 0 8px 18px var(--app-shadow);
 }
 
+.tab-loading {
+  padding: 28px 12px;
+  border: 1px dashed var(--app-border);
+  border-radius: 12px;
+  color: var(--app-text-muted);
+  background: var(--app-card);
+  text-align: center;
+}
+
+.tab-loading-error {
+  border-color: color-mix(in srgb, #ff3b30 40%, var(--app-border));
+  color: #b91c1c;
+}
+
 @media (max-width: 768px) {
   .global-theme-bar {
     padding: 8px 10px;
@@ -252,6 +651,13 @@ export default {
   .pill-name { display: none; }
   .tabs-container { gap: 6px; margin-bottom: 14px; padding: 6px; }
   .tab-btn { padding: 8px 10px; font-size: 0.8em; }
+  .global-adjust-bar {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .range-input {
+    width: 90px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -260,6 +666,11 @@ export default {
   .theme-label { font-size: 0.75em; }
   .tabs-container { gap: 4px; margin-bottom: 10px; padding: 5px; }
   .tab-btn { padding: 7px 9px; font-size: 0.76em; }
+  .global-adjust-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 </style>
 
