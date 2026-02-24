@@ -1,153 +1,158 @@
 import express from 'express'
 import fsp from 'fs/promises'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
 const router = express.Router()
 
-// 文档所在目录（项目根目录）
-const DOCS_DIR = path.resolve(process.cwd())
+// 获取项目根目录
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const PROJECT_ROOT = path.resolve(__dirname, '../../')
 
-// 允许的文件
-const ALLOWED_FILES = [
-  'LEARNING_GUIDE.md',
-  'QUICK_REFERENCE.md',
-  'README.md'
-]
+// 扫描文档目录
+async function scanDocsDirectory() {
+  const docFiles = []
 
-/**
- * 验证文件名，防止目录遍历攻击
- */
-function validateFileName(filename) {
-  if (!filename || typeof filename !== 'string') {
-    return null
+  try {
+    // 检查根目录的 markdown 文件
+    const entries = await fsp.readdir(PROJECT_ROOT, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = path.join(PROJECT_ROOT, entry.name)
+        const stat = await fsp.stat(filePath)
+        docFiles.push({
+          name: entry.name,
+          filename: entry.name,
+          size: stat.size,
+          sizeKB: Math.round(stat.size / 1024),
+          lastModified: stat.mtime.toISOString(),
+          extension: '.md'
+        })
+      }
+    }
+  } catch (error) {
+    console.error('扫描文档目录失败:', error)
+    return []
   }
 
-  const normalized = path.normalize(filename)
-  if (normalized.includes('..') || normalized.startsWith('/')) {
-    return null
-  }
+  // 按名称排序
+  docFiles.sort((a, b) => {
+    if (a.name.includes('LEARNING')) return -1
+    if (b.name.includes('LEARNING')) return 1
+    if (a.name.includes('QUICK')) return -1
+    if (b.name.includes('QUICK')) return 1
+    return a.name.localeCompare(b.name)
+  })
 
-  if (!ALLOWED_FILES.includes(normalized)) {
-    return null
-  }
-
-  return normalized
+  return docFiles
 }
 
-/**
- * GET /api/docs/list - 获取所有可用文档
- */
+// 验证文件名，防止路径遍历
+function validateFilename(filename) {
+  if (!/^[\w\-_.]+\.md$/.test(filename)) {
+    return false
+  }
+
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return false
+  }
+
+  return true
+}
+
+// GET /api/docs/list - 获取文档列表
 router.get('/list', async (req, res) => {
   try {
-    const files = []
+    const docFiles = await scanDocsDirectory()
 
-    for (const filename of ALLOWED_FILES) {
-      const filepath = path.join(DOCS_DIR, filename)
-      try {
-        const stat = await fsp.stat(filepath)
-        if (stat.isFile()) {
-          files.push({
-            name: filename.replace('.md', ''),
-            filename: filename,
-            size: stat.size,
-            lastModified: stat.mtime.toISOString(),
-            displayName: filename === 'LEARNING_GUIDE.md'
-              ? '完整学习指南'
-              : filename === 'QUICK_REFERENCE.md'
-              ? '快速参考卡'
-              : 'README'
-          })
-        }
-      } catch (error) {
-        // 文件不存在，跳过
-      }
+    const summary = {
+      total: docFiles.length,
+      totalSize: docFiles.reduce((sum, f) => sum + f.size, 0),
+      lastUpdated: docFiles.length > 0
+        ? new Date(Math.max(...docFiles.map(f => new Date(f.lastModified))))
+        : null
     }
 
     res.json({
-      success: true,
-      files: files,
-      lastSync: new Date().toISOString()
+      files: docFiles,
+      summary
     })
   } catch (error) {
     console.error('获取文档列表失败:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: '获取文档列表失败' })
   }
 })
 
-/**
- * GET /api/docs/content - 获取文档内容
- */
+// GET /api/docs/content - 获取文档内容
 router.get('/content', async (req, res) => {
   const { file } = req.query
 
-  // 验证文件名
-  const validatedFile = validateFileName(file)
-  if (!validatedFile) {
+  if (!file) {
+    return res.status(400).json({ error: '文件名参数缺失' })
+  }
+
+  if (!validateFilename(file)) {
     return res.status(400).json({ error: '无效的文件名' })
   }
 
   try {
-    const filepath = path.join(DOCS_DIR, validatedFile)
-    const content = await fsp.readFile(filepath, 'utf-8')
+    const filePath = path.join(PROJECT_ROOT, file)
 
-    // 获取文件统计信息
-    const stat = await fsp.stat(filepath)
+    // 确保文件在项目根目录内
+    const resolvedPath = path.resolve(filePath)
+    const resolvedRoot = path.resolve(PROJECT_ROOT)
+
+    if (!resolvedPath.startsWith(resolvedRoot)) {
+      return res.status(403).json({ error: '无权访问该文件' })
+    }
+
+    // 检查文件是否存在
+    try {
+      await fsp.access(filePath)
+    } catch {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 读取文件内容
+    const content = await fsp.readFile(filePath, 'utf-8')
+    const stat = await fsp.stat(filePath)
 
     res.json({
-      success: true,
-      filename: validatedFile,
-      content: content,
+      filename: file,
+      content,
       size: stat.size,
-      lastModified: stat.mtime.toISOString(),
-      createdAt: stat.birthtime.toISOString()
+      lastModified: stat.mtime.toISOString()
     })
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: '文档不存在' })
-    }
-    console.error('读取文档失败:', error)
-    res.status(500).json({ error: error.message })
+    console.error('读取文档内容失败:', error)
+    res.status(500).json({ error: '读取文档内容失败' })
   }
 })
 
-/**
- * POST /api/docs/sync - 同步文档列表（重新扫描）
- */
+// POST /api/docs/sync - 同步文档（重新扫描）
 router.post('/sync', async (req, res) => {
   try {
-    const files = []
+    const docFiles = await scanDocsDirectory()
 
-    for (const filename of ALLOWED_FILES) {
-      const filepath = path.join(DOCS_DIR, filename)
-      try {
-        const stat = await fsp.stat(filepath)
-        if (stat.isFile()) {
-          files.push({
-            name: filename.replace('.md', ''),
-            filename: filename,
-            size: stat.size,
-            lastModified: stat.mtime.toISOString(),
-            displayName: filename === 'LEARNING_GUIDE.md'
-              ? '完整学习指南'
-              : filename === 'QUICK_REFERENCE.md'
-              ? '快速参考卡'
-              : 'README'
-          })
-        }
-      } catch (error) {
-        // 文件不存在，跳过
-      }
+    const summary = {
+      total: docFiles.length,
+      totalSize: docFiles.reduce((sum, f) => sum + f.size, 0),
+      lastUpdated: docFiles.length > 0
+        ? new Date(Math.max(...docFiles.map(f => new Date(f.lastModified))))
+        : null,
+      syncTime: new Date().toISOString()
     }
 
     res.json({
-      success: true,
-      files: files,
-      syncedAt: new Date().toISOString(),
-      message: `成功同步 ${files.length} 个文档`
+      files: docFiles,
+      summary,
+      message: `已同步 ${docFiles.length} 个文档`
     })
   } catch (error) {
     console.error('同步文档失败:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: '同步文档失败' })
   }
 })
 
