@@ -19,7 +19,9 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      const err = new Error(error.error || `HTTP ${response.status}`);
+      err.details = error;
+      throw err;
     }
 
     return await response.json();
@@ -148,6 +150,12 @@ export const api = {
     downloadUrl: (filePath) => getApiUrl(`/music/download?path=${encodeURIComponent(filePath)}`)
   },
 
+  // Album Library
+  albums: {
+    getLibrary: () => apiRequest('/albums/library'),
+    saveLibrary: (items) => apiRequest('/albums/library', { method: 'PUT', body: JSON.stringify({ items }) })
+  },
+
   // Document Scanner
   docScanner: {
     scan: (payload) => apiRequest('/doc-scanner/scan', { method: 'POST', body: JSON.stringify(payload) }),
@@ -186,5 +194,22 @@ export const api = {
     logsAll: () => apiRequest('/scheduler-tasks/logs/all'),
     clearLogs: () => apiRequest('/scheduler-tasks/logs', { method: 'DELETE' }),
     importLegacyDocScheduler: (status) => apiRequest('/scheduler-tasks/import-legacy-doc-scheduler', { method: 'POST', body: JSON.stringify({ status }) })
+  },
+
+  // Wiki Library
+  wiki: {
+    getLibrary: () => apiRequest('/wiki/library'),
+    saveLibrary: (items) => apiRequest('/wiki/library', { method: 'PUT', body: JSON.stringify({ items }) }),
+    importDocument: (payload, options = {}) => apiRequest('/wiki/import-document', {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+  },
+
+  // Runtime Logs
+  runtimeLogs: {
+    getAll: (limit = 400) => apiRequest(`/runtime-logs?limit=${encodeURIComponent(limit)}`),
+    clear: () => apiRequest('/runtime-logs', { method: 'DELETE' })
   }
 };
