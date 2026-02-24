@@ -211,5 +211,12 @@ export const api = {
   runtimeLogs: {
     getAll: (limit = 400) => apiRequest(`/runtime-logs?limit=${encodeURIComponent(limit)}`),
     clear: () => apiRequest('/runtime-logs', { method: 'DELETE' })
+  },
+
+  // Documentation
+  docs: {
+    list: () => apiRequest('/docs/list'),
+    getContent: (filename) => apiRequest(`/docs/content?file=${encodeURIComponent(filename)}`),
+    sync: () => apiRequest('/docs/sync', { method: 'POST' })
   }
 };

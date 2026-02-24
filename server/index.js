@@ -25,6 +25,7 @@ import scriptRunnerRouter from './routes/scriptRunner.js';
 import schedulerTasksRouter from './routes/schedulerTasks.js';
 import wikiRouter from './routes/wiki.js';
 import runtimeLogsRouter from './routes/runtimeLogs.js';
+import docsRouter from './routes/docs.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -81,6 +82,7 @@ app.use('/api/script-runner', scriptRunnerRouter);
 app.use('/api/scheduler-tasks', schedulerTasksRouter);
 app.use('/api/wiki', wikiRouter);
 app.use('/api/runtime-logs', runtimeLogsRouter);
+app.use('/api/docs', docsRouter);
 
 // 404 处理
 app.use((req, res) => {

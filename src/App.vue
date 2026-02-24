@@ -130,7 +130,8 @@ const tabLoaders = {
   wiki: () => import('./pages/WikiCenter.vue'),
   logs: () => import('./pages/LogCenter.vue'),
   weibo: () => import('./pages/WeiboCrawler.vue'),
-  scheduler: () => import('./pages/ScheduledTaskManager.vue')
+  scheduler: () => import('./pages/ScheduledTaskManager.vue'),
+  docs: () => import('./pages/DocumentationCenter.vue')
 }
 
 function createAsyncPage(loader) {
@@ -164,6 +165,7 @@ const WikiCenter = createAsyncPage(tabLoaders.wiki)
 const LogCenter = createAsyncPage(tabLoaders.logs)
 const WeiboCrawler = createAsyncPage(tabLoaders.weibo)
 const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
+const DocumentationCenter = createAsyncPage(tabLoaders.docs)
 
 export default {
   components: {
@@ -181,7 +183,8 @@ export default {
     WikiCenter,
     LogCenter,
     WeiboCrawler,
-    ScheduledTaskManager
+    ScheduledTaskManager,
+    DocumentationCenter
   },
   data() {
     return {
@@ -200,7 +203,8 @@ export default {
         { id: 'wiki', label: '维基百科' },
         { id: 'logs', label: '日志中心' },
         { id: 'weibo', label: '微博抓取' },
-        { id: 'scheduler', label: '定时任务' }
+        { id: 'scheduler', label: '定时任务' },
+        { id: 'docs', label: '📚 文档中心' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
@@ -234,7 +238,8 @@ export default {
         wiki: WikiCenter,
         logs: LogCenter,
         weibo: WeiboCrawler,
-        scheduler: ScheduledTaskManager
+        scheduler: ScheduledTaskManager,
+        docs: DocumentationCenter
       }
       return componentMap[this.activeTab] || HomePage
     },
