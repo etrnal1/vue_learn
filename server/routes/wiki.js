@@ -110,6 +110,14 @@ function runCommand(command, args) {
   });
 }
 
+async function extractTextByStrings(filePath, minChars = 4) {
+  try {
+    return await runCommand('strings', ['-n', String(minChars), filePath]);
+  } catch (error) {
+    return '';
+  }
+}
+
 function hasMeaningfulText(text, minChars = 30) {
   const normalized = String(text || '')
     .replace(/\s+/g, '')
@@ -146,6 +154,15 @@ async function extractTextFromFile(filePath, ext) {
   }
   if (lowered === '.docx') {
     try {
+      const htmlResult = await mammoth.convertToHtml({ path: filePath });
+      const html = String(htmlResult?.value || '').trim();
+      if (hasMeaningfulText(html, 12)) {
+        return html;
+      }
+    } catch (error) {
+      // continue fallback
+    }
+    try {
       const result = await mammoth.extractRawText({ path: filePath });
       if (hasMeaningfulText(result?.value || '', 12)) {
         return result.value;
@@ -153,10 +170,18 @@ async function extractTextFromFile(filePath, ext) {
     } catch (error) {
       // continue fallback
     }
-    return await runCommand('textutil', ['-convert', 'txt', '-stdout', filePath]);
+    try {
+      return await runCommand('textutil', ['-convert', 'txt', '-stdout', filePath]);
+    } catch (error) {
+      return await extractTextByStrings(filePath);
+    }
   }
   if (lowered === '.doc') {
-    return await runCommand('textutil', ['-convert', 'txt', '-stdout', filePath]);
+    try {
+      return await runCommand('textutil', ['-convert', 'txt', '-stdout', filePath]);
+    } catch (error) {
+      return await extractTextByStrings(filePath);
+    }
   }
   if (lowered === '.pdf') {
     const attempts = [];
@@ -195,6 +220,13 @@ async function extractTextFromFile(filePath, ext) {
     }
     try {
       const text = await extractTextFromPdfBinary(filePath);
+      attempts.push(text);
+      if (hasMeaningfulText(text, 12)) return text;
+    } catch (error) {
+      // continue fallback chain
+    }
+    try {
+      const text = await extractTextByStrings(filePath);
       attempts.push(text);
       if (hasMeaningfulText(text, 12)) return text;
     } catch (error) {
@@ -286,6 +318,9 @@ router.post('/import-document', async (req, res) => {
     const tempPath = path.join(WIKI_IMPORT_DIR, tempName);
     const base64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
     const buffer = Buffer.from(base64 || '', 'base64');
+    if (!buffer.length) {
+      return res.status(400).json({ error: '上传内容为空或 base64 数据无效' });
+    }
     await fsp.writeFile(tempPath, buffer);
 
     let content = await extractTextFromFile(tempPath, ext);
