@@ -237,6 +237,16 @@
       </div>
     </div>
 
+    <div v-if="lastOperation" class="operation-result card" :class="lastOperation.type">
+      <div class="operation-head">
+        <strong>{{ lastOperation.title }}</strong>
+        <span class="subtitle">{{ lastOperation.time }}</span>
+      </div>
+      <div class="operation-message">{{ lastOperation.message }}</div>
+      <pre v-if="lastOperation.output" class="operation-output"><code>{{ lastOperation.output }}</code></pre>
+      <div v-if="lastOperation.hint" class="operation-hint">提示：{{ lastOperation.hint }}</div>
+    </div>
+
     <!-- 提交历史弹窗 -->
     <div v-if="showCommits" class="modal-overlay" @click="showCommits = false">
       <div class="modal-content" @click.stop>
@@ -245,8 +255,17 @@
           <button @click="showCommits = false" class="btn-close">✕</button>
         </div>
         <div class="commits-list">
-          <div v-for="(commit, idx) in commits" :key="idx" class="commit-item">
-            <code>{{ commit.raw }}</code>
+          <div v-if="commits.length === 0" class="empty-state">暂无提交记录</div>
+          <div v-for="commit in commits" :key="commit.fullHash || commit.hash" class="commit-item pretty">
+            <div class="commit-item-main">
+              <span class="commit-hash-chip">{{ commit.hash || '-' }}</span>
+              <span class="commit-subject-text">{{ commit.subject || commit.message || commit.raw }}</span>
+            </div>
+            <div class="commit-item-meta">
+              <span>{{ commit.author || '未知作者' }}</span>
+              <span>{{ formatDateTime(commit.date) }}</span>
+              <span v-if="commit.stats">文件 {{ commit.stats.filesChanged || 0 }} / +{{ commit.stats.insertions || 0 }} -{{ commit.stats.deletions || 0 }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -498,6 +517,7 @@ export default {
       showDeleteDialog: false,
       deleteBranch: null,
       forceDelete: false,
+      lastOperation: null,
       message: null,
 
       // 文件浏览相关
@@ -675,10 +695,11 @@ export default {
       this.showCommits = true
 
       try {
-        const data = await api.get(`/git/branch-commits/${this.encodeRef(branchName)}?limit=20`)
+        const data = await api.get(`/git/history?ref=${this.encodeRef(branchName)}&limit=30`)
         this.commits = data.commits || []
       } catch (error) {
         this.showMessage('获取提交历史失败: ' + error.message, 'error')
+        this.commits = []
       }
     },
 
@@ -796,9 +817,22 @@ export default {
           prune
         })
         this.showMessage(data.message, 'success')
+        this.setOperationResult({
+          type: 'success',
+          title: prune ? '拉取并清理成功' : '拉取成功',
+          message: data.message,
+          output: data.output
+        })
         await this.refreshData()
       } catch (error) {
         this.showMessage('拉取失败: ' + error.message, 'error')
+        this.setOperationResult({
+          type: 'error',
+          title: prune ? '拉取并清理失败' : '拉取失败',
+          message: error.message,
+          output: error.details?.output || '',
+          hint: error.details?.hint || ''
+        })
       }
     },
     async pushBranch(branchName) {
@@ -812,9 +846,22 @@ export default {
           branchName
         })
         this.showMessage(data.message, 'success')
+        this.setOperationResult({
+          type: 'success',
+          title: '推送成功',
+          message: data.message,
+          output: data.output
+        })
         await this.refreshData()
       } catch (error) {
         this.showMessage('推送失败: ' + error.message, 'error')
+        this.setOperationResult({
+          type: 'error',
+          title: '推送失败',
+          message: error.message,
+          output: error.details?.output || '',
+          hint: error.details?.hint || ''
+        })
       }
     },
     async pushCurrentBranch() {
@@ -840,6 +887,12 @@ export default {
       try {
         const commitRes = await api.post('/git/commit', { message })
         this.showMessage(commitRes.message, 'success')
+        this.setOperationResult({
+          type: 'success',
+          title: '本地提交成功',
+          message: commitRes.message,
+          output: commitRes.output
+        })
         this.commitMessage = ''
 
         if (this.pushAfterCommit) {
@@ -853,6 +906,13 @@ export default {
         }
       } catch (error) {
         this.showMessage('提交失败: ' + error.message, 'error')
+        this.setOperationResult({
+          type: 'error',
+          title: '本地提交失败',
+          message: error.message,
+          output: error.details?.output || '',
+          hint: error.details?.hint || ''
+        })
       } finally {
         this.committing = false
       }
@@ -912,6 +972,13 @@ export default {
       setTimeout(() => {
         this.message = null
       }, 4000)
+    },
+    setOperationResult(payload) {
+      this.lastOperation = {
+        ...payload,
+        hint: payload.hint || '',
+        time: new Date().toLocaleString('zh-CN')
+      }
     },
 
     async viewFiles(branchName) {
@@ -1018,6 +1085,17 @@ export default {
       const hour = String(date.getHours()).padStart(2, '0')
       const minute = String(date.getMinutes()).padStart(2, '0')
       return `${month}月${day}日 ${hour}:${minute}`
+    },
+    formatDateTime(dateStr) {
+      if (!dateStr) return '时间未知'
+      const date = new Date(dateStr)
+      if (Number.isNaN(date.getTime())) return '时间未知'
+      return date.toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     }
   },
 
@@ -1113,6 +1191,50 @@ export default {
   margin-bottom: 10px;
   font-size: 1.05em;
   color: var(--app-text);
+}
+
+.operation-result {
+  border-left: 4px solid var(--app-primary);
+}
+
+.operation-result.success {
+  border-left-color: #10b981;
+}
+
+.operation-result.error {
+  border-left-color: #ef4444;
+}
+
+.operation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.operation-message {
+  color: var(--app-text);
+  font-size: 0.92em;
+  margin-bottom: 8px;
+}
+
+.operation-output {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  max-height: 180px;
+  overflow: auto;
+  font-size: 0.8em;
+}
+
+.operation-hint {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: #f59e0b;
 }
 
 .remote-ops-row {
@@ -1305,10 +1427,10 @@ export default {
 }
 
 .filter-btn.active {
-  background: var(--app-primary);
-  border-color: transparent;
-  color: var(--app-on-primary);
-  box-shadow: 0 8px 18px var(--app-shadow);
+  background: var(--app-shadow-light);
+  border-color: var(--app-primary);
+  color: var(--app-text);
+  box-shadow: none;
 }
 
 /* 分支列表 */
@@ -1335,15 +1457,15 @@ export default {
 }
 
 .branch-item.current {
-  background: var(--app-primary);
-  border-color: transparent;
-  color: var(--app-on-primary);
-  box-shadow: 0 8px 18px var(--app-shadow);
+  background: var(--app-shadow-light);
+  border-color: var(--app-primary);
+  color: var(--app-text);
+  box-shadow: none;
 }
 
 .branch-item.current .branch-name,
 .branch-item.current .current-badge {
-  color: var(--app-on-primary);
+  color: var(--app-text);
 }
 
 .branch-info {
@@ -1364,7 +1486,8 @@ export default {
 
 .current-badge {
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.26);
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
   border-radius: 6px;
   font-size: 0.75em;
   font-weight: 700;
@@ -1401,14 +1524,14 @@ export default {
 }
 
 .btn-primary {
-  background: var(--app-primary);
-  border-color: transparent;
-  color: var(--app-on-primary);
-  box-shadow: 0 8px 18px var(--app-shadow);
+  background: var(--app-shadow-light);
+  border-color: var(--app-primary);
+  color: var(--app-text);
+  box-shadow: none;
 }
 
 .btn-primary:hover {
-  color: var(--app-on-primary);
+  color: var(--app-text);
 }
 
 .btn-sm {
@@ -1417,10 +1540,10 @@ export default {
 }
 
 .btn-refresh {
-  background: var(--app-primary);
-  color: var(--app-on-primary);
-  border-color: transparent;
-  box-shadow: 0 8px 18px var(--app-shadow);
+  background: var(--app-shadow-light);
+  color: var(--app-text);
+  border-color: var(--app-primary);
+  box-shadow: none;
 }
 
 .btn-stash {
@@ -1430,36 +1553,36 @@ export default {
 }
 
 .btn-checkout {
-  background: var(--app-primary);
-  color: var(--app-on-primary);
-  border-color: transparent;
-  box-shadow: 0 8px 18px var(--app-shadow);
+  background: var(--app-shadow-light);
+  color: var(--app-text);
+  border-color: var(--app-primary);
+  box-shadow: none;
 }
 
 .btn-view {
-  background: #8b5cf6;
-  color: #fff;
-  border-color: transparent;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
 }
 
 .btn-merge {
-  background: #10b981;
-  color: #fff;
-  border-color: transparent;
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #6ee7b7;
 }
 
 .btn-push {
-  background: #0ea5e9;
-  color: #fff;
-  border-color: transparent;
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
 }
 
 .btn-delete,
 .btn-danger {
-  background: #ff3b30;
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 8px 18px rgba(255, 59, 48, 0.24);
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+  box-shadow: none;
 }
 
 .btn-cancel {
@@ -1638,6 +1761,43 @@ export default {
   color: var(--app-text);
   white-space: pre;
   overflow-x: auto;
+}
+
+.commit-item.pretty {
+  white-space: normal;
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+}
+
+.commit-item-main {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.commit-hash-chip {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--app-shadow-light);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+}
+
+.commit-subject-text {
+  color: var(--app-text);
+  font-size: 0.92em;
+}
+
+.commit-item-meta {
+  margin-top: 6px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.8em;
+  color: var(--app-text-muted);
 }
 
 /* 提示消息 */
@@ -1833,7 +1993,7 @@ export default {
   gap: 8px;
   padding: 12px 24px;
   border-bottom: 2px solid var(--app-border);
-  background: var(--app-border);
+  background: var(--app-card-elevated);
 }
 
 .tab-btn {
@@ -1853,8 +2013,9 @@ export default {
 }
 
 .tab-btn.active {
-  background: var(--app-primary);
-  color: var(--app-on-primary);
+  background: var(--app-shadow-light);
+  color: var(--app-text);
+  border: 1px solid var(--app-primary);
 }
 
 .file-content-body {
@@ -1871,8 +2032,9 @@ export default {
 .code-block {
   margin: 0;
   padding: 16px;
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   font-family: 'Courier New', monospace;
   font-size: 0.9em;
