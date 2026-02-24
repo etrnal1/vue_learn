@@ -318,6 +318,10 @@ export default {
 <style scoped>
 .git-log-page {
   animation: fadeIn 0.4s ease;
+  padding: 8px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  border: 1px solid var(--app-border);
 }
 
 @keyframes fadeIn {
@@ -331,12 +335,12 @@ export default {
 
 .log-header h2 {
   margin: 0 0 8px;
-  color: #333;
+  color: var(--app-text);
   font-size: 1.4em;
 }
 
 .log-subtitle {
-  color: #666;
+  color: var(--app-text-muted);
   font-size: 0.9em;
   margin: 0;
 }
@@ -350,18 +354,18 @@ export default {
 }
 
 .stat-card {
-  background: white;
+  background: var(--app-card);
   border-radius: 10px;
   padding: 18px;
   text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  border: 1px solid #e5e7eb;
+  box-shadow: var(--app-soft-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .stat-number {
   font-size: 1.8em;
   font-weight: 800;
-  color: #333;
+  color: var(--app-text);
   line-height: 1;
   margin-bottom: 6px;
 }
@@ -371,7 +375,7 @@ export default {
 
 .stat-label {
   font-size: 0.8em;
-  color: #999;
+  color: var(--app-text-muted);
   font-weight: 600;
 }
 
@@ -385,13 +389,13 @@ export default {
 
 .filter-btn {
   padding: 8px 16px;
-  border: 2px solid #e5e7eb;
-  background: white;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
   border-radius: 20px;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.85em;
-  color: #666;
+  color: var(--app-text-secondary);
   transition: all 0.3s;
 }
 
@@ -401,9 +405,9 @@ export default {
 }
 
 .filter-btn.active {
-  background: #3b82f6;
-  color: white;
-  border-color: #3b82f6;
+  background: var(--app-shadow-light);
+  color: var(--app-text);
+  border-color: var(--app-primary);
 }
 
 /* === 时间线 === */
@@ -419,7 +423,7 @@ export default {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(to bottom, #3b82f6, #8b5cf6, #e5e7eb);
+  background: linear-gradient(to bottom, var(--app-primary), #8b5cf6, var(--app-border));
   border-radius: 2px;
 }
 
@@ -435,7 +439,7 @@ export default {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: white;
+  background: var(--app-card);
   border: 3px solid #3b82f6;
   display: flex;
   align-items: center;
@@ -455,18 +459,18 @@ export default {
 }
 
 .timeline-card {
-  background: white;
+  background: var(--app-card);
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--app-border);
+  box-shadow: var(--app-soft-shadow);
   padding: 16px 20px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .timeline-card:hover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
-  border-color: #d1d5db;
+  box-shadow: 0 10px 24px var(--app-shadow-light);
+  border-color: var(--app-primary);
 }
 
 .card-header {
@@ -504,7 +508,7 @@ export default {
 
 .commit-subject {
   font-weight: 600;
-  color: #333;
+  color: var(--app-text);
   font-size: 0.95em;
   line-height: 1.4;
 }
@@ -527,7 +531,7 @@ export default {
 
 .commit-date {
   font-size: 0.8em;
-  color: #999;
+  color: var(--app-text-muted);
   white-space: nowrap;
 }
 
@@ -537,17 +541,17 @@ export default {
   align-items: center;
   gap: 10px;
   font-size: 0.8em;
-  color: #666;
+  color: var(--app-text-secondary);
 }
 
-.stat-files { color: #666; }
+.stat-files { color: var(--app-text-secondary); }
 .stat-add { color: #10b981; font-weight: 700; }
 .stat-del { color: #ef4444; font-weight: 700; }
 
 .change-bar {
   flex: 1;
   height: 6px;
-  background: #f3f4f6;
+  background: var(--app-border);
   border-radius: 3px;
   display: flex;
   overflow: hidden;
@@ -570,7 +574,7 @@ export default {
 .card-detail {
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--app-border);
   animation: slideDown 0.2s ease;
 }
 
@@ -580,12 +584,12 @@ export default {
 }
 
 .commit-body {
-  color: #555;
+  color: var(--app-text-secondary);
   font-size: 0.9em;
   line-height: 1.6;
   margin: 0 0 14px;
   white-space: pre-wrap;
-  background: #f9fafb;
+  background: var(--app-card-elevated);
   padding: 12px;
   border-radius: 6px;
 }
@@ -597,7 +601,7 @@ export default {
 .file-list-header {
   font-weight: 700;
   font-size: 0.85em;
-  color: #333;
+  color: var(--app-text);
   margin-bottom: 8px;
 }
 
@@ -620,7 +624,7 @@ export default {
 .file-path {
   font-family: 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
-  color: #555;
+  color: var(--app-text-secondary);
   word-break: break-all;
   flex: 1;
 }
@@ -643,14 +647,14 @@ export default {
   display: flex;
   gap: 16px;
   font-size: 0.8em;
-  color: #999;
+  color: var(--app-text-muted);
   flex-wrap: wrap;
 }
 
 .expand-hint {
   text-align: center;
   font-size: 0.75em;
-  color: #bbb;
+  color: var(--app-text-muted);
   margin-top: 8px;
 }
 
@@ -658,7 +662,7 @@ export default {
 .loading, .error-msg {
   text-align: center;
   padding: 40px;
-  color: #999;
+  color: var(--app-text-muted);
   font-size: 0.95em;
 }
 
@@ -667,10 +671,10 @@ export default {
 .generated-at {
   text-align: center;
   font-size: 0.8em;
-  color: #ccc;
+  color: var(--app-text-muted);
   margin-top: 30px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--app-border);
 }
 
 .auto-refresh-hint {
@@ -697,11 +701,11 @@ export default {
 }
 
 .diff-modal {
-  background: #fff;
+  background: var(--app-card);
   border-radius: 10px;
   width: min(1200px, 96vw);
   max-height: 88vh;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--app-border);
   display: flex;
   flex-direction: column;
 }
@@ -711,14 +715,14 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--app-border);
   gap: 8px;
 }
 
 .diff-modal-header h3 {
   margin: 0;
   font-size: 0.9em;
-  color: #111827;
+  color: var(--app-text);
   word-break: break-all;
 }
 
@@ -726,7 +730,7 @@ export default {
   border: none;
   background: transparent;
   font-size: 1.1em;
-  color: #6b7280;
+  color: var(--app-text-muted);
   cursor: pointer;
 }
 
@@ -749,9 +753,9 @@ export default {
   font-family: 'Monaco', 'Courier New', monospace;
   font-size: 0.78em;
   line-height: 1.45;
-  color: #1f2937;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  color: var(--app-text-secondary);
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
   border-radius: 6px;
   padding: 10px;
 }
