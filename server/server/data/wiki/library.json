@@ -1,0 +1,97 @@
+{
+  "updatedAt": 1771909313340,
+  "count": 3,
+  "items": [
+    {
+      "id": "wiki_product_docs",
+      "title": "Claude技能构建完整指南 中文版",
+      "summary": "(null)",
+      "content": "(null)",
+      "category": "",
+      "tags": [],
+      "views": 12,
+      "starred": false,
+      "createdAt": 1771658920350,
+      "updatedAt": 1771909312882,
+      "history": [
+        {
+          "id": "ver_1771909312882",
+          "title": "志鹏",
+          "summary": "",
+          "content": "志鹏5米",
+          "category": "历史",
+          "tags": [
+            "人物"
+          ],
+          "updatedAt": 1771840047802
+        },
+        {
+          "id": "ver_1771840047802",
+          "title": "志鹏",
+          "summary": "",
+          "content": "志鹏3米",
+          "category": "历史",
+          "tags": [
+            "人物"
+          ],
+          "updatedAt": 1771831907280
+        },
+        {
+          "id": "ver_1771831907280",
+          "title": "产品文档体系",
+          "summary": "定义愿景、需求、方案、验收的标准化文档结构。",
+          "content": "# 产品文档体系\n\n## 文档分层\n- PRD\n- 技术方案\n- 测试用例\n\n## 版本管理\n通过版本记录追溯每次修改原因。",
+          "category": "产品",
+          "tags": [
+            "product",
+            "documentation"
+          ],
+          "updatedAt": 1771828120350
+        }
+      ],
+      "comments": [
+        {
+          "id": "comment_1771831947666",
+          "author": "当前用户",
+          "text": "顶多0.1米",
+          "createdAt": 1771831947666
+        }
+      ]
+    },
+    {
+      "id": "wiki_http",
+      "title": "HTTP 状态码",
+      "summary": "用于表达请求处理结果的标准响应码。",
+      "content": "# HTTP 状态码\n\n## 2xx\n- 200 OK\n- 201 Created\n\n## 4xx\n- 400 Bad Request\n- 404 Not Found\n\n## 5xx\n- 500 Internal Server Error",
+      "category": "网络",
+      "tags": [
+        "http",
+        "backend"
+      ],
+      "views": 10,
+      "starred": false,
+      "createdAt": 1771572520350,
+      "updatedAt": 1771824520350,
+      "history": [],
+      "comments": []
+    },
+    {
+      "id": "wiki_vue3",
+      "title": "Vue 3",
+      "summary": "渐进式 JavaScript 框架，支持组合式 API 与高性能渲染。",
+      "content": "# Vue 3\n\n## 核心能力\n- 组合式 API\n- 响应式系统\n- 单文件组件\n\n## 适用场景\n适合构建中大型 Web 应用。",
+      "category": "技术",
+      "tags": [
+        "vue",
+        "frontend",
+        "javascript"
+      ],
+      "views": 15,
+      "starred": true,
+      "createdAt": 1771486120350,
+      "updatedAt": 1771813720350,
+      "history": [],
+      "comments": []
+    }
+  ]
+}
