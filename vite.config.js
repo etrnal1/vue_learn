@@ -11,6 +11,19 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(buildTime)
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('echarts') || id.includes('zrender') || id.includes('vue-echarts')) {
+            return 'vendor-echarts'
+          }
+          return 'vendor'
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     host: true,

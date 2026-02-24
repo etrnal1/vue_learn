@@ -90,9 +90,15 @@
   box-shadow: 0 8px 18px var(--app-shadow) !important;
 }
 
-.app[data-theme] :is(.btn-danger, .btn-delete, .btn-files) {
+.app[data-theme] :is(.btn-danger, .btn-delete) {
   border-color: transparent !important;
   color: #fff !important;
+}
+
+.app[data-theme] .btn-files {
+  border-color: #f59e0b !important;
+  background: #fef3c7 !important;
+  color: #92400e !important;
 }
 
 .app[data-theme] :is(
