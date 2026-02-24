@@ -327,6 +327,7 @@ import { marked } from 'marked'
 const STORAGE_KEY = 'wiki_center_articles_v1'
 const STATE_KEY = 'wiki_center_state_v1'
 const DRAFT_KEY = 'wiki_center_draft_v1'
+const SYNC_META_KEY = 'wiki_center_sync_meta_v1'
 
 function escapeHtml(input) {
   return String(input || '')
@@ -499,6 +500,44 @@ export default {
     }
   },
   methods: {
+    getLatestUpdatedAt(items) {
+      if (!Array.isArray(items) || items.length === 0) return 0
+      return items.reduce((max, item) => Math.max(max, Number(item?.updatedAt) || 0), 0)
+    },
+    mergeArticlesPreferNewer(localItems, remoteItems) {
+      const l = this.normalizeArticles(localItems || [])
+      const r = this.normalizeArticles(remoteItems || [])
+      const map = new Map()
+      for (const item of [...r, ...l]) {
+        const prev = map.get(item.id)
+        if (!prev) {
+          map.set(item.id, item)
+          continue
+        }
+        map.set(item.id, (Number(item.updatedAt) || 0) >= (Number(prev.updatedAt) || 0) ? item : prev)
+      }
+      return this.normalizeArticles([...map.values()])
+    },
+    readSyncMeta() {
+      try {
+        const raw = localStorage.getItem(SYNC_META_KEY)
+        if (!raw) return { dirty: false, lastSyncedAt: 0 }
+        const parsed = JSON.parse(raw)
+        return {
+          dirty: Boolean(parsed?.dirty),
+          lastSyncedAt: Number(parsed?.lastSyncedAt) || 0
+        }
+      } catch (error) {
+        return { dirty: false, lastSyncedAt: 0 }
+      }
+    },
+    writeSyncMeta(meta = {}) {
+      const payload = {
+        dirty: Boolean(meta.dirty),
+        lastSyncedAt: Number(meta.lastSyncedAt) || 0
+      }
+      localStorage.setItem(SYNC_META_KEY, JSON.stringify(payload))
+    },
     emptyDraft() {
       return {
         title: '',
@@ -879,12 +918,14 @@ export default {
       const normalized = this.normalizeArticles(this.articles)
       this.articles = normalized
       localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
-      if (this.storageMode !== 'server') return
+      this.writeSyncMeta({ dirty: true, lastSyncedAt: this.readSyncMeta().lastSyncedAt })
       try {
         const saved = await api.wiki.saveLibrary(normalized)
         const merged = this.normalizeArticles(saved?.items || normalized)
         this.articles = merged
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+        this.storageMode = 'server'
+        this.writeSyncMeta({ dirty: false, lastSyncedAt: Date.now() })
       } catch (error) {
         this.storageMode = 'local'
         console.warn('保存维基库失败，已回退本地存储', error)
@@ -905,29 +946,34 @@ export default {
         console.warn('加载本地 wiki 数据失败', error)
       }
 
-      if (localItems.length === 0) {
-        localItems = this.seedArticles()
+      // 缓存优先：本地有数据时直接使用，不阻塞等待数据库
+      if (localItems.length > 0) {
         this.articles = localItems
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(localItems))
-      }
+        this.storageMode = 'cache'
+      } else {
+        try {
+          const remote = await api.wiki.getLibrary()
+          const remoteItems = this.normalizeArticles(remote?.items || [])
+          this.storageMode = 'server'
 
-      try {
-        const remote = await api.wiki.getLibrary()
-        const remoteItems = this.normalizeArticles(remote?.items || [])
-        this.storageMode = 'server'
-
-        if (remoteItems.length > 0) {
-          this.articles = remoteItems
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteItems))
-        } else if (localItems.length > 0) {
-          const saved = await api.wiki.saveLibrary(localItems)
-          const merged = this.normalizeArticles(saved?.items || localItems)
-          this.articles = merged
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+          if (remoteItems.length > 0) {
+            this.articles = remoteItems
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteItems))
+            this.writeSyncMeta({ dirty: false, lastSyncedAt: this.getLatestUpdatedAt(remoteItems) })
+          } else {
+            const seeded = this.seedArticles()
+            this.articles = seeded
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
+            this.writeSyncMeta({ dirty: true, lastSyncedAt: 0 })
+          }
+        } catch (error) {
+          this.storageMode = 'local'
+          console.warn('连接 wiki 服务失败，使用本地模式', error)
+          const seeded = this.seedArticles()
+          this.articles = seeded
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
+          this.writeSyncMeta({ dirty: true, lastSyncedAt: 0 })
         }
-      } catch (error) {
-        this.storageMode = 'local'
-        console.warn('连接 wiki 服务失败，使用本地模式', error)
       }
 
       try {

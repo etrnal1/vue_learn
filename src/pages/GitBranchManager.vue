@@ -75,18 +75,32 @@
         <button
           @click="commitChanges"
           class="btn btn-primary"
-          :disabled="!normalizedCommitMessage || !gitStatus.hasChanges || committing"
+          :disabled="!normalizedCommitMessage || selectedCommitCount === 0 || committing"
         >
           <span v-if="!committing">{{ pushAfterCommit ? '提交并推送' : '仅本地提交' }}</span>
           <span v-else>提交中...</span>
         </button>
       </div>
       <div v-if="gitStatus.files.length > 0" class="changed-files">
-        <span class="changed-files-label">待提交文件 ({{ gitStatus.files.length }})</span>
-        <code v-for="file in gitStatus.files.slice(0, 8)" :key="file.file">
-          {{ file.status.trim() || 'M' }} {{ file.file }}
-        </code>
-        <span v-if="gitStatus.files.length > 8" class="subtitle">仅展示前 8 个文件</span>
+        <div class="changed-files-head">
+          <span class="changed-files-label">选择提交文件 (已选 {{ selectedCommitCount }} / {{ gitStatus.files.length }})</span>
+          <div class="changed-files-actions">
+            <button class="btn btn-sm" @click="selectAllCommitFiles">全选</button>
+            <button class="btn btn-sm" @click="clearSelectedCommitFiles">清空</button>
+          </div>
+        </div>
+        <label
+          v-for="file in gitStatus.files"
+          :key="file.file"
+          class="changed-file-item"
+        >
+          <input
+            type="checkbox"
+            :value="file.file"
+            v-model="selectedCommitFiles"
+          />
+          <code>{{ file.status.trim() || 'M' }} {{ file.file }}</code>
+        </label>
       </div>
     </div>
 
@@ -497,6 +511,7 @@ export default {
       newBranchName: '',
       branchKeyword: '',
       commitMessage: '',
+      selectedCommitFiles: [],
       pushAfterCommit: false,
       committing: false,
       checkoutAfterCreate: true,
@@ -566,6 +581,9 @@ export default {
     },
     normalizedCommitMessage() {
       return this.commitMessage.trim()
+    },
+    selectedCommitCount() {
+      return this.selectedCommitFiles.length
     }
   },
   methods: {
@@ -628,9 +646,20 @@ export default {
       try {
         const data = await api.get('/git/status')
         this.gitStatus = data
+        const available = new Set((this.gitStatus.files || []).map((item) => item.file))
+        const currentSelected = this.selectedCommitFiles.filter((item) => available.has(item))
+        this.selectedCommitFiles = currentSelected.length > 0
+          ? currentSelected
+          : (this.gitStatus.files || []).map((item) => item.file)
       } catch (error) {
         console.error('获取 Git 状态失败:', error)
       }
+    },
+    selectAllCommitFiles() {
+      this.selectedCommitFiles = (this.gitStatus.files || []).map((item) => item.file)
+    },
+    clearSelectedCommitFiles() {
+      this.selectedCommitFiles = []
     },
 
     async createBranch() {
@@ -882,10 +911,17 @@ export default {
         this.showMessage('当前没有可提交的变更', 'warning')
         return
       }
+      if (this.selectedCommitFiles.length === 0) {
+        this.showMessage('请至少选择一个文件再提交', 'warning')
+        return
+      }
 
       this.committing = true
       try {
-        const commitRes = await api.post('/git/commit', { message })
+        const commitRes = await api.post('/git/commit', {
+          message,
+          files: this.selectedCommitFiles
+        })
         this.showMessage(commitRes.message, 'success')
         this.setOperationResult({
           type: 'success',
@@ -1276,10 +1312,37 @@ export default {
 }
 
 .changed-files {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+  padding: 10px;
+}
+
+.changed-files-head {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.changed-files-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.changed-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.changed-file-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
 }
 
 .changed-files-label {
@@ -1287,10 +1350,15 @@ export default {
   color: var(--app-text-muted);
 }
 
-.changed-files code {
+.changed-file-item code {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 3px 8px;
   border-radius: 8px;
-  background: var(--app-card-elevated);
+  background: var(--app-card);
   border: 1px solid var(--app-border);
   color: var(--app-text-secondary);
 }

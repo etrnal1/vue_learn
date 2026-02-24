@@ -160,6 +160,52 @@ function sendGitError(res, result, hint = '', status = 500) {
   });
 }
 
+function normalizeStatusPath(rawPath = '') {
+  const text = String(rawPath || '').trim();
+  if (!text) return '';
+  if (text.includes(' -> ')) {
+    const parts = text.split(' -> ');
+    return String(parts[parts.length - 1] || '').trim();
+  }
+  return text;
+}
+
+function parsePorcelainStatus(raw = '') {
+  return (raw || '')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const text = String(line || '');
+      let status = '';
+      let file = '';
+
+      if (text.startsWith('?? ')) {
+        status = '??';
+        file = text.slice(3).trim();
+      } else if (text.length >= 3 && text[2] === ' ') {
+        // Standard porcelain v1 format: XY<space>PATH
+        status = text.slice(0, 2);
+        file = text.slice(3).trim();
+      } else {
+        // Fallback for non-standard outputs: X<space>PATH
+        const match = text.match(/^([A-Z?!]{1,2})\s+(.+)$/i);
+        if (match) {
+          status = match[1].padEnd(2, ' ');
+          file = match[2].trim();
+        } else {
+          status = text.slice(0, 2).padEnd(2, ' ');
+          file = text.slice(2).trim();
+        }
+      }
+
+      return {
+        status,
+        file,
+        normalizedPath: normalizeStatusPath(file)
+      };
+    });
+}
+
 router.get('/branches', async (req, res) => {
   try {
     const result = await runGitCommand(['branch', '-a', '--no-color']);
@@ -613,13 +659,7 @@ router.get('/status', async (req, res) => {
       return sendGitError(res, result);
     }
 
-    const files = result.data
-      ? result.data.split('\n').filter(Boolean).map((line) => {
-          const status = line.substring(0, 2);
-          const file = line.substring(3);
-          return { status, file };
-        })
-      : [];
+    const files = parsePorcelainStatus(result.data || '');
 
     res.json({
       hasChanges: files.length > 0,
@@ -634,6 +674,7 @@ router.get('/status', async (req, res) => {
 router.post('/commit', async (req, res) => {
   try {
     const rawMessage = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+    const requestedFiles = Array.isArray(req.body.files) ? req.body.files : [];
     if (!rawMessage) {
       return res.status(400).json({ error: '提交说明不能为空' });
     }
@@ -649,7 +690,38 @@ router.post('/commit', async (req, res) => {
       return res.status(400).json({ error: '没有可提交的变更' });
     }
 
-    const addResult = await runGitCommand(['add', '-A']);
+    const changedFiles = parsePorcelainStatus(statusResult.data || '');
+    const changedPathSet = new Set(changedFiles.map((item) => item.normalizedPath).filter(Boolean));
+    let selectedPaths = [];
+
+    if (requestedFiles.length > 0) {
+      const normalizedRequested = [];
+      for (const pathValue of requestedFiles) {
+        const normalizedPath = normalizeStatusPath(pathValue);
+        const validatedPath = sanitizeFilePath(normalizedPath);
+        if (!validatedPath.ok) {
+          return res.status(400).json({ error: `无效文件路径: ${pathValue}` });
+        }
+        normalizedRequested.push(validatedPath.value);
+      }
+
+      selectedPaths = [...new Set(normalizedRequested)];
+      const invalidSelections = selectedPaths.filter((item) => !changedPathSet.has(item));
+      if (invalidSelections.length > 0) {
+        return res.status(400).json({ error: `以下文件当前无变更或已失效: ${invalidSelections.join(', ')}` });
+      }
+    }
+
+    let addResult;
+    if (selectedPaths.length > 0) {
+      const resetResult = await runGitCommand(['reset', '--quiet']);
+      if (!resetResult.success) {
+        return sendGitError(res, resetResult, '清理暂存区失败');
+      }
+      addResult = await runGitCommand(['add', '--', ...selectedPaths.map(toTopPathspec)]);
+    } else {
+      addResult = await runGitCommand(['add', '-A']);
+    }
     if (!addResult.success) {
       return sendGitError(res, addResult, '暂存变更失败');
     }
@@ -664,9 +736,12 @@ router.post('/commit', async (req, res) => {
 
     res.json({
       success: true,
-      message: commitHash ? `本地提交成功 (${commitHash})` : '本地提交成功',
+      message: commitHash
+        ? `本地提交成功 (${commitHash})${selectedPaths.length > 0 ? `，已提交 ${selectedPaths.length} 个文件` : ''}`
+        : `本地提交成功${selectedPaths.length > 0 ? `，已提交 ${selectedPaths.length} 个文件` : ''}`,
       commitHash,
-      output: commitResult.data
+      output: commitResult.data,
+      committedFiles: selectedPaths
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

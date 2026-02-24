@@ -20,6 +20,23 @@
       </div>
     </div>
 
+    <div class="global-palette-bar">
+      <span class="theme-label">色卡预设</span>
+      <div class="palette-options">
+        <button
+          v-for="preset in colorPresets"
+          :key="preset.id"
+          class="palette-pill"
+          :class="{ active: appearance.presetId === preset.id }"
+          :title="preset.name"
+          @click="applyColorPreset(preset.id)"
+        >
+          <span class="palette-swatch" :style="{ background: `linear-gradient(135deg, ${preset.primary}, ${mixHex(preset.primary, '#000000', 0.25)})` }"></span>
+          <span class="pill-name">{{ preset.name }}</span>
+        </button>
+      </div>
+    </div>
+
     <div class="global-adjust-bar">
       <div class="adjust-item">
         <label class="adjust-label" for="font-scale">字体</label>
@@ -43,7 +60,7 @@
             v-model="appearance.useCustomColors"
             @change="onCustomColorsToggle"
           />
-          <span>启用自定义颜色</span>
+          <span>最后微调（自定义颜色）</span>
         </label>
       </div>
 
@@ -217,10 +234,38 @@ export default {
       appearance: {
         fontScale: 100,
         useCustomColors: false,
+        presetId: '',
         primaryColor: '#007aff',
         textColor: '#1c1c1e',
         bgColor: '#f2f2f7'
       },
+      colorPresets: [
+        { id: 'ocean', name: '海洋', primary: '#0EA5E9', text: '#0F172A', bg: '#E0F2FE' },
+        { id: 'forest', name: '森林', primary: '#16A34A', text: '#102A17', bg: '#ECFDF3' },
+        { id: 'sunset', name: '暖阳', primary: '#EA580C', text: '#1F2937', bg: '#FFF7ED' },
+        { id: 'rose', name: '玫瑰', primary: '#DB2777', text: '#3A102C', bg: '#FDF2F8' },
+        { id: 'slate', name: '石墨', primary: '#334155', text: '#0F172A', bg: '#F1F5F9' },
+        { id: 'mint', name: '薄荷', primary: '#10B981', text: '#042F2E', bg: '#ECFDF5' },
+        { id: 'teal', name: '青瓷', primary: '#0D9488', text: '#073B3A', bg: '#F0FDFA' },
+        { id: 'cyan', name: '冰川', primary: '#06B6D4', text: '#083344', bg: '#ECFEFF' },
+        { id: 'sky', name: '晴空', primary: '#0284C7', text: '#082F49', bg: '#E0F2FE' },
+        { id: 'indigo', name: '靛蓝', primary: '#4F46E5', text: '#1E1B4B', bg: '#EEF2FF' },
+        { id: 'violet', name: '紫藤', primary: '#7C3AED', text: '#2E1065', bg: '#F5F3FF' },
+        { id: 'fuchsia', name: '洋红', primary: '#C026D3', text: '#4A044E', bg: '#FDF4FF' },
+        { id: 'magenta', name: '莓果', primary: '#D946EF', text: '#4A044E', bg: '#FAE8FF' },
+        { id: 'ruby', name: '赤霞', primary: '#E11D48', text: '#4C0519', bg: '#FFF1F2' },
+        { id: 'crimson', name: '绯红', primary: '#DC2626', text: '#450A0A', bg: '#FEF2F2' },
+        { id: 'amber', name: '琥珀', primary: '#D97706', text: '#451A03', bg: '#FFFBEB' },
+        { id: 'gold', name: '鎏金', primary: '#CA8A04', text: '#422006', bg: '#FEFCE8' },
+        { id: 'lime', name: '青柠', primary: '#65A30D', text: '#1A2E05', bg: '#F7FEE7' },
+        { id: 'emerald', name: '祖母绿', primary: '#059669', text: '#022C22', bg: '#ECFDF5' },
+        { id: 'olive', name: '橄榄', primary: '#4D7C0F', text: '#1A2E05', bg: '#F7FEE7' },
+        { id: 'sand', name: '沙丘', primary: '#A16207', text: '#3F2A06', bg: '#FFFBEB' },
+        { id: 'coffee', name: '咖啡', primary: '#92400E', text: '#3A1D07', bg: '#FFF7ED' },
+        { id: 'brick', name: '赤陶', primary: '#B45309', text: '#431407', bg: '#FFF7ED' },
+        { id: 'graphite', name: '深石墨', primary: '#1F2937', text: '#0B1220', bg: '#E5E7EB' },
+        { id: 'midnight', name: '深夜蓝', primary: '#1D4ED8', text: '#E5EDFF', bg: '#0B1220' }
+      ],
       prefetchedTabs: {}
     }
   },
@@ -284,6 +329,9 @@ export default {
   methods: {
     switchTheme(id) {
       this.currentTheme = id
+      if (!this.appearance.useCustomColors) {
+        this.appearance.presetId = ''
+      }
       localStorage.setItem('app_theme', id)
       this.$nextTick(() => {
         if (!this.appearance.useCustomColors) {
@@ -298,8 +346,20 @@ export default {
     },
     onCustomColorsToggle() {
       if (this.appearance.useCustomColors) {
-        this.syncAppearanceWithThemeVars()
+        if (!this.appearance.presetId) {
+          this.syncAppearanceWithThemeVars()
+        }
       }
+      this.onAppearanceChange()
+    },
+    applyColorPreset(presetId) {
+      const preset = this.colorPresets.find((item) => item.id === presetId)
+      if (!preset) return
+      this.appearance.presetId = preset.id
+      this.appearance.useCustomColors = true
+      this.appearance.primaryColor = this.ensureHex(preset.primary, '#007aff')
+      this.appearance.textColor = this.ensureHex(preset.text, '#1c1c1e')
+      this.appearance.bgColor = this.ensureHex(preset.bg, '#f2f2f7')
       this.onAppearanceChange()
     },
     onAppearanceChange() {
@@ -311,6 +371,7 @@ export default {
     resetAppearance() {
       this.appearance.fontScale = 100
       this.appearance.useCustomColors = false
+      this.appearance.presetId = ''
       this.syncAppearanceWithThemeVars()
       this.saveAppearancePrefs()
       this.$nextTick(() => {
@@ -551,6 +612,58 @@ export default {
   box-shadow: var(--app-soft-shadow);
 }
 
+.global-palette-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--app-group-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow: var(--app-soft-shadow);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.palette-options {
+  display: flex;
+  gap: 8px;
+}
+
+.palette-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  font-size: 0.75em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.palette-pill:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 36%, var(--app-border));
+  color: var(--app-primary);
+}
+
+.palette-pill.active {
+  border-color: transparent;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  box-shadow: 0 6px 16px var(--app-shadow);
+}
+
+.palette-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
 .adjust-item {
   display: inline-flex;
   align-items: center;
@@ -652,7 +765,16 @@ export default {
     gap: 8px;
     margin-bottom: 10px;
   }
+  .global-palette-bar {
+    padding: 8px 10px;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   .theme-pill {
+    padding: 5px 9px;
+    font-size: 0.75em;
+  }
+  .palette-pill {
     padding: 5px 9px;
     font-size: 0.75em;
   }
@@ -671,7 +793,9 @@ export default {
 
 @media (max-width: 480px) {
   .global-theme-bar { padding: 6px 8px; }
+  .global-palette-bar { padding: 6px 8px; }
   .theme-pill { padding: 5px 8px; gap: 4px; }
+  .palette-pill { padding: 5px 8px; gap: 4px; }
   .theme-label { font-size: 0.75em; }
   .tabs-container { gap: 4px; margin-bottom: 10px; padding: 5px; }
   .tab-btn { padding: 7px 9px; font-size: 0.76em; }
