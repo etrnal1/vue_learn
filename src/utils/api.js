@@ -217,6 +217,7 @@ export const api = {
   docs: {
     list: () => apiRequest('/docs/list'),
     getContent: (filename) => apiRequest(`/docs/content?file=${encodeURIComponent(filename)}`),
-    sync: () => apiRequest('/docs/sync', { method: 'POST' })
+    sync: () => apiRequest('/docs/sync', { method: 'POST' }),
+    search: (query, limit = 30) => apiRequest(`/docs/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`)
   }
 };

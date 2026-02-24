@@ -12,6 +12,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(buildTime)
   },
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
