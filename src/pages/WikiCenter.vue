@@ -80,7 +80,7 @@
         <div v-if="filteredArticles.length === 0" class="empty">没有匹配词条</div>
         <div v-else class="article-list">
           <article
-            v-for="item in filteredArticles"
+            v-for="item in displayedArticles"
             :key="item.id"
             class="article-item"
             :class="{ active: item.id === activeArticleId }"
@@ -105,6 +105,9 @@
               <span v-for="tag in item.tags" :key="tag" class="tag">#{{ tag }}</span>
             </div>
           </article>
+          <div v-if="hasMoreFilteredArticles" class="list-load-more">
+            <button class="btn btn-sm" @click="loadMoreArticles">加载更多（{{ displayedArticles.length }}/{{ filteredArticles.length }}）</button>
+          </div>
         </div>
       </aside>
 
@@ -323,6 +326,7 @@ export default {
       mobileReadMode: false,
       importingDoc: false,
       importLogs: [],
+      visibleArticleCount: 40,
       draftImages: [],
       showPalette: false,
       paletteGroups: [
@@ -351,14 +355,19 @@ export default {
           if (this.categoryFilter !== 'all' && item.category !== this.categoryFilter) return false
           if (this.onlyStarred && !item.starred) return false
           if (!q) return true
-          const hay = [item.title, item.summary, item.content, item.category, ...item.tags].join(' ').toLowerCase()
-          return hay.includes(q)
+          return String(item.searchText || '').includes(q)
         })
         .sort((a, b) => {
           if (this.sortBy === 'popular') return (b.views || 0) - (a.views || 0)
           if (this.sortBy === 'title') return a.title.localeCompare(b.title, 'zh-CN')
           return (b.updatedAt || 0) - (a.updatedAt || 0)
         })
+    },
+    displayedArticles() {
+      return this.filteredArticles.slice(0, this.visibleArticleCount)
+    },
+    hasMoreFilteredArticles() {
+      return this.filteredArticles.length > this.displayedArticles.length
     },
     activeArticle() {
       return this.articles.find((item) => item.id === this.activeArticleId) || null
@@ -452,6 +461,20 @@ export default {
         .map((item) => item.trim())
         .filter(Boolean)
         .slice(0, 20)
+    },
+    buildSearchText(item) {
+      const title = String(item?.title || '')
+      const summary = String(item?.summary || '')
+      const category = String(item?.category || '')
+      const tags = Array.isArray(item?.tags) ? item.tags.join(' ') : ''
+      const contentPrefix = String(item?.content || '').slice(0, 600)
+      return [title, summary, category, tags, contentPrefix].join(' ').toLowerCase()
+    },
+    loadMoreArticles() {
+      this.visibleArticleCount += 40
+    },
+    resetArticleViewport() {
+      this.visibleArticleCount = 40
     },
     buildDiffPreview(currentContent, targetContent) {
       const current = String(currentContent || '').split('\n')
@@ -592,7 +615,7 @@ export default {
           seen.add(id)
           const createdAt = Number(item.createdAt) || now
           const updatedAt = Number(item.updatedAt) || createdAt
-          return {
+          const normalizedItem = {
             id,
             title,
             summary: String(item.summary || ''),
@@ -628,6 +651,8 @@ export default {
                 .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
               : []
           }
+          normalizedItem.searchText = this.buildSearchText(normalizedItem)
+          return normalizedItem
         })
         .filter(Boolean)
         .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -746,6 +771,7 @@ export default {
 
       this.activeArticleId = this.articles[0]?.id || null
       this.viewTab = 'read'
+      this.resetArticleViewport()
       this.restoreDraftCache()
     },
     openArticle(id) {
@@ -1228,6 +1254,7 @@ export default {
           this.articles = normalized
           this.activeArticleId = normalized[0].id
           this.viewTab = 'read'
+          this.resetArticleViewport()
           this.persistArticles()
           alert(`导入成功：${normalized.length} 条词条`)
         }
@@ -1265,6 +1292,7 @@ export default {
           this.articles = normalized
           this.activeArticleId = normalized[0].id
           this.viewTab = 'read'
+          this.resetArticleViewport()
           this.persistArticles()
           alert(`导入成功：${normalized.length} 条词条`)
         }
@@ -1296,6 +1324,18 @@ export default {
     }
   },
   watch: {
+    searchQuery() {
+      this.resetArticleViewport()
+    },
+    categoryFilter() {
+      this.resetArticleViewport()
+    },
+    sortBy() {
+      this.resetArticleViewport()
+    },
+    onlyStarred() {
+      this.resetArticleViewport()
+    },
     draft: {
       deep: true,
       handler() {
@@ -1437,7 +1477,10 @@ export default {
   padding: 10px;
   background: var(--app-card-elevated);
   cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: 180px;
 }
+.list-load-more { display: flex; justify-content: center; padding: 6px 0 2px; }
 .article-item.active {
   border-color: var(--app-primary);
   box-shadow: 0 0 0 2px var(--app-shadow-light);

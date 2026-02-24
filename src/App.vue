@@ -402,15 +402,19 @@ export default {
       this.preloadTab(next2)
     },
     warmupCommonTabs() {
+      const connection = typeof navigator !== 'undefined' ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null
+      const saveData = Boolean(connection?.saveData)
+      const effectiveType = String(connection?.effectiveType || '')
+      if (saveData || effectiveType.includes('2g')) {
+        return
+      }
       const warm = () => {
         this.preloadTab('wiki')
-        this.preloadTab('album')
-        this.preloadTab('logs')
       }
       if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(warm, { timeout: 1200 })
+        window.requestIdleCallback(warm, { timeout: 2500 })
       } else {
-        setTimeout(warm, 400)
+        setTimeout(warm, 1800)
       }
     }
   },
