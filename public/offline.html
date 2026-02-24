@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>离线模式</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      max-width: 420px;
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      background: #fff;
+      padding: 20px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    p {
+      margin: 0 0 10px;
+      line-height: 1.7;
+      color: #334155;
+    }
+    button {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>当前处于离线模式</h1>
+    <p>网络恢复后可继续访问完整内容。已缓存的页面仍可打开。</p>
+    <button onclick="location.reload()">重试连接</button>
+  </div>
+</body>
+</html>
