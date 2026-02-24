@@ -78,9 +78,10 @@
       <aside v-show="!isMobile || !mobileReadMode" class="panel list-panel">
         <h3>词条列表</h3>
         <div v-if="filteredArticles.length === 0" class="empty">没有匹配词条</div>
-        <div v-else class="article-list">
+        <div v-else ref="articleListRef" class="article-list" @scroll.passive="onArticleListScroll">
+          <div :style="{ height: `${virtualArticlePaddingTop}px` }"></div>
           <article
-            v-for="item in displayedArticles"
+            v-for="item in virtualDisplayedArticles"
             :key="item.id"
             class="article-item"
             :class="{ active: item.id === activeArticleId }"
@@ -105,9 +106,7 @@
               <span v-for="tag in item.tags" :key="tag" class="tag">#{{ tag }}</span>
             </div>
           </article>
-          <div v-if="hasMoreFilteredArticles" class="list-load-more">
-            <button class="btn btn-sm" @click="loadMoreArticles">加载更多（{{ displayedArticles.length }}/{{ filteredArticles.length }}）</button>
-          </div>
+          <div :style="{ height: `${virtualArticlePaddingBottom}px` }"></div>
         </div>
       </aside>
 
@@ -135,13 +134,42 @@
               <button class="btn" @click="viewTab = 'history'">历史</button>
               <button class="btn" @click="viewTab = 'timeline'">时间轴</button>
               <button class="btn" @click="viewTab = 'discuss'">讨论</button>
+              <button v-if="isMobile && viewTab === 'read' && toc.length" class="btn" @click="toggleMobileToc">
+                {{ showMobileToc ? '收起目录' : '目录' }}
+              </button>
               <button class="btn btn-danger" @click="removeArticle(activeArticle.id)">删除</button>
             </div>
           </div>
 
           <div v-if="viewTab === 'read'" class="read-area">
-            <p v-if="activeArticle.summary" class="lead">{{ activeArticle.summary }}</p>
-            <div class="markdown" v-html="renderedHtml"></div>
+            <div class="read-layout">
+              <div class="read-main">
+                <div v-if="isMobile" class="mobile-read-tools">
+                  <button class="btn btn-sm" @click="adjustReaderFont(-1)">A-</button>
+                  <span class="tool-stat">字号 {{ readerFontSize }}px</span>
+                  <button class="btn btn-sm" @click="adjustReaderFont(1)">A+</button>
+                  <button class="btn btn-sm" @click="adjustReaderLineHeight(-0.05)">紧凑</button>
+                  <button class="btn btn-sm" @click="adjustReaderLineHeight(0.05)">舒展</button>
+                </div>
+                <p v-if="activeArticle.summary" class="lead">{{ activeArticle.summary }}</p>
+                <div class="markdown" :style="readerStyle" v-html="renderedHtml"></div>
+              </div>
+
+              <aside v-if="toc.length > 0" class="inline-toc">
+                <h4>章节目录</h4>
+                <div class="toc-list">
+                  <a
+                    v-for="item in toc"
+                    :key="item.id"
+                    class="toc-item"
+                    :style="{ paddingLeft: `${(item.level - 1) * 10 + 8}px` }"
+                    @click="jumpToHeading(item.id)"
+                  >
+                    {{ item.text }}
+                  </a>
+                </div>
+              </aside>
+            </div>
           </div>
 
           <div v-if="viewTab === 'edit'" class="edit-area">
@@ -249,22 +277,6 @@
 
       <aside v-show="!isMobile || !mobileReadMode" class="panel side-panel">
         <div class="widget">
-          <h3>章节目录</h3>
-          <div v-if="toc.length === 0" class="empty mini">当前词条无目录</div>
-          <div v-else class="toc-list">
-            <a
-              v-for="item in toc"
-              :key="item.id"
-              class="toc-item"
-              :style="{ paddingLeft: `${(item.level - 1) * 10 + 8}px` }"
-              @click="jumpToHeading(item.id)"
-            >
-              {{ item.text }}
-            </a>
-          </div>
-        </div>
-
-        <div class="widget">
           <h3>相关文章</h3>
           <div v-if="relatedArticles.length === 0" class="empty mini">暂无推荐</div>
           <div v-else class="related-list">
@@ -285,11 +297,32 @@
         </div>
       </aside>
     </div>
+
+    <div v-if="isMobile && showMobileToc" class="mobile-toc-mask" @click="showMobileToc = false"></div>
+    <aside v-if="isMobile" class="mobile-toc-drawer panel" :class="{ open: showMobileToc }">
+      <div class="mobile-toc-head">
+        <h3>章节目录</h3>
+        <button class="btn btn-sm" @click="showMobileToc = false">关闭</button>
+      </div>
+      <div v-if="toc.length === 0" class="empty mini">当前词条无目录</div>
+      <div v-else class="toc-list">
+        <a
+          v-for="item in toc"
+          :key="item.id"
+          class="toc-item"
+          :style="{ paddingLeft: `${(item.level - 1) * 10 + 8}px` }"
+          @click="jumpToHeading(item.id)"
+        >
+          {{ item.text }}
+        </a>
+      </div>
+    </aside>
   </div>
 </template>
 
 <script>
 import { api } from '../utils/api.js'
+import { marked } from 'marked'
 
 const STORAGE_KEY = 'wiki_center_articles_v1'
 const STATE_KEY = 'wiki_center_state_v1'
@@ -324,11 +357,17 @@ export default {
       storageMode: 'unknown',
       viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1200,
       mobileReadMode: false,
+      showMobileToc: false,
       importingDoc: false,
       importLogs: [],
-      visibleArticleCount: 40,
+      articleListScrollTop: 0,
+      articleListViewportHeight: 760,
+      articleItemHeight: 190,
+      articleRenderBuffer: 6,
       draftImages: [],
       showPalette: false,
+      readerFontSize: 15,
+      readerLineHeight: 1.8,
       paletteGroups: [
         { name: '主色', colors: ['#2563EB', '#0EA5E9', '#06B6D4', '#14B8A6', '#22C55E', '#84CC16'] },
         { name: '暖色', colors: ['#F97316', '#F59E0B', '#EAB308', '#EF4444', '#EC4899', '#D946EF'] },
@@ -363,32 +402,46 @@ export default {
           return (b.updatedAt || 0) - (a.updatedAt || 0)
         })
     },
-    displayedArticles() {
-      return this.filteredArticles.slice(0, this.visibleArticleCount)
+    virtualArticleStart() {
+      return Math.max(
+        0,
+        Math.floor(this.articleListScrollTop / this.articleItemHeight) - this.articleRenderBuffer
+      )
     },
-    hasMoreFilteredArticles() {
-      return this.filteredArticles.length > this.displayedArticles.length
+    virtualArticleVisibleCount() {
+      const base = Math.ceil(this.articleListViewportHeight / this.articleItemHeight)
+      return base + this.articleRenderBuffer * 2
+    },
+    virtualArticleEnd() {
+      return Math.min(this.filteredArticles.length, this.virtualArticleStart + this.virtualArticleVisibleCount)
+    },
+    virtualDisplayedArticles() {
+      return this.filteredArticles.slice(this.virtualArticleStart, this.virtualArticleEnd)
+    },
+    virtualArticlePaddingTop() {
+      return this.virtualArticleStart * this.articleItemHeight
+    },
+    virtualArticlePaddingBottom() {
+      return (this.filteredArticles.length - this.virtualArticleEnd) * this.articleItemHeight
     },
     activeArticle() {
       return this.articles.find((item) => item.id === this.activeArticleId) || null
     },
     toc() {
       if (!this.activeArticle) return []
-      const seen = new Set()
-      const items = []
-      for (const line of String(this.activeArticle.content || '').split('\n')) {
-        const match = line.match(/^(#{1,3})\s+(.+)$/)
-        if (!match) continue
-        const level = match[1].length
-        const text = match[2].trim()
-        const slug = this.makeSlug(text, seen)
-        items.push({ id: slug, text, level })
-      }
-      return items
+      const normalized = this.normalizeDocumentMarkdown(this.activeArticle.content || '')
+      return this.extractMarkdownHeadings(normalized)
     },
     renderedHtml() {
       if (!this.activeArticle) return ''
-      return this.markdownToHtml(this.activeArticle.content || '')
+      const normalized = this.normalizeDocumentMarkdown(this.activeArticle.content || '')
+      return this.markdownToHtml(normalized)
+    },
+    readerStyle() {
+      return {
+        fontSize: `${this.readerFontSize}px`,
+        lineHeight: this.readerLineHeight
+      }
     },
     relatedArticles() {
       if (!this.activeArticle) return []
@@ -470,11 +523,18 @@ export default {
       const contentPrefix = String(item?.content || '').slice(0, 600)
       return [title, summary, category, tags, contentPrefix].join(' ').toLowerCase()
     },
-    loadMoreArticles() {
-      this.visibleArticleCount += 40
+    onArticleListScroll(event) {
+      this.articleListScrollTop = event?.target?.scrollTop || 0
     },
-    resetArticleViewport() {
-      this.visibleArticleCount = 40
+    measureArticleListViewport() {
+      const el = this.$refs.articleListRef
+      if (!el) return
+      this.articleListViewportHeight = Math.max(220, el.clientHeight || 760)
+    },
+    resetArticleListScroll() {
+      this.articleListScrollTop = 0
+      const el = this.$refs.articleListRef
+      if (el) el.scrollTop = 0
     },
     buildDiffPreview(currentContent, targetContent) {
       const current = String(currentContent || '').split('\n')
@@ -547,6 +607,130 @@ export default {
       seen.add(slug)
       return slug
     },
+    detectStructuredHeading(line) {
+      const text = String(line || '').trim()
+      if (!text || text.length > 140) return null
+
+      const chapterStyle = text.match(/^第[一二三四五六七八九十百千万零\d]+[章节篇部分][：:\s-]*(.*)$/)
+      if (chapterStyle) {
+        const title = chapterStyle[1] ? `${text}` : text
+        return { level: 2, text: title }
+      }
+
+      const chineseOrdered = text.match(/^[一二三四五六七八九十百千万]+[、.．]\s*(.{2,120})$/)
+      if (chineseOrdered) {
+        return { level: 2, text }
+      }
+
+      const numbered = text.match(/^(\d+(?:\.\d+){0,3})[)\.、\s_-]+(.{2,120})$/)
+      if (numbered) {
+        const depth = numbered[1].split('.').length
+        const level = Math.min(4, depth + 1)
+        return { level, text: numbered[2].trim() }
+      }
+
+      const chapterEn = text.match(/^chapter\s+\d+[\s:.-]+(.+)$/i)
+      if (chapterEn) {
+        return { level: 2, text: chapterEn[1].trim() || text }
+      }
+
+      return null
+    },
+    normalizeDocumentMarkdown(content) {
+      const raw = String(content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+      if (!raw) return ''
+
+      const hasHtmlBlock = /<\s*(h[1-6]|p|ul|ol|li|table|blockquote|pre|code)\b/i.test(raw)
+      if (hasHtmlBlock) return raw
+
+      const lines = raw.split('\n').map((line) => line.replace(/\t/g, '  ').trimEnd())
+      const hasMarkdownHeading = lines.some((line) => /^\s{0,3}#{1,6}\s+\S+/.test(line))
+      if (hasMarkdownHeading) return lines.join('\n')
+
+      // 保真优先：仅当明显存在多个结构化标题时才转换，避免破坏原排版
+      const headingCandidates = lines
+        .map((line, index) => ({ index, heading: this.detectStructuredHeading(line) }))
+        .filter((item) => item.heading)
+
+      if (headingCandidates.length < 2) {
+        return lines.join('\n')
+      }
+
+      const converted = []
+      const headingIndexMap = new Map(headingCandidates.map((item) => [item.index, item.heading]))
+
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i]
+        if (!line.trim()) {
+          converted.push('')
+          continue
+        }
+
+        const heading = headingIndexMap.get(i)
+        if (heading) {
+          converted.push(`${'#'.repeat(heading.level)} ${heading.text}`)
+        } else {
+          converted.push(line)
+        }
+      }
+
+      return converted.join('\n')
+    },
+    extractMarkdownHeadings(markdown) {
+      const source = String(markdown || '')
+      if (!source) return []
+
+      const seen = new Set()
+      const headings = []
+
+      try {
+        const tokens = marked.lexer(source, { gfm: true })
+        for (const token of tokens) {
+          if (token?.type !== 'heading') continue
+          const level = Number(token.depth) || 1
+          if (level > 4) continue
+          const text = String(token.text || '').replace(/<[^>]+>/g, '').trim()
+          if (!text) continue
+          headings.push({ id: this.makeSlug(text, seen), text, level })
+        }
+      } catch (error) {
+        // fallback regex when lexer fails
+      }
+
+      if (headings.length > 0) return headings
+
+      // HTML 标题兼容（例如 docx 转换后的内容）
+      const htmlHeadingRegex = /<h([1-4])[^>]*>(.*?)<\/h\1>/gi
+      let m = htmlHeadingRegex.exec(source)
+      while (m) {
+        const level = Number(m[1]) || 1
+        const text = String(m[2] || '').replace(/<[^>]+>/g, '').trim()
+        if (text) {
+          headings.push({ id: this.makeSlug(text, seen), text, level })
+        }
+        m = htmlHeadingRegex.exec(source)
+      }
+      if (headings.length > 0) return headings
+
+      for (const line of source.split('\n')) {
+        const match = line.match(/^(#{1,4})\s+(.+)$/)
+        if (!match) continue
+        const level = match[1].length
+        const text = match[2].trim()
+        headings.push({ id: this.makeSlug(text, seen), text, level })
+      }
+
+      if (headings.length > 0) return headings
+
+      // 最后兜底：不改正文，仅从结构化行中识别目录
+      for (const line of source.split('\n')) {
+        const item = this.detectStructuredHeading(line)
+        if (!item) continue
+        headings.push({ id: this.makeSlug(item.text, seen), text: item.text, level: item.level })
+      }
+
+      return headings
+    },
     formatInline(text) {
       return escapeHtml(text)
         .replace(/!\[(.*?)\]\(((?:https?:\/\/|data:image\/)[^\s)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" />')
@@ -556,50 +740,37 @@ export default {
         .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
     },
     markdownToHtml(content) {
-      const lines = String(content || '').split('\n')
+      const source = String(content || '')
+      if (!source) return ''
+
+      const headings = this.extractMarkdownHeadings(source)
       const seen = new Set()
-      const out = []
-      let inList = false
+      let headingIndex = 0
 
-      const closeList = () => {
-        if (inList) {
-          out.push('</ul>')
-          inList = false
+      try {
+        marked.setOptions({
+          gfm: true,
+          breaks: true
+        })
+
+        const renderer = new marked.Renderer()
+        renderer.heading = (args) => {
+          const depth = Number(args.depth) || 1
+          const text = String(args.text || '').trim()
+          const fallback = text || `section-${headingIndex + 1}`
+          const expected = headings[headingIndex]
+          const id = expected?.id || this.makeSlug(fallback, seen)
+          seen.add(id)
+          headingIndex += 1
+          return `<h${depth} id="${id}">${args.text}</h${depth}>`
         }
+
+        return marked.parse(source, { renderer })
+      } catch (error) {
+        console.warn('Markdown 渲染失败，已回退简易渲染', error)
+        const safe = escapeHtml(source).replace(/\n/g, '<br>')
+        return `<p>${safe}</p>`
       }
-
-      for (const rawLine of lines) {
-        const line = rawLine.trimEnd()
-        const heading = line.match(/^(#{1,3})\s+(.+)$/)
-        if (heading) {
-          closeList()
-          const level = heading[1].length
-          const text = heading[2].trim()
-          const id = this.makeSlug(text, seen)
-          out.push(`<h${level} id="${id}">${this.formatInline(text)}</h${level}>`)
-          continue
-        }
-
-        if (/^-\s+/.test(line)) {
-          if (!inList) {
-            out.push('<ul>')
-            inList = true
-          }
-          out.push(`<li>${this.formatInline(line.replace(/^-\s+/, ''))}</li>`)
-          continue
-        }
-
-        if (!line) {
-          closeList()
-          continue
-        }
-
-        closeList()
-        out.push(`<p>${this.formatInline(line)}</p>`)
-      }
-
-      closeList()
-      return out.join('')
     },
     normalizeArticles(list) {
       if (!Array.isArray(list)) return []
@@ -771,7 +942,7 @@ export default {
 
       this.activeArticleId = this.articles[0]?.id || null
       this.viewTab = 'read'
-      this.resetArticleViewport()
+      this.$nextTick(() => this.measureArticleListViewport())
       this.restoreDraftCache()
     },
     openArticle(id) {
@@ -954,12 +1125,57 @@ export default {
       const target = (pool.length ? pool : this.articles)[Math.floor(Math.random() * (pool.length || this.articles.length))]
       this.openArticle(target.id)
     },
+    createArticleFromImport({ title, summary, content, sourceExt, sourceName }) {
+      const now = Date.now()
+      const cleanTitle = String(title || '').trim() || `导入词条_${now}`
+      const cleanSummary = String(summary || '').trim()
+      const cleanContent = String(content || '').trim()
+      if (!cleanContent) {
+        throw new Error('导入正文为空，无法创建词条')
+      }
+
+      const tags = ['导入文档']
+      if (sourceExt) tags.push(String(sourceExt).replace(/^\./, '').toLowerCase())
+      if (sourceName && sourceName.includes('.')) {
+        const ext = sourceName.split('.').pop()
+        if (ext) tags.push(String(ext).toLowerCase())
+      }
+
+      const id = `wiki_${now}_${Math.random().toString(16).slice(2, 6)}`
+      const item = {
+        id,
+        title: cleanTitle,
+        summary: cleanSummary,
+        content: cleanContent,
+        category: '导入文档',
+        tags: Array.from(new Set(tags)).slice(0, 20),
+        views: 0,
+        starred: false,
+        createdAt: now,
+        updatedAt: now,
+        history: [],
+        comments: []
+      }
+
+      this.articles.unshift(item)
+      this.activeArticleId = id
+      this.viewTab = 'read'
+      this.searchQuery = ''
+      this.categoryFilter = 'all'
+      this.onlyStarred = false
+      this.sortBy = 'recent'
+      this.mobileReadMode = true
+      this.persistArticles()
+      this.resetArticleListScroll()
+      return item
+    },
     jumpToHeading(id) {
       if (this.viewTab !== 'read') {
         this.viewTab = 'read'
         this.$nextTick(() => this.jumpToHeading(id))
         return
       }
+      if (this.isMobile) this.showMobileToc = false
       const el = document.getElementById(id)
       if (!el) return
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1023,15 +1239,6 @@ export default {
     sanitizeFileName(name) {
       const base = String(name || '').replace(/\.[^.]+$/, '').trim()
       return base || `file_${Date.now()}`
-    },
-    arrayBufferToBase64(buffer) {
-      const bytes = new Uint8Array(buffer)
-      let binary = ''
-      const chunk = 0x8000
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-      }
-      return btoa(binary)
     },
     fileToDataUrl(file) {
       return new Promise((resolve, reject) => {
@@ -1133,13 +1340,14 @@ export default {
           this.pushImportLog('success', `读取完成，提取 ${nextContent.length} 字符`)
         } else {
           this.pushImportLog('info', '正在上传文件到后端解析...')
-          const buf = await file.arrayBuffer()
-          this.pushImportLog('info', `上传体积：${Math.round(buf.byteLength / 1024)} KB`)
+          const dataUrl = await this.fileToDataUrl(file)
+          const base64 = String(dataUrl || '').split(',').pop() || ''
+          this.pushImportLog('info', `上传体积：${Math.round(file.size / 1024)} KB`)
           controller = new AbortController()
           timeoutId = setTimeout(() => controller.abort(), 120000)
           const result = await api.wiki.importDocument({
             fileName: file.name,
-            dataBase64: this.arrayBufferToBase64(buf)
+            dataBase64: base64
           }, { signal: controller.signal })
           nextTitle = result?.title || nextTitle
           nextSummary = result?.summary || ''
@@ -1151,12 +1359,14 @@ export default {
           throw new Error('未从文档中提取到可用正文')
         }
 
-        this.createArticle()
-        this.draft.title = nextTitle
-        this.draft.summary = nextSummary
-        this.draft.content = nextContent
-        this.viewTab = 'edit'
-        this.pushImportLog('success', `导入完成：${nextTitle}`)
+        const created = this.createArticleFromImport({
+          title: nextTitle,
+          summary: nextSummary,
+          content: nextContent,
+          sourceExt: ext,
+          sourceName: file.name
+        })
+        this.pushImportLog('success', `导入完成并创建词条：${created.title}`)
       } catch (error) {
         const msg = String(error?.message || '')
         this.pushImportLog('error', `导入失败：${msg || '未知错误'}`)
@@ -1254,7 +1464,7 @@ export default {
           this.articles = normalized
           this.activeArticleId = normalized[0].id
           this.viewTab = 'read'
-          this.resetArticleViewport()
+          this.resetArticleListScroll()
           this.persistArticles()
           alert(`导入成功：${normalized.length} 条词条`)
         }
@@ -1292,7 +1502,7 @@ export default {
           this.articles = normalized
           this.activeArticleId = normalized[0].id
           this.viewTab = 'read'
-          this.resetArticleViewport()
+          this.resetArticleListScroll()
           this.persistArticles()
           alert(`导入成功：${normalized.length} 条词条`)
         }
@@ -1318,23 +1528,36 @@ export default {
     },
     handleResize() {
       this.viewportWidth = window.innerWidth
+      this.$nextTick(() => this.measureArticleListViewport())
       if (!this.isMobile) {
         this.mobileReadMode = false
+        this.showMobileToc = false
       }
+    },
+    toggleMobileToc() {
+      this.showMobileToc = !this.showMobileToc
+    },
+    adjustReaderFont(delta) {
+      const next = this.readerFontSize + Number(delta || 0)
+      this.readerFontSize = Math.max(13, Math.min(22, next))
+    },
+    adjustReaderLineHeight(delta) {
+      const next = Math.round((this.readerLineHeight + Number(delta || 0)) * 100) / 100
+      this.readerLineHeight = Math.max(1.45, Math.min(2.2, next))
     }
   },
   watch: {
     searchQuery() {
-      this.resetArticleViewport()
+      this.resetArticleListScroll()
     },
     categoryFilter() {
-      this.resetArticleViewport()
+      this.resetArticleListScroll()
     },
     sortBy() {
-      this.resetArticleViewport()
+      this.resetArticleListScroll()
     },
     onlyStarred() {
-      this.resetArticleViewport()
+      this.resetArticleListScroll()
     },
     draft: {
       deep: true,
@@ -1345,10 +1568,14 @@ export default {
     viewTab() {
       if (this.viewTab !== 'edit') return
       this.saveDraftCache()
+    },
+    activeArticleId() {
+      this.showMobileToc = false
     }
   },
   mounted() {
     this.load()
+    this.$nextTick(() => this.measureArticleListViewport())
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -1529,24 +1756,114 @@ export default {
 .actions,
 .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.read-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 12px;
+}
+.read-main { min-width: 0; }
+.inline-toc {
+  position: sticky;
+  top: 10px;
+  align-self: start;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+  padding: 10px;
+  max-height: 72dvh;
+  overflow: auto;
+}
+.inline-toc h4 {
+  margin: 0 0 8px;
+  font-size: 0.9em;
+  color: var(--app-text-secondary);
+}
+.mobile-read-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+}
+.tool-stat {
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+}
+
 .markdown {
   line-height: 1.8;
   font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+  font-size: 15px;
 }
 .markdown :deep(h1),
 .markdown :deep(h2),
 .markdown :deep(h3) {
-  margin-top: 18px;
+  margin-top: 22px;
   margin-bottom: 8px;
   font-family: "Palatino", "Palatino Linotype", "Songti SC", serif;
 }
+.markdown :deep(h1) {
+  font-size: 1.52em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--app-border);
+}
+.markdown :deep(h2) {
+  font-size: 1.24em;
+  padding-left: 8px;
+  border-left: 3px solid color-mix(in srgb, var(--app-primary) 55%, transparent);
+}
+.markdown :deep(h3) {
+  font-size: 1.08em;
+}
+.markdown :deep(p) { margin: 10px 0; }
 .markdown :deep(code) {
   background: color-mix(in srgb, var(--app-primary) 14%, transparent);
   padding: 2px 6px;
   border-radius: 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-.markdown :deep(ul) { padding-left: 20px; }
+.markdown :deep(pre) {
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  overflow: auto;
+}
+.markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.markdown :deep(ul),
+.markdown :deep(ol) { padding-left: 24px; margin: 10px 0; }
+.markdown :deep(li) { margin: 4px 0; }
+.markdown :deep(blockquote) {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-left: 4px solid color-mix(in srgb, var(--app-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+  color: var(--app-text-secondary);
+}
+.markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 0.95em;
+}
+.markdown :deep(th),
+.markdown :deep(td) {
+  border: 1px solid var(--app-border);
+  padding: 6px 8px;
+  text-align: left;
+}
+.markdown :deep(th) {
+  background: var(--app-card-elevated);
+}
 .markdown :deep(a) { color: var(--app-primary); }
 .markdown :deep(img) {
   max-width: 100%;
@@ -1611,6 +1928,8 @@ export default {
   padding: 7px 8px;
   cursor: pointer;
   text-decoration: none;
+  white-space: normal;
+  line-height: 1.4;
 }
 .related-item:hover,
 .toc-item:hover { border-color: var(--app-primary); color: var(--app-primary); }
@@ -1731,10 +2050,44 @@ export default {
 
 .check { font-size: 0.84em; color: var(--app-text-secondary); display: inline-flex; align-items: center; gap: 6px; }
 .hidden-input { display: none; }
+.mobile-toc-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: 49;
+}
+.mobile-toc-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 72dvh;
+  overflow: auto;
+  z-index: 50;
+  border-radius: 16px 16px 0 0;
+  transform: translateY(105%);
+  transition: transform 0.22s ease;
+}
+.mobile-toc-drawer.open {
+  transform: translateY(0);
+}
+.mobile-toc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mobile-toc-head h3 {
+  margin: 0;
+  font-size: 0.95em;
+}
 
-@media (max-width: 1220px) {
+@media (max-width: 1080px) {
   .wiki-layout { grid-template-columns: 280px minmax(0, 1fr); }
   .side-panel { grid-column: 1 / -1; min-height: auto; }
+  .read-layout { grid-template-columns: 1fr; }
+  .inline-toc { display: none; }
 }
 
 @media (max-width: 880px) {
@@ -1752,5 +2105,9 @@ export default {
   .side-panel { min-height: auto; }
   .content-head { flex-direction: column; }
   .form-row { grid-template-columns: 1fr; }
+  .mobile-read-tools .btn {
+    padding: 6px 8px;
+    font-size: 0.78em;
+  }
 }
 </style>

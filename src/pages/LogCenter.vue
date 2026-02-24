@@ -415,8 +415,8 @@ export default {
 .server-log-panel {
   border: 1px solid var(--app-border);
   border-radius: 12px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
   padding: 10px;
   max-height: 62dvh;
   overflow: auto;
@@ -426,15 +426,21 @@ export default {
   user-select: text;
   -webkit-user-select: text;
 }
-.server-log-line { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed rgba(148, 163, 184, 0.16); }
+.server-log-line { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #cbd5e1; }
 .server-log-line:last-child { border-bottom: none; }
-.log-time { color: #94a3b8; flex-shrink: 0; }
-.log-level { color: #cbd5e1; flex-shrink: 0; width: 54px; }
-.log-msg { white-space: pre-wrap; word-break: break-word; }
-.lv-error .log-level { color: #f87171; }
-.lv-warn .log-level { color: #fbbf24; }
-.lv-info .log-level { color: #60a5fa; }
-.lv-http .log-level { color: #22d3ee; }
+.log-time { color: #475569; flex-shrink: 0; }
+.log-level {
+  color: #334155;
+  flex-shrink: 0;
+  width: 54px;
+  font-weight: 700;
+}
+.log-msg { white-space: pre-wrap; word-break: break-word; color: #0f172a; }
+.lv-error .log-level { color: #dc2626; }
+.lv-warn .log-level { color: #b45309; }
+.lv-info .log-level { color: #2563eb; }
+.lv-http .log-level { color: #0891b2; }
+.lv-debug .log-level { color: #7c3aed; }
 
 .empty { text-align: center; color: var(--app-text-muted); padding: 32px 12px; border: 1px dashed var(--app-border); border-radius: 12px; background: var(--app-card-elevated); font-size: 0.86em; }
 

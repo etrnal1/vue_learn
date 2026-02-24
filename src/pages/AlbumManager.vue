@@ -64,9 +64,10 @@
           </div>
 
           <div v-if="filteredAlbums.length === 0" class="empty">暂无相册，先创建一个吧</div>
-          <div v-else class="cards">
+          <div v-else ref="albumListRef" class="cards" @scroll.passive="onAlbumListScroll">
+            <div :style="{ height: `${virtualAlbumPaddingTop}px` }"></div>
             <article
-              v-for="item in filteredAlbums"
+              v-for="item in virtualDisplayedAlbums"
               :key="item.id"
               class="card album-card"
               :class="{ active: item.id === selectedAlbumId }"
@@ -99,6 +100,7 @@
                 </div>
               </div>
             </article>
+            <div :style="{ height: `${virtualAlbumPaddingBottom}px` }"></div>
           </div>
         </div>
       </div>
@@ -186,9 +188,10 @@
 
           <div v-if="filteredPhotos.length === 0" class="empty">这个相册还没有照片，先添加一张</div>
 
-          <div v-else class="cards">
+          <div v-else ref="photoListRef" class="cards" @scroll.passive="onPhotoListScroll">
+            <div :style="{ height: `${virtualPhotoPaddingTop}px` }"></div>
             <article
-              v-for="item in filteredPhotos"
+              v-for="item in virtualDisplayedPhotos"
               :key="item.id"
               class="card photo-card"
               :class="{ active: item.id === previewPhotoId }"
@@ -220,6 +223,7 @@
                 </div>
               </div>
             </article>
+            <div :style="{ height: `${virtualPhotoPaddingBottom}px` }"></div>
           </div>
 
           <div v-if="previewPhoto" class="preview-panel">
@@ -258,6 +262,14 @@ export default {
       uploading: false,
       optimizingExisting: false,
       storageMode: 'unknown',
+      albumListScrollTop: 0,
+      albumListViewportHeight: 640,
+      albumItemHeight: 210,
+      albumRenderBuffer: 4,
+      photoListScrollTop: 0,
+      photoListViewportHeight: 640,
+      photoItemHeight: 240,
+      photoRenderBuffer: 4,
       albumForm: this.emptyAlbumForm(),
       photoForm: this.emptyPhotoForm()
     }
@@ -284,6 +296,25 @@ export default {
         })
         .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     },
+    virtualAlbumStart() {
+      return Math.max(0, Math.floor(this.albumListScrollTop / this.albumItemHeight) - this.albumRenderBuffer)
+    },
+    virtualAlbumVisibleCount() {
+      const base = Math.ceil(this.albumListViewportHeight / this.albumItemHeight)
+      return base + this.albumRenderBuffer * 2
+    },
+    virtualAlbumEnd() {
+      return Math.min(this.filteredAlbums.length, this.virtualAlbumStart + this.virtualAlbumVisibleCount)
+    },
+    virtualDisplayedAlbums() {
+      return this.filteredAlbums.slice(this.virtualAlbumStart, this.virtualAlbumEnd)
+    },
+    virtualAlbumPaddingTop() {
+      return this.virtualAlbumStart * this.albumItemHeight
+    },
+    virtualAlbumPaddingBottom() {
+      return (this.filteredAlbums.length - this.virtualAlbumEnd) * this.albumItemHeight
+    },
     selectedAlbum() {
       return this.albums.find((item) => item.id === this.selectedAlbumId) || null
     },
@@ -300,6 +331,25 @@ export default {
           return matchFavorite && hay.includes(q)
         })
         .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    },
+    virtualPhotoStart() {
+      return Math.max(0, Math.floor(this.photoListScrollTop / this.photoItemHeight) - this.photoRenderBuffer)
+    },
+    virtualPhotoVisibleCount() {
+      const base = Math.ceil(this.photoListViewportHeight / this.photoItemHeight)
+      return base + this.photoRenderBuffer * 2
+    },
+    virtualPhotoEnd() {
+      return Math.min(this.filteredPhotos.length, this.virtualPhotoStart + this.virtualPhotoVisibleCount)
+    },
+    virtualDisplayedPhotos() {
+      return this.filteredPhotos.slice(this.virtualPhotoStart, this.virtualPhotoEnd)
+    },
+    virtualPhotoPaddingTop() {
+      return this.virtualPhotoStart * this.photoItemHeight
+    },
+    virtualPhotoPaddingBottom() {
+      return (this.filteredPhotos.length - this.virtualPhotoEnd) * this.photoItemHeight
     },
     previewPhoto() {
       if (!this.selectedAlbum) return null
@@ -332,6 +382,32 @@ export default {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean)
+    },
+    onAlbumListScroll(event) {
+      this.albumListScrollTop = event?.target?.scrollTop || 0
+    },
+    onPhotoListScroll(event) {
+      this.photoListScrollTop = event?.target?.scrollTop || 0
+    },
+    measureListViewport() {
+      const albumEl = this.$refs.albumListRef
+      if (albumEl) {
+        this.albumListViewportHeight = Math.max(240, albumEl.clientHeight || 640)
+      }
+      const photoEl = this.$refs.photoListRef
+      if (photoEl) {
+        this.photoListViewportHeight = Math.max(240, photoEl.clientHeight || 640)
+      }
+    },
+    resetAlbumListScroll() {
+      this.albumListScrollTop = 0
+      const el = this.$refs.albumListRef
+      if (el) el.scrollTop = 0
+    },
+    resetPhotoListScroll() {
+      this.photoListScrollTop = 0
+      const el = this.$refs.photoListRef
+      if (el) el.scrollTop = 0
     },
     sanitizeFileName(name) {
       const base = String(name || '').replace(/\.[^.]+$/, '').trim()
@@ -515,6 +591,7 @@ export default {
       if (!this.selectedAlbumId && this.albums.length > 0) {
         this.selectedAlbumId = this.albums[0].id
       }
+      this.$nextTick(() => this.measureListViewport())
     },
     saveAlbum() {
       if (!this.albumForm.name) {
@@ -591,10 +668,12 @@ export default {
       this.selectedAlbumId = id
       this.previewPhotoId = null
       this.resetPhotoForm()
+      this.resetPhotoListScroll()
     },
     openAlbumPhotos(id) {
       this.selectAlbum(id)
       this.activeTab = 'photos'
+      this.$nextTick(() => this.measureListViewport())
     },
     async handleSingleUpload(event) {
       const input = event?.target
@@ -670,6 +749,7 @@ export default {
           this.albums[albumIndex].coverUrl = uploadedItems[0].url
         }
         this.previewPhotoId = uploadedItems[0]?.id || null
+        this.resetPhotoListScroll()
         this.persist()
       } catch (error) {
         alert(error.message || '批量上传失败')
@@ -765,6 +845,7 @@ export default {
 
       this.persist()
       this.resetPhotoForm()
+      this.resetPhotoListScroll()
     },
     editPhoto(item) {
       this.editingPhotoId = item.id
@@ -822,8 +903,30 @@ export default {
       event.target.style.display = 'none'
     }
   },
+  watch: {
+    albumSearch() {
+      this.resetAlbumListScroll()
+    },
+    albumCategoryFilter() {
+      this.resetAlbumListScroll()
+    },
+    photoSearch() {
+      this.resetPhotoListScroll()
+    },
+    photoFavoriteFilter() {
+      this.resetPhotoListScroll()
+    },
+    activeTab() {
+      this.$nextTick(() => this.measureListViewport())
+    }
+  },
   mounted() {
     this.load()
+    this.$nextTick(() => this.measureListViewport())
+    window.addEventListener('resize', this.measureListViewport)
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.measureListViewport)
   }
 }
 </script>
@@ -869,8 +972,21 @@ export default {
 }
 
 .toolbar { display: grid; grid-template-columns: 1fr 170px; gap: 10px; margin-bottom: 10px; }
-.cards { display: grid; gap: 10px; }
-.card { border: 1px solid var(--app-border); background: var(--app-card); border-radius: 10px; padding: 12px; }
+.cards {
+  display: grid;
+  gap: 10px;
+  max-height: min(70vh, 760px);
+  overflow: auto;
+  padding-right: 2px;
+}
+.card {
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+  border-radius: 10px;
+  padding: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: 180px;
+}
 .card.active { border-color: var(--app-primary); box-shadow: 0 0 0 2px var(--app-shadow-light); }
 .card-head { display: flex; justify-content: space-between; gap: 10px; }
 .card h4 { margin: 0; font-size: 1.02em; }
