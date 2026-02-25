@@ -148,7 +148,8 @@ const tabLoaders = {
   logs: () => import('./pages/LogCenter.vue'),
   weibo: () => import('./pages/WeiboCrawler.vue'),
   scheduler: () => import('./pages/ScheduledTaskManager.vue'),
-  docs: () => import('./pages/DocumentationCenter.vue')
+  docs: () => import('./pages/DocumentationCenter.vue'),
+  ffmpeg: () => import('./pages/FfmpegTool.vue')
 }
 
 function createAsyncPage(loader) {
@@ -183,6 +184,7 @@ const LogCenter = createAsyncPage(tabLoaders.logs)
 const WeiboCrawler = createAsyncPage(tabLoaders.weibo)
 const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 const DocumentationCenter = createAsyncPage(tabLoaders.docs)
+const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 
 export default {
   components: {
@@ -201,7 +203,8 @@ export default {
     LogCenter,
     WeiboCrawler,
     ScheduledTaskManager,
-    DocumentationCenter
+    DocumentationCenter,
+    FfmpegTool
   },
   data() {
     return {
@@ -221,7 +224,8 @@ export default {
         { id: 'logs', label: '日志中心' },
         { id: 'weibo', label: '微博抓取' },
         { id: 'scheduler', label: '定时任务' },
-        { id: 'docs', label: '📚 文档中心' }
+        { id: 'docs', label: '📚 文档中心' },
+        { id: 'ffmpeg', label: 'FFmpeg 工具' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
@@ -284,7 +288,8 @@ export default {
         logs: LogCenter,
         weibo: WeiboCrawler,
         scheduler: ScheduledTaskManager,
-        docs: DocumentationCenter
+        docs: DocumentationCenter,
+        ffmpeg: FfmpegTool
       }
       return componentMap[this.activeTab] || HomePage
     },

@@ -138,6 +138,33 @@ export const api = {
     getLibrary: () => apiRequest('/videos/library'),
     saveLibrary: (items) => apiRequest('/videos/library', { method: 'PUT', body: JSON.stringify({ items }) }),
     scan: (payload) => apiRequest('/videos/scan', { method: 'POST', body: JSON.stringify(payload) }),
+    upload: (file, onProgress) => new Promise((resolve, reject) => {
+      if (!(file instanceof File)) {
+        reject(new Error('无效文件'));
+        return;
+      }
+      const xhr = new XMLHttpRequest();
+      const url = getApiUrl(`/videos/upload?filename=${encodeURIComponent(file.name)}`);
+      xhr.open('POST', url, true);
+      xhr.responseType = 'json';
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.upload.onprogress = (evt) => {
+        if (!evt.lengthComputable || typeof onProgress !== 'function') return;
+        const percent = Math.max(0, Math.min(100, (evt.loaded / evt.total) * 100));
+        onProgress(percent, evt.loaded, evt.total);
+      };
+      xhr.onload = () => {
+        const ok = xhr.status >= 200 && xhr.status < 300;
+        const body = xhr.response || {};
+        if (!ok) {
+          reject(new Error(body.error || `HTTP ${xhr.status}`));
+          return;
+        }
+        resolve(body);
+      };
+      xhr.onerror = () => reject(new Error('上传失败：网络异常'));
+      xhr.send(file);
+    }),
     optimize: (payload) => apiRequest('/videos/optimize', { method: 'POST', body: JSON.stringify(payload) }),
     streamUrl: (filePath) => getApiUrl(`/videos/stream?path=${encodeURIComponent(filePath)}`),
     downloadUrl: (filePath) => getApiUrl(`/videos/download?path=${encodeURIComponent(filePath)}`)
@@ -180,6 +207,14 @@ export const api = {
   // Script Runner
   scriptRunner: {
     execute: (payload) => apiRequest('/script-runner/execute', { method: 'POST', body: JSON.stringify(payload) })
+  },
+
+  // FFmpeg Tools
+  ffmpeg: {
+    presets: () => apiRequest('/ffmpeg/presets'),
+    run: (payload) => apiRequest('/ffmpeg/run', { method: 'POST', body: JSON.stringify(payload) }),
+    streamUrl: (filePath) => getApiUrl(`/ffmpeg/stream?path=${encodeURIComponent(filePath)}`),
+    downloadUrl: (filePath) => getApiUrl(`/ffmpeg/download?path=${encodeURIComponent(filePath)}`)
   },
 
   // Scheduler Tasks
