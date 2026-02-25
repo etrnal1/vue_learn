@@ -32,6 +32,7 @@
             <option value="log">记录日志</option>
             <option value="notify">浏览器通知</option>
             <option value="doc_scan">扫描目录（文档）</option>
+            <option value="video_scan">扫描目录（视频）</option>
             <option value="script">执行脚本（Shell/Python）</option>
           </select>
         </label>
@@ -239,6 +240,22 @@
         </div>
       </div>
 
+      <div v-if="form.actionType === 'video_scan'" class="rule-card">
+        <h4>视频扫描配置</h4>
+        <div class="form-grid">
+          <label class="col-2">
+            扫描目录（绝对路径）
+            <input v-model.trim="form.videoRootPath" type="text" placeholder="/Users/mac/Movies" />
+          </label>
+          <label>
+            最大文件数
+            <input v-model.number="form.videoMaxFiles" type="number" min="1" max="20000" />
+          </label>
+          <label class="check-line"><span>递归子目录</span><input v-model="form.videoRecursive" type="checkbox" /></label>
+          <label class="check-line"><span>扫描后自动导入视频库</span><input v-model="form.videoAutoImport" type="checkbox" /></label>
+        </div>
+      </div>
+
       <div v-if="form.actionType === 'script'" class="rule-card">
         <h4>脚本执行配置</h4>
         <div class="form-grid">
@@ -342,7 +359,7 @@
             </div>
             <span class="status" :class="statusClass(task)">{{ statusText(task) }}</span>
           </div>
-          <div class="task-meta">动作：{{ task.actionType === 'doc_scan' ? '目录扫描' : (task.actionType === 'notify' ? '通知' : (task.actionType === 'script' ? '脚本执行' : '日志')) }}</div>
+          <div class="task-meta">动作：{{ task.actionType === 'doc_scan' ? '目录扫描（文档）' : (task.actionType === 'video_scan' ? '目录扫描（视频）' : (task.actionType === 'notify' ? '通知' : (task.actionType === 'script' ? '脚本执行' : '日志'))) }}</div>
           <div class="task-meta">规则：<code>{{ getRuleText(task) }}</code></div>
           <div class="task-meta">上次执行：{{ task.lastRunAt ? formatDate(task.lastRunAt) : '-' }} | 次数：{{ task.runCount || 0 }}</div>
           <div class="task-actions">
@@ -439,6 +456,10 @@ export default {
         docRecursive: true,
         docMaxFiles: 1000,
         docIncludeExts: ['md', 'doc', 'excel', 'txt'],
+        videoRootPath: '',
+        videoRecursive: true,
+        videoMaxFiles: 3000,
+        videoAutoImport: true,
         scriptType: 'shell',
         scriptTimeoutSeconds: 30,
         scriptCwd: '',
@@ -680,10 +701,11 @@ export default {
       const mapping = {
         log: '日志',
         notify: '通知',
-        doc_scan: '目录扫描',
+        doc_scan: '文档扫描',
+        video_scan: '视频扫描',
         script: '脚本执行'
       }
-      const counts = { 日志: 0, 通知: 0, 目录扫描: 0, 脚本执行: 0 }
+      const counts = { 日志: 0, 通知: 0, 文档扫描: 0, 视频扫描: 0, 脚本执行: 0 }
       for (const task of this.tasks) {
         const key = mapping[task.actionType] || '日志'
         counts[key] = (counts[key] || 0) + 1
@@ -784,6 +806,10 @@ export default {
       this.form.docRecursive = true
       this.form.docMaxFiles = 1000
       this.form.docIncludeExts = ['md', 'doc', 'excel', 'txt']
+      this.form.videoRootPath = ''
+      this.form.videoRecursive = true
+      this.form.videoMaxFiles = 3000
+      this.form.videoAutoImport = true
       this.form.scriptType = 'shell'
       this.form.scriptTimeoutSeconds = 30
       this.form.scriptCwd = ''
@@ -950,6 +976,25 @@ export default {
           content,
           timeoutSeconds,
           cwd
+        }
+      }
+    },
+    validateVideoScanConfig() {
+      if (this.form.actionType !== 'video_scan') return { ok: true, config: null }
+      const rootPath = String(this.form.videoRootPath || '').trim()
+      if (!rootPath) return { ok: false, error: '视频扫描路径不能为空' }
+      if (!rootPath.startsWith('/')) return { ok: false, error: '视频扫描路径必须是绝对路径' }
+      const maxFiles = Number(this.form.videoMaxFiles || 3000)
+      if (!Number.isInteger(maxFiles) || maxFiles <= 0) {
+        return { ok: false, error: '视频扫描最大文件数必须是正整数' }
+      }
+      return {
+        ok: true,
+        config: {
+          rootPath,
+          recursive: !!this.form.videoRecursive,
+          maxFiles,
+          autoImport: !!this.form.videoAutoImport
         }
       }
     },
@@ -1125,6 +1170,8 @@ export default {
       if (!docCfg.ok) return alert(docCfg.error)
       const scriptCfg = this.validateScriptConfig()
       if (!scriptCfg.ok) return alert(scriptCfg.error)
+      const videoCfg = this.validateVideoScanConfig()
+      if (!videoCfg.ok) return alert(videoCfg.error)
 
       let rule
       let options = { weekdayList: null, monthNthWeekday: null, dateRange: null, timeWindow: null }
@@ -1157,6 +1204,7 @@ export default {
         dateRange: options.dateRange,
         timeWindow: options.timeWindow,
         docScanConfig: docCfg.config,
+        videoScanConfig: videoCfg.config,
         scriptConfig: scriptCfg.config,
         enabled: true,
         runCount: 0,

@@ -166,6 +166,7 @@ function normalizeTask(input, existing = null) {
     dateRange: input?.dateRange ?? existing?.dateRange ?? null,
     timeWindow: input?.timeWindow ?? existing?.timeWindow ?? null,
     docScanConfig: input?.docScanConfig ?? existing?.docScanConfig ?? null,
+    videoScanConfig: input?.videoScanConfig ?? existing?.videoScanConfig ?? null,
     scriptConfig: input?.scriptConfig ?? existing?.scriptConfig ?? null,
     source: input?.source ?? existing?.source ?? null
   };
@@ -214,11 +215,98 @@ async function executeScript(task) {
   addLog(`任务「${task.name}」脚本执行成功${msg ? `：${msg.slice(0, 120)}` : ''}`);
 }
 
+function buildVideoFromScanItem(item) {
+  const nowTs = now();
+  return {
+    id: `video_${nowTs}_${Math.random().toString(16).slice(2, 6)}`,
+    title: String(item?.name || '未命名视频'),
+    url: String(item?.streamUrl || ''),
+    category: '本地视频',
+    collection: '',
+    episodeNo: null,
+    status: 'watchlist',
+    tags: ['local'],
+    note: '',
+    localPath: String(item?.path || ''),
+    optimizedPath: '',
+    mediaDuration: Number(item?.duration) > 0 ? Number(item.duration) : 0,
+    progressTime: 0,
+    progressDuration: 0,
+    progressUpdatedAt: 0,
+    createdAt: nowTs,
+    updatedAt: nowTs
+  };
+}
+
+async function executeVideoScan(task) {
+  const cfg = task.videoScanConfig;
+  if (!cfg || !cfg.rootPath) throw new Error('视频扫描配置缺失');
+  const rootPath = String(cfg.rootPath || '').trim();
+  if (!rootPath) throw new Error('视频扫描路径不能为空');
+
+  const port = process.env.PORT || 4000;
+  const scanResp = await fetch(`http://127.0.0.1:${port}/api/videos/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rootPath,
+      recursive: cfg.recursive !== false,
+      maxFiles: Number(cfg.maxFiles || 3000),
+      includeDuration: true
+    })
+  });
+  const scanBody = await scanResp.json().catch(() => ({}));
+  if (!scanResp.ok) throw new Error(scanBody.error || `HTTP ${scanResp.status}`);
+
+  const items = Array.isArray(scanBody.items) ? scanBody.items : [];
+  let imported = 0;
+  if (cfg.autoImport !== false && items.length > 0) {
+    const libResp = await fetch(`http://127.0.0.1:${port}/api/videos/library`);
+    const libBody = await libResp.json().catch(() => ({}));
+    if (!libResp.ok) throw new Error(libBody.error || `HTTP ${libResp.status}`);
+    const existing = Array.isArray(libBody.items) ? libBody.items : [];
+    const byLocalPath = new Map();
+    for (const v of existing) {
+      if (v?.localPath) byLocalPath.set(String(v.localPath), v);
+    }
+
+    for (const item of items) {
+      const localPath = String(item.path || '');
+      if (!localPath) continue;
+      const matched = byLocalPath.get(localPath);
+      const duration = Number(item.duration) > 0 ? Number(item.duration) : 0;
+      if (matched) {
+        if (duration > 0 && Number(matched.mediaDuration || 0) <= 0) {
+          matched.mediaDuration = duration;
+          matched.updatedAt = now();
+        }
+        continue;
+      }
+      const created = buildVideoFromScanItem(item);
+      existing.unshift(created);
+      byLocalPath.set(localPath, created);
+      imported += 1;
+    }
+
+    const saveResp = await fetch(`http://127.0.0.1:${port}/api/videos/library`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: existing })
+    });
+    const saveBody = await saveResp.json().catch(() => ({}));
+    if (!saveResp.ok) throw new Error(saveBody.error || `HTTP ${saveResp.status}`);
+  }
+
+  addLog(`任务「${task.name}」视频扫描完成，发现 ${items.length} 个，导入 ${imported} 个`);
+}
+
 async function executeTask(task, source = 'auto') {
   const executedAt = now();
   try {
     if (task.actionType === 'doc_scan') {
       await executeDocScan(task);
+    } else if (task.actionType === 'video_scan') {
+      await executeVideoScan(task);
     } else if (task.actionType === 'script') {
       await executeScript(task);
     }
