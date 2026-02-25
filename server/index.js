@@ -26,6 +26,7 @@ import schedulerTasksRouter from './routes/schedulerTasks.js';
 import wikiRouter from './routes/wiki.js';
 import runtimeLogsRouter from './routes/runtimeLogs.js';
 import docsRouter from './routes/docs.js';
+import ffmpegRouter from './routes/ffmpeg.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -83,6 +84,7 @@ app.use('/api/scheduler-tasks', schedulerTasksRouter);
 app.use('/api/wiki', wikiRouter);
 app.use('/api/runtime-logs', runtimeLogsRouter);
 app.use('/api/docs', docsRouter);
+app.use('/api/ffmpeg', ffmpegRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -115,7 +117,7 @@ async function startServer() {
     process.exit(1);
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     const env = process.env.NODE_ENV || 'development';
     const envEmoji = env === 'production' ? '🔴' : '🟢';
     console.log(`\n🚀 ITSM 后端服务器启动成功！`);
@@ -142,8 +144,12 @@ async function startServer() {
     console.log(`  - /api/scheduler-tasks`);
     console.log(`  - /api/wiki`);
     console.log(`  - /api/runtime-logs`);
+    console.log(`  - /api/ffmpeg`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
+
+  // 支持大文件长时间流式上传，避免默认 requestTimeout 中断上传。
+  server.requestTimeout = 0;
 }
 
 startServer();
