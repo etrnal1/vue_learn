@@ -284,6 +284,73 @@ async function writeVideoLibrary(items) {
   return normalized;
 }
 
+function extractPathFromVideoUrl(rawUrl) {
+  const text = String(rawUrl || '').trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text, 'http://placeholder.local');
+    const endpoint = parsed.pathname || '';
+    if (!endpoint.endsWith('/api/videos/stream') && !endpoint.endsWith('/api/videos/download')) {
+      return '';
+    }
+    const pathParam = parsed.searchParams.get('path') || '';
+    if (!pathParam) return '';
+    return path.resolve(decodeURIComponent(pathParam));
+  } catch (error) {
+    return '';
+  }
+}
+
+function normalizeLocalVideoItemForMigration(item) {
+  const originalUrl = String(item?.url || '').trim();
+  const localPath = item?.localPath ? String(item.localPath).trim() : '';
+  const optimizedPath = item?.optimizedPath ? String(item.optimizedPath).trim() : '';
+  const extractedPath = extractPathFromVideoUrl(originalUrl);
+
+  const next = { ...item };
+  let changed = false;
+  let recoveredLocalPath = false;
+  const issues = [];
+
+  if (!localPath && extractedPath) {
+    next.localPath = extractedPath;
+    changed = true;
+    recoveredLocalPath = true;
+    issues.push('recovered_localPath');
+  }
+
+  const effectiveLocalPath = String(next.localPath || '').trim();
+  const effectiveOptimizedPath = optimizedPath;
+  const expectedPath = effectiveOptimizedPath || effectiveLocalPath;
+
+  if (originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) {
+    issues.push('host_locked_url');
+  }
+  if (effectiveLocalPath && !originalUrl) {
+    issues.push('missing_stream_url');
+  }
+  if (!effectiveLocalPath && originalUrl && extractedPath) {
+    issues.push('missing_localPath');
+  }
+
+  if (expectedPath) {
+    const expectedUrl = `/api/videos/stream?path=${encodeURIComponent(expectedPath)}`;
+    if (originalUrl !== expectedUrl) {
+      next.url = expectedUrl;
+      next.updatedAt = Date.now();
+      changed = true;
+      issues.push('stream_url_mismatch');
+    }
+  }
+
+  return {
+    item: next,
+    changed,
+    recoveredLocalPath,
+    issues: Array.from(new Set(issues))
+  };
+}
+
 // POST /api/videos/upload?filename=...
 router.post('/upload', async (req, res) => {
   let fullPath = '';
@@ -358,6 +425,79 @@ router.put('/library', async (req, res) => {
   } catch (error) {
     console.error('保存视频库失败:', error);
     res.status(500).json({ error: '保存视频库失败' });
+  }
+});
+
+// GET /api/videos/diagnose-legacy
+router.get('/diagnose-legacy', async (req, res) => {
+  try {
+    const items = await readVideoLibrary();
+    let localVideoCount = 0;
+    let missingLocalPathCount = 0;
+    let streamUrlMismatchCount = 0;
+    let hostLockedUrlCount = 0;
+    let recoverableLocalPathCount = 0;
+    const samples = [];
+
+    for (const item of items) {
+      const rawUrl = String(item?.url || '').trim();
+      const localPath = String(item?.localPath || '').trim();
+      const extracted = extractPathFromVideoUrl(rawUrl);
+      const isLocalCandidate = Boolean(localPath || extracted);
+      if (!isLocalCandidate) continue;
+      localVideoCount += 1;
+      if (!localPath) missingLocalPathCount += 1;
+      if (!localPath && extracted) recoverableLocalPathCount += 1;
+
+      const normalized = normalizeLocalVideoItemForMigration(item);
+      if (normalized.issues.includes('stream_url_mismatch')) streamUrlMismatchCount += 1;
+      if (normalized.issues.includes('host_locked_url')) hostLockedUrlCount += 1;
+
+      if (normalized.issues.length > 0 && samples.length < 20) {
+        samples.push({
+          id: item.id,
+          title: item.title || '',
+          localPath: localPath || extracted || '',
+          issues: normalized.issues
+        });
+      }
+    }
+
+    return res.json({
+      total: items.length,
+      localVideoCount,
+      missingLocalPathCount,
+      recoverableLocalPathCount,
+      streamUrlMismatchCount,
+      hostLockedUrlCount,
+      sample: samples
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || '诊断失败' });
+  }
+});
+
+// POST /api/videos/migrate-legacy
+router.post('/migrate-legacy', async (req, res) => {
+  try {
+    const items = await readVideoLibrary();
+    let changedCount = 0;
+    let recoveredLocalPathCount = 0;
+    const migrated = items.map((item) => {
+      const normalized = normalizeLocalVideoItemForMigration(item);
+      if (normalized.changed) changedCount += 1;
+      if (normalized.recoveredLocalPath) recoveredLocalPathCount += 1;
+      return normalized.item;
+    });
+
+    const savedItems = changedCount > 0 ? await writeVideoLibrary(migrated) : items;
+    return res.json({
+      total: savedItems.length,
+      changedCount,
+      recoveredLocalPathCount
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || '迁移失败' });
   }
 });
 

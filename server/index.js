@@ -27,6 +27,7 @@ import wikiRouter from './routes/wiki.js';
 import runtimeLogsRouter from './routes/runtimeLogs.js';
 import docsRouter from './routes/docs.js';
 import ffmpegRouter from './routes/ffmpeg.js';
+import systemMonitorRouter from './routes/systemMonitor.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -85,6 +86,7 @@ app.use('/api/wiki', wikiRouter);
 app.use('/api/runtime-logs', runtimeLogsRouter);
 app.use('/api/docs', docsRouter);
 app.use('/api/ffmpeg', ffmpegRouter);
+app.use('/api/system-monitor', systemMonitorRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -145,6 +147,7 @@ async function startServer() {
     console.log(`  - /api/wiki`);
     console.log(`  - /api/runtime-logs`);
     console.log(`  - /api/ffmpeg`);
+    console.log(`  - /api/system-monitor`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 
