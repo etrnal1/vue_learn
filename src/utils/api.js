@@ -1,30 +1,125 @@
 // API 辅助函数
-const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
-const API_BASE = configuredBase ? `${configuredBase}/api` : '/api';
+const API_BASE_STORAGE_KEY = 'vue_learning_api_base_url';
+const configuredBaseRaw = (import.meta.env.VITE_API_BASE_URL || '').trim();
+
+function normalizeApiBase(base) {
+  const raw = String(base || '').trim();
+  if (!raw) return '';
+  const trimmed = raw.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
+function getRuntimeApiBase() {
+  if (typeof window === 'undefined') return '';
+  try {
+    return normalizeApiBase(window.localStorage?.getItem(API_BASE_STORAGE_KEY) || '');
+  } catch (error) {
+    return '';
+  }
+}
+
+function isHttpRuntime() {
+  if (typeof window === 'undefined') return false;
+  return /^https?:$/.test(window.location?.protocol || '');
+}
+
+const configuredApiBase = normalizeApiBase(configuredBaseRaw);
+const relativeApiBase = '/api';
+let activeApiBase = '';
+
+function getApiBaseCandidates() {
+  const seen = new Set();
+  const list = [];
+  const push = (base) => {
+    const normalized = normalizeApiBase(base);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    list.push(normalized);
+  };
+
+  const runtimeApiBase = getRuntimeApiBase();
+
+  push(activeApiBase);
+
+  if (isHttpRuntime()) {
+    // 浏览器访问页面时，优先跟随当前访问域名，避免旧 IP 锁死。
+    push(relativeApiBase);
+    push(runtimeApiBase);
+    push(configuredApiBase);
+  } else {
+    // file:// 或原生容器环境优先使用显式配置地址。
+    push(runtimeApiBase);
+    push(configuredApiBase);
+    push(relativeApiBase);
+  }
+
+  return list.length > 0 ? list : [relativeApiBase];
+}
+
+function buildApiUrl(base, endpoint) {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${base}${normalizedEndpoint}`;
+}
+
+function rememberActiveApiBase(base) {
+  const normalized = normalizeApiBase(base);
+  if (!normalized) return;
+  activeApiBase = normalized;
+}
 
 export function getApiUrl(endpoint) {
-  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${API_BASE}${normalizedEndpoint}`;
+  const base = getApiBaseCandidates()[0];
+  return buildApiUrl(base, endpoint);
+}
+
+async function parseErrorFromResponse(response) {
+  const fallback = { error: `HTTP ${response.status}` };
+  const payload = await response.json().catch(() => fallback);
+  const err = new Error(payload.error || `HTTP ${response.status}`);
+  err.details = payload;
+  err.status = response.status;
+  return err;
 }
 
 async function apiRequest(endpoint, options = {}) {
-  try {
-    const response = await fetch(getApiUrl(endpoint), {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      ...options
-    });
+  const method = String(options.method || 'GET').toUpperCase();
+  const canRetryResponseError = method === 'GET' || method === 'HEAD';
+  let lastError = null;
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      const err = new Error(error.error || `HTTP ${response.status}`);
-      err.details = error;
-      throw err;
+  for (const base of getApiBaseCandidates()) {
+    const url = buildApiUrl(base, endpoint);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      });
+
+      if (!response.ok) {
+        const err = await parseErrorFromResponse(response);
+        err.apiBase = base;
+        if (!canRetryResponseError) throw err;
+        lastError = err;
+        continue;
+      }
+
+      const payload = await response.json().catch(() => {
+        const err = new Error('API 返回了非 JSON 响应');
+        err.apiBase = base;
+        throw err;
+      });
+      rememberActiveApiBase(base);
+      return payload;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      lastError = error;
     }
+  }
 
-    return await response.json();
+  try {
+    throw lastError || new Error('API 请求失败');
   } catch (error) {
     console.error(`API Error [${endpoint}]:`, error);
     throw error;
@@ -32,6 +127,22 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 export const api = {
+  setBaseUrl: (base) => {
+    const normalized = normalizeApiBase(base);
+    if (typeof window !== 'undefined') {
+      if (normalized) {
+        window.localStorage?.setItem(API_BASE_STORAGE_KEY, normalized.replace(/\/api$/, ''));
+      } else {
+        window.localStorage?.removeItem(API_BASE_STORAGE_KEY);
+      }
+    }
+    activeApiBase = normalized;
+  },
+  getBaseInfo: () => ({
+    active: activeApiBase || getApiBaseCandidates()[0],
+    configured: configuredApiBase || '',
+    runtime: getRuntimeApiBase() || ''
+  }),
   request: apiRequest,
   get: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'GET' }),
   post: (endpoint, body, options = {}) => apiRequest(endpoint, {
@@ -165,6 +276,8 @@ export const api = {
       xhr.onerror = () => reject(new Error('上传失败：网络异常'));
       xhr.send(file);
     }),
+    diagnoseLegacy: () => apiRequest('/videos/diagnose-legacy'),
+    migrateLegacy: () => apiRequest('/videos/migrate-legacy', { method: 'POST' }),
     clip: (payload) => apiRequest('/videos/clip', { method: 'POST', body: JSON.stringify(payload) }),
     optimize: (payload) => apiRequest('/videos/optimize', { method: 'POST', body: JSON.stringify(payload) }),
     streamUrl: (filePath) => getApiUrl(`/videos/stream?path=${encodeURIComponent(filePath)}`),
@@ -247,6 +360,11 @@ export const api = {
   runtimeLogs: {
     getAll: (limit = 400) => apiRequest(`/runtime-logs?limit=${encodeURIComponent(limit)}`),
     clear: () => apiRequest('/runtime-logs', { method: 'DELETE' })
+  },
+
+  // System Monitor
+  systemMonitor: {
+    getStatus: () => apiRequest('/system-monitor/status')
   },
 
   // Documentation

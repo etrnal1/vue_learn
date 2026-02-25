@@ -109,6 +109,16 @@
               <option value="completed">已看</option>
             </select>
           </div>
+          <div class="legacy-tools">
+            <button class="btn btn-sm" :disabled="legacyDiagnosing" @click="diagnoseLegacyData">
+              {{ legacyDiagnosing ? '诊断中...' : '诊断旧数据' }}
+            </button>
+            <button class="btn btn-sm" :disabled="legacyMigrating" @click="migrateLegacyData">
+              {{ legacyMigrating ? '迁移中...' : '一键迁移旧数据' }}
+            </button>
+            <span class="legacy-note">用于修复历史 localhost/旧链接，远程端可正常播放</span>
+          </div>
+          <div v-if="legacyReportText" class="legacy-report">{{ legacyReportText }}</div>
 
           <div v-if="filteredVideos.length === 0" class="empty">暂无视频记录</div>
           <div v-else class="cards">
@@ -181,7 +191,7 @@
             <video
               ref="videoRef"
               class="player"
-              :src="currentVideo.url"
+              :src="currentVideoUrl"
               preload="metadata"
               @loadedmetadata="onLoadedMetadata"
               @timeupdate="onTimeUpdate"
@@ -214,23 +224,23 @@
                     <svg v-if="isPlaying" viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
                     <svg v-else viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
                   </button>
-                  <button class="btn btn-sm yt-btn yt-icon-btn" title="上一集" :disabled="!prevEpisode" @click="playSibling(-1)">
+                  <button class="btn btn-sm yt-btn yt-icon-btn yt-mobile-optional" title="上一集" :disabled="!prevEpisode" @click="playSibling(-1)">
                     <svg viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M6 6h2v12H6zM18 6v12l-8-6z" fill="currentColor"/></svg>
                   </button>
-                  <button class="btn btn-sm yt-btn yt-icon-btn" title="下一集" :disabled="!nextEpisode" @click="playSibling(1)">
+                  <button class="btn btn-sm yt-btn yt-icon-btn yt-mobile-optional" title="下一集" :disabled="!nextEpisode" @click="playSibling(1)">
                     <svg viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M16 6h2v12h-2zM6 6v12l8-6z" fill="currentColor"/></svg>
                   </button>
-                  <button class="btn btn-sm yt-btn yt-icon-btn" title="后退10秒" @click="seekBy(-10)">
+                  <button class="btn btn-sm yt-btn yt-icon-btn yt-mobile-optional" title="后退10秒" @click="seekBy(-10)">
                     <svg viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M11 7V3L6 8l5 5V9a5 5 0 1 1-5 5H4a7 7 0 1 0 7-7z" fill="currentColor"/></svg>
                   </button>
-                  <button class="btn btn-sm yt-btn yt-icon-btn" title="前进10秒" @click="seekBy(10)">
+                  <button class="btn btn-sm yt-btn yt-icon-btn yt-mobile-optional" title="前进10秒" @click="seekBy(10)">
                     <svg viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M13 7V3l5 5-5 5V9a5 5 0 1 0 5 5h2a7 7 0 1 1-7-7z" fill="currentColor"/></svg>
                   </button>
                   <button class="btn btn-sm yt-btn yt-icon-btn" :title="isMuted ? '取消静音' : '静音'" @click="toggleMute">
                     <svg v-if="isMuted" viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9H5zm13.59 3L21 14.41 19.59 15.8 17.17 13.4l-2.42 2.4-1.41-1.39L15.76 12l-2.42-2.41 1.41-1.39 2.42 2.4 2.42-2.4L21 9.59 18.59 12z" fill="currentColor"/></svg>
                     <svg v-else viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9H5zm11.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12z" fill="currentColor"/></svg>
                   </button>
-                  <input class="yt-volume" type="range" min="0" max="1" step="0.01" :value="volume" @input="setVolume(Number($event.target.value))">
+                  <input class="yt-volume yt-mobile-optional" type="range" min="0" max="1" step="0.01" :value="volume" @input="setVolume(Number($event.target.value))">
                   <span class="time-indicator">{{ formatDuration(currentTime) }} / {{ formatDuration(duration) }}</span>
                 </div>
                 <div class="yt-right yt-group">
@@ -244,7 +254,7 @@
                     <option :value="1.75">1.75x</option>
                     <option :value="2">2.0x</option>
                   </select>
-                  <button class="btn btn-sm yt-btn yt-icon-btn" title="下载" @click="downloadCurrent">
+                  <button class="btn btn-sm yt-btn yt-icon-btn yt-mobile-optional" title="下载" @click="downloadCurrent">
                     <svg viewBox="0 0 24 24" class="yt-icon" aria-hidden="true"><path d="M5 20h14v-2H5v2zM11 4v8H8l4 4 4-4h-3V4h-2z" fill="currentColor"/></svg>
                   </button>
                   <button class="btn btn-sm yt-btn yt-icon-btn" title="全屏" @click="enterFullscreen">
@@ -258,7 +268,7 @@
             v-else
             ref="audioRef"
             class="audio-player"
-            :src="currentVideo.url"
+            :src="currentVideoUrl"
             controls
             preload="metadata"
             @loadedmetadata="onLoadedMetadata"
@@ -270,6 +280,7 @@
             @pause="onPause"
           ></audio>
           <div v-if="listenMode" class="listen-tip">听视频模式：仅播放音频</div>
+          <div v-if="playErrorDetail" class="yt-play-error">{{ playErrorDetail }}</div>
           <div v-if="listenMode" class="yt-audio-controls">
             <div class="yt-progress">
               <input
@@ -521,6 +532,9 @@ export default {
       uploadProgress: 0,
       uploadFeedback: '',
       uploadFeedbackType: 'info',
+      legacyDiagnosing: false,
+      legacyMigrating: false,
+      legacyReportText: '',
       storageMode: 'unknown',
       progressMap: {},
       resumePendingTime: 0,
@@ -543,6 +557,8 @@ export default {
       progressSyncTimer: null,
       progressSyncInFlight: false,
       progressSyncQueued: false,
+      playErrorRetried: false,
+      playErrorDetail: '',
       form: this.emptyForm()
     }
   },
@@ -560,6 +576,14 @@ export default {
     },
     currentVideo() {
       return this.videos.find((v) => v.id === this.playingId) || null
+    },
+    currentVideoUrl() {
+      if (!this.currentVideo) return ''
+      const localPath = String(this.currentVideo.optimizedPath || this.currentVideo.localPath || '').trim()
+      if (localPath) {
+        return this.toServerStreamUrl(localPath) || this.currentVideo.url || ''
+      }
+      return String(this.currentVideo.url || '').trim()
     },
     currentCollectionEpisodes() {
       if (!this.currentVideo?.collection) return []
@@ -698,6 +722,32 @@ export default {
       const s = String(sec % 60).padStart(2, '0')
       return `${m}:${s}`
     },
+    mediaErrorCodeText(code) {
+      return {
+        1: '媒体加载被中止（MEDIA_ERR_ABORTED）',
+        2: '网络错误导致下载失败（MEDIA_ERR_NETWORK）',
+        3: '解码失败，可能是编码不兼容（MEDIA_ERR_DECODE）',
+        4: '媒体源不受支持或链接不可用（MEDIA_ERR_SRC_NOT_SUPPORTED）'
+      }[Number(code)] || '未知媒体错误'
+    },
+    makePlayErrorDetail(event, extra = '') {
+      const el = event?.target || this.getActiveMediaEl()
+      const mediaErr = el?.error || null
+      const code = Number(mediaErr?.code) || 0
+      const reason = this.mediaErrorCodeText(code)
+      const src = String(el?.currentSrc || this.currentVideoUrl || '').trim() || '-'
+      const readyState = Number(el?.readyState)
+      const networkState = Number(el?.networkState)
+      const lines = [
+        `原因：${reason}`,
+        `错误码：${code || '-'}`,
+        `readyState=${Number.isFinite(readyState) ? readyState : '-'}, networkState=${Number.isFinite(networkState) ? networkState : '-'}`,
+        `src=${src}`
+      ]
+      const hint = String(extra || '').trim()
+      if (hint) lines.push(`补充：${hint}`)
+      return lines.join('\n')
+    },
     inferTitleFromUrl(url) {
       try {
         const raw = String(url || '').trim()
@@ -719,6 +769,14 @@ export default {
         .map((t) => t.trim())
         .filter(Boolean)
     },
+    toServerStreamUrl(localPath) {
+      if (!localPath) return ''
+      try {
+        return api.videos.streamUrl(localPath)
+      } catch (error) {
+        return ''
+      }
+    },
     normalizeVideos(list) {
       if (!Array.isArray(list)) return []
       const seen = new Set()
@@ -727,7 +785,12 @@ export default {
         .map((item) => {
           if (!item || typeof item !== 'object') return null
           const title = String(item.title || '').trim()
-          const url = String(item.url || '').trim()
+          const localPath = item.localPath ? String(item.localPath) : null
+          const optimizedPath = item.optimizedPath ? String(item.optimizedPath) : ''
+          const rawUrl = String(item.url || '').trim()
+          const url = localPath
+            ? (this.toServerStreamUrl(optimizedPath || localPath) || rawUrl)
+            : rawUrl
           if (!title || !url) return null
           const createdAt = Number(item.createdAt) || now
           const updatedAt = Number(item.updatedAt) || createdAt
@@ -748,8 +811,8 @@ export default {
               ? item.tags.map((tag) => String(tag || '').trim()).filter(Boolean).slice(0, 20)
               : [],
             note: String(item.note || ''),
-            localPath: item.localPath ? String(item.localPath) : null,
-            optimizedPath: item.optimizedPath ? String(item.optimizedPath) : '',
+            localPath,
+            optimizedPath,
             mediaDuration: Number(item.mediaDuration) > 0 ? Number(item.mediaDuration) : 0,
             progressTime: Number(item.progressTime) > 0 ? Number(item.progressTime) : 0,
             progressDuration: Number(item.progressDuration) > 0 ? Number(item.progressDuration) : 0,
@@ -764,6 +827,21 @@ export default {
     looksLikeLocalPath(input) {
       if (!input) return false
       return /^\/(Users|Volumes|private)\//.test(input) || /^[a-zA-Z]:\\/.test(input)
+    },
+    extractPathFromVideoUrl(rawUrl) {
+      const text = String(rawUrl || '').trim()
+      if (!text) return ''
+      try {
+        const parsed = new URL(text, window.location.origin)
+        const pathname = String(parsed.pathname || '')
+        if (!pathname.endsWith('/api/videos/stream') && !pathname.endsWith('/api/videos/download')) {
+          return ''
+        }
+        const p = parsed.searchParams.get('path') || ''
+        return p ? decodeURIComponent(p) : ''
+      } catch (error) {
+        return ''
+      }
     },
     async persist() {
       const normalized = this.normalizeVideos(this.videos)
@@ -828,6 +906,49 @@ export default {
           durationMs: 0,
           detail: error?.message || 'load library failed'
         })
+      }
+      this.repairLocalVideoUrls()
+    },
+    async repairLocalVideoUrls() {
+      if (!Array.isArray(this.videos) || this.videos.length === 0) return
+      let changed = false
+      for (const item of this.videos) {
+        if (!item?.localPath) continue
+        const expected = this.toServerStreamUrl(item.optimizedPath || item.localPath)
+        if (expected && item.url !== expected) {
+          item.url = expected
+          item.updatedAt = Date.now()
+          changed = true
+        }
+      }
+      if (changed) {
+        await this.persist()
+      }
+    },
+    async diagnoseLegacyData() {
+      if (this.legacyDiagnosing) return
+      this.legacyDiagnosing = true
+      try {
+        const report = await api.videos.diagnoseLegacy()
+        this.legacyReportText = `总计 ${report.total} 条，本地视频 ${report.localVideoCount} 条，链接不一致 ${report.streamUrlMismatchCount} 条，缺少localPath ${report.missingLocalPathCount} 条，可恢复 ${report.recoverableLocalPathCount} 条，锁定localhost ${report.hostLockedUrlCount} 条。`
+      } catch (error) {
+        this.legacyReportText = `诊断失败：${error.message || '未知错误'}`
+      } finally {
+        this.legacyDiagnosing = false
+      }
+    },
+    async migrateLegacyData() {
+      if (this.legacyMigrating) return
+      this.legacyMigrating = true
+      this.legacyReportText = '正在迁移旧数据...'
+      try {
+        const result = await api.videos.migrateLegacy()
+        await this.load()
+        this.legacyReportText = `迁移完成：共 ${result.total} 条，修复 ${result.changedCount} 条，恢复localPath ${result.recoveredLocalPathCount} 条。`
+      } catch (error) {
+        this.legacyReportText = `迁移失败：${error.message || '未知错误'}`
+      } finally {
+        this.legacyMigrating = false
       }
     },
     loadProgressMap() {
@@ -1258,7 +1379,7 @@ export default {
           this.videos.unshift({
             id: `video_${now}_${Math.random().toString(16).slice(2, 6)}`,
             title: newTitle,
-            url: result.streamUrl,
+            url: this.toServerStreamUrl(result.outputPath) || result.streamUrl,
             category: this.currentVideo.category || '本地视频',
             collection: this.currentVideo.collection || '',
             episodeNo: null,
@@ -1320,7 +1441,7 @@ export default {
         this.videos.unshift({
           id: `video_${now}_${Math.random().toString(16).slice(2, 6)}`,
           title,
-          url: result.streamUrl,
+          url: this.toServerStreamUrl(result.path) || result.streamUrl,
           category: this.form.category || '本地上传',
           collection: this.form.collection || '',
           episodeNo: Number(this.form.episodeNo) > 0 ? Math.floor(Number(this.form.episodeNo)) : null,
@@ -1333,7 +1454,7 @@ export default {
           updatedAt: now
         })
         await this.persist()
-        this.form.url = result.streamUrl || ''
+        this.form.url = this.toServerStreamUrl(result.path) || result.streamUrl || ''
         if (!this.form.title) this.form.title = title
         this.setUploadFeedback('上传成功，已自动加入视频库并生成播放链接。', 'success')
         this.recordLog({
@@ -1683,6 +1804,10 @@ export default {
     },
     async playVideo(item) {
       if (item.localPath) {
+        const streamUrl = this.toServerStreamUrl(item.optimizedPath || item.localPath)
+        if (streamUrl) {
+          item.url = streamUrl
+        }
         try {
           await api.get('/health')
         } catch (error) {
@@ -1718,8 +1843,8 @@ export default {
             mode: 'faststart'
           })
           if (optimized?.streamUrl) {
-            item.url = optimized.streamUrl
             item.optimizedPath = optimized.optimizedPath || ''
+            item.url = this.toServerStreamUrl(item.optimizedPath || item.localPath) || optimized.streamUrl
             item.updatedAt = Date.now()
             this.persist()
           }
@@ -1749,6 +1874,7 @@ export default {
 
       this.playingId = item.id
       this.activeTab = 'player'
+      this.playErrorDetail = ''
       this.duration = 0
       this.currentTime = 0
       this.clipStartSec = 0
@@ -1757,6 +1883,7 @@ export default {
       const progress = this.getProgressRecord(item)
       this.resumePendingTime = progress?.time > 0 ? progress.time : 0
       this.isPlaying = false
+      this.playErrorRetried = false
       this.recordLog({
         module: 'video',
         action: 'play_click',
@@ -1786,6 +1913,7 @@ export default {
         await media.play()
         this.scheduleHideControls()
       } catch (error) {
+        this.playErrorDetail = this.makePlayErrorDetail(null, error?.message || 'video.play() rejected')
         this.recordLog({
           module: 'video',
           action: 'play_start',
@@ -1793,10 +1921,10 @@ export default {
           durationMs: performance.now() - this.playMeasure.startPerf,
           name: item.title,
           path: item.localPath || item.url || '',
-          detail: error?.message || 'video.play() failed'
+          detail: this.playErrorDetail
         })
         this.playMeasure = null
-        alert('播放失败：请确认链接是可直接播放的视频地址（如 mp4）')
+        alert(`播放失败：\n${this.playErrorDetail}`)
       }
     },
     togglePlayPause() {
@@ -1924,7 +2052,26 @@ export default {
       this.setPlaybackRate(rate)
     },
     onVideoError(event) {
-      const mediaError = event?.target?.error
+      const fallbackPath = this.currentVideo
+        ? String(this.currentVideo.optimizedPath || this.currentVideo.localPath || this.extractPathFromVideoUrl(this.currentVideo.url || '')).trim()
+        : ''
+      if (!this.playErrorRetried && this.currentVideo && fallbackPath) {
+        const fallbackUrl = this.toServerStreamUrl(fallbackPath)
+        if (fallbackUrl && fallbackUrl !== this.currentVideo.url) {
+          this.playErrorRetried = true
+          this.currentVideo.localPath = this.currentVideo.localPath || fallbackPath
+          this.currentVideo.url = fallbackUrl
+          this.currentVideo.updatedAt = Date.now()
+          this.persist().catch(() => {})
+          const media = this.getActiveMediaEl()
+          if (media) {
+            media.load()
+            media.play().catch(() => {})
+          }
+          return
+        }
+      }
+      this.playErrorDetail = this.makePlayErrorDetail(event)
       this.recordLog({
         module: 'video',
         action: 'play_error',
@@ -1932,12 +2079,13 @@ export default {
         durationMs: this.playMeasure ? performance.now() - this.playMeasure.startPerf : null,
         name: this.playMeasure?.name || this.currentVideo?.title || '',
         path: this.playMeasure?.path || this.currentVideo?.localPath || this.currentVideo?.url || '',
-        detail: mediaError ? `code=${mediaError.code}` : 'video element error'
+        detail: this.playErrorDetail
       })
       this.playMeasure = null
     },
     onPlaying() {
       this.isPlaying = true
+      this.playErrorDetail = ''
       this.showControls()
       this.scheduleHideControls()
       this.queueCacheOnListen()
@@ -2063,9 +2211,16 @@ export default {
       if (this.hasVideoByLocalPath(item.path)) {
         const existing = this.videos.find((v) => v.localPath === item.path)
         const scannedDuration = Number(item.duration) > 0 ? Number(item.duration) : 0
+        const expectedUrl = this.toServerStreamUrl(existing?.optimizedPath || item.path)
         if (existing && scannedDuration > 0 && Number(existing.mediaDuration || 0) <= 0) {
           existing.mediaDuration = scannedDuration
           existing.updatedAt = Date.now()
+        }
+        if (existing && expectedUrl && existing.url !== expectedUrl) {
+          existing.url = expectedUrl
+          existing.updatedAt = Date.now()
+        }
+        if (existing) {
           this.persist()
         }
         return
@@ -2074,7 +2229,7 @@ export default {
       this.videos.unshift({
         id: `video_${now}_${Math.random().toString(16).slice(2, 6)}`,
         title: item.name,
-        url: item.streamUrl,
+        url: this.toServerStreamUrl(item.path) || item.streamUrl,
         category: '本地视频',
         collection: '',
         episodeNo: null,
@@ -2234,7 +2389,7 @@ export default {
 .yt-page-shell {
   background: #f9f9f9;
   border-color: #e5e7eb;
-  padding: 10px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
 }
 .yt-topbar {
   display: grid;
@@ -2321,6 +2476,18 @@ export default {
 .player { width: 100%; border-radius: 10px; background: #000; aspect-ratio: 16 / 9; }
 .audio-player { width: 100%; }
 .listen-tip { margin-top: 8px; color: #c5c5ce; font-size: 0.78em; }
+.yt-play-error {
+  margin-top: 8px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.76em;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .yt-center-play {
   position: absolute;
   left: 50%;
@@ -2439,6 +2606,9 @@ export default {
 .live-ms { margin-top: 2px; color: var(--app-text-muted); font-size: 0.72em; }
 
 .toolbar { display: grid; grid-template-columns: 1fr 170px; gap: 8px; margin-bottom: 8px; }
+.legacy-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.legacy-note { font-size: 0.74em; color: var(--app-text-muted); }
+.legacy-report { margin-bottom: 8px; font-size: 0.76em; border: 1px solid var(--app-border); border-radius: 8px; padding: 7px 9px; background: var(--app-card-elevated); color: var(--app-text-secondary); }
 .cards { display: grid; gap: 8px; }
 .card { border: 1px solid var(--app-border); background: var(--app-card-elevated); border-radius: 12px; padding: 10px; }
 .card.active { border-color: var(--app-primary); box-shadow: 0 0 0 3px var(--app-shadow-light); }
@@ -2474,6 +2644,35 @@ export default {
   .yt-top-actions { justify-content: flex-start; }
 }
 
+@media (max-width: 820px) {
+  .yt-overlay { padding: 8px 8px 6px; }
+  .yt-controls { gap: 6px; }
+  .yt-group {
+    width: 100%;
+    border-radius: 10px;
+    padding: 4px 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .yt-group::-webkit-scrollbar { display: none; }
+  .yt-btn { padding: 4px 7px; font-size: 0.72em; }
+  .yt-icon-btn { width: 28px; height: 28px; }
+  .yt-icon { width: 15px; height: 15px; }
+  .time-indicator { margin-left: auto; white-space: nowrap; font-size: 0.72em; }
+  .yt-mobile-optional { display: none; }
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 980px) {
+    .yt-page-shell { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+    .yt-top-actions { display: none; }
+    .yt-search { font-size: 16px; }
+    .rate-select { font-size: 16px; }
+  }
+}
+
 @media (max-width: 640px) {
   .panel { border-radius: 14px; padding: 10px; }
   .subtabs { width: 100%; }
@@ -2481,6 +2680,7 @@ export default {
   .toolbar { grid-template-columns: 1fr; }
   .scan-toolbar { grid-template-columns: 1fr; }
   .yt-left, .yt-right { width: 100%; }
+  .yt-search-btn { width: 46px; }
   .scan-result-head,
   .scan-item { flex-direction: column; align-items: flex-start; }
 }
