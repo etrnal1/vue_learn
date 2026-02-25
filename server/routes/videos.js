@@ -5,8 +5,11 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 const router = express.Router();
+const execFileAsync = promisify(execFile);
 
 const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v', '.flv', '.wmv'
@@ -29,6 +32,15 @@ const INITIAL_CHUNK_SIZE = 16 * 1024 * 1024; // 16MB for bytes=0-
 const OPTIMIZE_DIR = path.join(os.tmpdir(), 'vue-learning-video-cache');
 const VIDEO_DATA_DIR = path.resolve('server/data/videos');
 const VIDEO_LIBRARY_FILE = path.join(VIDEO_DATA_DIR, 'library.json');
+const VIDEO_UPLOAD_DIR = process.env.VIDEO_UPLOAD_DIR
+  ? path.resolve(process.env.VIDEO_UPLOAD_DIR)
+  : path.join(os.homedir(), 'Movies');
+const MAX_DURATION_PROBE_FILES = 200;
+const MAX_UPLOAD_SIZE_BYTES = (() => {
+  const gb = Number(process.env.VIDEO_UPLOAD_MAX_GB);
+  const safeGb = Number.isFinite(gb) && gb > 0 ? gb : 500;
+  return Math.floor(safeGb * 1024 * 1024 * 1024);
+})();
 
 function isVideoFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -142,6 +154,22 @@ async function walkVideos(rootPath, recursive, maxFiles) {
   return results;
 }
 
+async function probeDurationSeconds(filePath) {
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath
+    ], { timeout: 6000, maxBuffer: 128 * 1024 });
+    const duration = Number.parseFloat(String(stdout || '').trim());
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    return duration;
+  } catch (error) {
+    return 0;
+  }
+}
+
 function parseMaxFiles(input) {
   const num = Number.parseInt(input, 10);
   if (Number.isNaN(num) || num <= 0) return DEFAULT_MAX_FILES;
@@ -164,6 +192,21 @@ async function ensureVideoDataDir() {
   await fsp.mkdir(VIDEO_DATA_DIR, { recursive: true });
 }
 
+async function ensureVideoUploadDir() {
+  await fsp.mkdir(VIDEO_UPLOAD_DIR, { recursive: true });
+}
+
+function safeFileName(input) {
+  const raw = String(input || '').trim();
+  const base = path.basename(raw).replace(/[^\w.\-()\u4e00-\u9fa5 ]+/g, '_');
+  return base || `video_${Date.now()}.mp4`;
+}
+
+function maxUploadText() {
+  const gb = Math.max(1, Math.floor(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024 * 1024)));
+  return `${gb}GB`;
+}
+
 function normalizeVideoItem(item) {
   if (!item || typeof item !== 'object') return null;
 
@@ -179,6 +222,8 @@ function normalizeVideoItem(item) {
     title,
     url,
     category: String(item.category || '').trim(),
+    collection: String(item.collection || '').trim(),
+    episodeNo: Number(item.episodeNo) > 0 ? Math.floor(Number(item.episodeNo)) : null,
     status: ['watchlist', 'watching', 'completed'].includes(String(item.status))
       ? String(item.status)
       : 'watchlist',
@@ -188,6 +233,10 @@ function normalizeVideoItem(item) {
     note: String(item.note || ''),
     localPath: item.localPath ? String(item.localPath) : null,
     optimizedPath: item.optimizedPath ? String(item.optimizedPath) : '',
+    mediaDuration: Number(item.mediaDuration) > 0 ? Number(item.mediaDuration) : 0,
+    progressTime: Number(item.progressTime) > 0 ? Number(item.progressTime) : 0,
+    progressDuration: Number(item.progressDuration) > 0 ? Number(item.progressDuration) : 0,
+    progressUpdatedAt: Number(item.progressUpdatedAt) > 0 ? Number(item.progressUpdatedAt) : 0,
     createdAt,
     updatedAt
   };
@@ -228,6 +277,55 @@ async function writeVideoLibrary(items) {
   return normalized;
 }
 
+// POST /api/videos/upload?filename=...
+router.post('/upload', async (req, res) => {
+  let fullPath = '';
+  try {
+    const filename = safeFileName(req.query.filename || req.headers['x-file-name']);
+    const ext = path.extname(filename).toLowerCase();
+    if (!VIDEO_EXTENSIONS.has(ext)) {
+      return res.status(400).json({ error: '仅支持上传视频文件（mp4/mkv/mov/avi/webm/m4v/flv/wmv）' });
+    }
+
+    await ensureVideoUploadDir();
+    const finalName = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}_${filename}`;
+    fullPath = path.join(VIDEO_UPLOAD_DIR, finalName);
+    const output = fs.createWriteStream(fullPath, { flags: 'wx' });
+
+    let totalBytes = 0;
+    await new Promise((resolve, reject) => {
+      req.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_UPLOAD_SIZE_BYTES) {
+          req.destroy(new Error(`上传文件过大，最大支持 ${maxUploadText()}`));
+        }
+      });
+      req.on('error', reject);
+      output.on('error', reject);
+      output.on('finish', resolve);
+      req.pipe(output);
+    });
+
+    const stat = await fsp.stat(fullPath);
+    const duration = await probeDurationSeconds(fullPath);
+    return res.json({
+      fileName: filename,
+      size: stat.size,
+      path: fullPath,
+      duration,
+      streamUrl: `/api/videos/stream?path=${encodeURIComponent(fullPath)}`,
+      downloadUrl: `/api/videos/download?path=${encodeURIComponent(fullPath)}`
+    });
+  } catch (error) {
+    if (fullPath) {
+      await fsp.rm(fullPath, { force: true }).catch(() => {});
+    }
+    const message = error.message || '上传失败';
+    const status = /过大|too large/i.test(message) ? 413 : 400;
+    return res.status(status).json({ error: message });
+  }
+});
+
 // GET /api/videos/library
 router.get('/library', async (req, res) => {
   try {
@@ -258,7 +356,7 @@ router.put('/library', async (req, res) => {
 
 // POST /api/videos/scan
 router.post('/scan', async (req, res) => {
-  const { rootPath, recursive = true, maxFiles } = req.body || {};
+  const { rootPath, recursive = true, maxFiles, includeDuration = false } = req.body || {};
   const validated = resolveAndValidatePath(rootPath);
   if (!validated.ok) {
     return res.status(400).json({ error: validated.error });
@@ -275,16 +373,31 @@ router.post('/scan', async (req, res) => {
 
   try {
     const files = await walkVideos(validated.value, Boolean(recursive), parseMaxFiles(maxFiles));
-    const items = files.map((item) => ({
-      ...item,
-      streamUrl: `/api/videos/stream?path=${encodeURIComponent(item.path)}`,
-      downloadUrl: `/api/videos/download?path=${encodeURIComponent(item.path)}`
-    }));
+    const canProbe = Boolean(includeDuration);
+    const limited = canProbe ? files.slice(0, MAX_DURATION_PROBE_FILES) : [];
+    const durationMap = new Map();
+    if (limited.length > 0) {
+      await Promise.all(limited.map(async (item) => {
+        const sec = await probeDurationSeconds(item.path);
+        if (sec > 0) durationMap.set(item.path, sec);
+      }));
+    }
+
+    const items = files.map((item) => {
+      const sec = durationMap.get(item.path) || 0;
+      return {
+        ...item,
+        duration: sec,
+        streamUrl: `/api/videos/stream?path=${encodeURIComponent(item.path)}`,
+        downloadUrl: `/api/videos/download?path=${encodeURIComponent(item.path)}`
+      };
+    });
 
     res.json({
       rootPath: validated.value,
       count: items.length,
-      items
+      items,
+      durationProbed: canProbe ? Math.min(files.length, MAX_DURATION_PROBE_FILES) : 0
     });
   } catch (error) {
     console.error('扫描视频失败:', error);
