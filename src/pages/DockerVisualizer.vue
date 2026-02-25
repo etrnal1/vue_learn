@@ -101,6 +101,14 @@
             </div>
             <div class="card-actions">
               <button
+                @click="enterContainer(container.id, container.fullId)"
+                class="action-btn-small"
+                title="进入容器"
+                v-if="container.state === 'running'"
+              >
+                💻
+              </button>
+              <button
                 @click="toggleContainer(container.id, container.state)"
                 class="action-btn-small"
                 :title="container.state === 'running' ? '停止' : '启动'"
@@ -607,7 +615,10 @@ export default {
 
   computed: {
     filteredContainers() {
-      return this.containers.filter(c =>
+      return this.containers.map(c => ({
+        ...c,
+        memoryPercent: c.memoryLimit > 0 ? Math.round((c.memoryUsage / c.memoryLimit) * 100) : 0
+      })).filter(c =>
         c.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         c.image.toLowerCase().includes(this.searchQuery.toLowerCase())
       )
@@ -648,23 +659,98 @@ export default {
       return statusMap[state] || '❓'
     },
 
-    toggleContainer(id, state) {
-      console.log(`Toggle container ${id} from ${state}`)
-      // Mock action
-      alert(`${state === 'running' ? '停止' : '启动'} 容器: ${id}`)
-    },
+    async enterContainer(id, fullId) {
+      try {
+        const response = await fetch(`/api/docker/exec/${fullId}`)
+        const result = await response.json()
 
-    removeContainer(id) {
-      if (confirm('确定要删除此容器吗？')) {
-        this.containers = this.containers.filter(c => c.id !== id)
-        console.log(`Removed container ${id}`)
+        if (response.ok && result.status === 'ok') {
+          const { quickCommand, shellOptions } = result.data
+          const message = `✅ 进入容器命令:\n\n${quickCommand}\n\n在你的终端中执行此命令。\n\nShell 选项:\n${shellOptions.map(s => `• ${s.label}: ${s.command}`).join('\n')}`
+          alert(message)
+          console.log('Container exec command:', quickCommand)
+        } else {
+          alert(`❌ 错误: ${result.error}`)
+        }
+      } catch (error) {
+        alert(`❌ 无法获取进入容器的命令: ${error.message}`)
+        console.error('Error entering container:', error)
       }
     },
 
-    removeImage(id) {
-      if (confirm('确定要删除此镜像吗？')) {
-        this.images = this.images.filter(img => img.id !== id)
-        console.log(`Removed image ${id}`)
+    async toggleContainer(id, state) {
+      try {
+        const fullId = this.containers.find(c => c.id.startsWith(id))?.fullId || id
+        const action = state === 'running' ? 'stop' : 'start'
+        const endpoint = `/api/docker/containers/${fullId}/${action}`
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeout: 10 })
+        })
+
+        if (response.ok) {
+          // 立即刷新容器列表
+          await this.fetchContainers()
+          console.log(`Container ${fullId} ${action}ed successfully`)
+        } else {
+          const error = await response.json()
+          alert(`❌ 无法${action === 'running' ? '停止' : '启动'}容器: ${error.error}`)
+        }
+      } catch (error) {
+        alert(`❌ 操作失败: ${error.message}`)
+        console.error('Error toggling container:', error)
+      }
+    },
+
+    async removeContainer(id) {
+      if (!confirm('确定要删除此容器吗？')) return
+
+      try {
+        const fullId = this.containers.find(c => c.id.startsWith(id))?.fullId || id
+
+        const response = await fetch(`/api/docker/containers/${fullId}/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: true, removeVolumes: false })
+        })
+
+        if (response.ok) {
+          // 从列表中移除
+          this.containers = this.containers.filter(c => !c.id.startsWith(id))
+          console.log(`Container ${fullId} removed successfully`)
+        } else {
+          const error = await response.json()
+          alert(`❌ 无法删除容器: ${error.error}`)
+        }
+      } catch (error) {
+        alert(`❌ 删除失败: ${error.message}`)
+        console.error('Error removing container:', error)
+      }
+    },
+
+    async removeImage(id) {
+      if (!confirm('确定要删除此镜像吗？')) return
+
+      try {
+        const response = await fetch(`/api/docker/images/${id}/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: true })
+        })
+
+        if (response.ok) {
+          // 从列表中移除
+          this.images = this.images.filter(img => img.id !== id)
+          console.log(`Image ${id} removed successfully`)
+        } else {
+          const error = await response.json()
+          alert(`❌ 无法删除镜像: ${error.error}`)
+        }
+      } catch (error) {
+        alert(`❌ 删除失败: ${error.message}`)
+        console.error('Error removing image:', error)
       }
     },
 
@@ -696,12 +782,120 @@ export default {
       }
     },
 
-    refreshStatus() {
+    async fetchContainers() {
+      try {
+        const response = await fetch('/api/docker/containers')
+        const result = await response.json()
+
+        if (response.ok && result.status === 'ok') {
+          this.containers = result.data.map(container => {
+            const isRunning = container.State === 'running'
+            return {
+              id: container.ID.substring(0, 12),
+              fullId: container.ID,
+              name: container.Names[0]?.replace('/', '') || 'unknown',
+              image: container.Image,
+              state: isRunning ? 'running' : container.State || 'exited',
+              status: container.Status || '未知',
+              ports: container.Ports.split(',').filter(p => p.trim()).map(p => p.trim()),
+              networks: Object.keys(container.NetworkSettings?.Networks || {}),
+              cpuPercent: parseFloat(container.stats?.CPUPercent?.replace('%', '') || 0),
+              memoryUsage: this.parseSize(container.stats?.MemUsage?.split(' ')[0] || '0'),
+              memoryLimit: this.parseSize(container.stats?.MemLimit?.split(' ')[0] || '0'),
+              created: new Date(container.Created || Date.now()),
+              started: new Date(container.StartedAt || Date.now())
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch containers:', error)
+      }
+    },
+
+    async fetchImages() {
+      try {
+        const response = await fetch('/api/docker/images')
+        const result = await response.json()
+
+        if (response.ok && result.status === 'ok') {
+          this.images = result.data.map(image => ({
+            id: image.ID || image.id,
+            repository: image.Repository || 'unknown',
+            tag: image.Tag || 'latest',
+            size: this.parseSize(image.Size?.toString() || '0'),
+            created: new Date(image.Created || Date.now()),
+            containers: parseInt(image.Containers) || 0
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to fetch images:', error)
+      }
+    },
+
+    async fetchNetworks() {
+      try {
+        const response = await fetch('/api/docker/networks')
+        const result = await response.json()
+
+        if (response.ok && result.status === 'ok') {
+          this.networks = result.data.map(network => ({
+            id: network.ID,
+            name: network.Name,
+            driver: network.Driver,
+            subnet: network.IPAM?.Config?.[0]?.Subnet || 'N/A',
+            containers: Object.keys(network.Containers || {}).length,
+            connectedContainers: Object.keys(network.Containers || {})
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to fetch networks:', error)
+      }
+    },
+
+    async fetchVolumes() {
+      try {
+        const response = await fetch('/api/docker/volumes')
+        const result = await response.json()
+
+        if (response.ok && result.status === 'ok') {
+          this.volumes = result.data.map(volume => ({
+            name: volume.Name,
+            driver: volume.Driver,
+            mountpoint: volume.Mountpoint,
+            containers: 0,
+            created: new Date(),
+            connectedContainers: []
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to fetch volumes:', error)
+      }
+    },
+
+    parseSize(sizeStr) {
+      // 解析 Docker 的大小格式如 "256MB", "1.5GB"
+      if (!sizeStr) return 0
+      const units = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
+      const match = sizeStr.match(/^([\d.]+)([A-Z]+)$/)
+      if (!match) return 0
+      return Math.round(parseFloat(match[1]) * (units[match[2]] || 1))
+    },
+
+    async refreshStatus() {
       this.isLoading = true
-      setTimeout(() => {
-        this.isLoading = false
+      try {
+        await Promise.all([
+          this.fetchContainers(),
+          this.fetchImages(),
+          this.fetchNetworks(),
+          this.fetchVolumes()
+        ])
         console.log('Status refreshed')
-      }, 800)
+      } catch (error) {
+        console.error('Error refreshing status:', error)
+      } finally {
+        this.isLoading = false
+      }
     },
 
     toggleAutoRefresh() {
@@ -714,6 +908,11 @@ export default {
         clearInterval(this.refreshTimer)
       }
     }
+  },
+
+  mounted() {
+    // 初始化加载数据
+    this.refreshStatus()
   },
 
   beforeUnmount() {

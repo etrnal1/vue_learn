@@ -431,6 +431,126 @@ router.get('/logs/:containerid', async (req, res) => {
   }
 });
 
+// GET /api/docker/exec/:containerid - 获取进入容器的命令
+// 返回用于在 Web Terminal 中执行的命令
+router.get('/exec/:containerid', async (req, res) => {
+  try {
+    const { containerid } = req.params;
+
+    // 验证容器是否存在且正在运行
+    const containers = await executeDockerCommand('ps', [
+      '--filter', `id=${containerid}`,
+      '--format', '{{json .}}'
+    ]);
+
+    const containerList = containers
+      .split('\n')
+      .filter(line => line.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    if (containerList.length === 0) {
+      return res.status(404).json({
+        error: 'Container not found or not running'
+      });
+    }
+
+    const container = containerList[0];
+
+    // 返回可用的 shell 选项
+    res.json({
+      status: 'ok',
+      data: {
+        containerid: container.ID,
+        name: container.Names[0]?.replace('/', '') || 'unknown',
+        shellOptions: [
+          {
+            shell: '/bin/bash',
+            label: 'Bash',
+            command: `docker exec -it ${container.ID} /bin/bash`
+          },
+          {
+            shell: '/bin/sh',
+            label: 'Sh',
+            command: `docker exec -it ${container.ID} /bin/sh`
+          },
+          {
+            shell: '/bin/bash -c "cd / && bash"',
+            label: 'Bash (Root)',
+            command: `docker exec -it ${container.ID} /bin/bash -c "cd / && bash"`
+          }
+        ],
+        // 用户可以复制此命令到终端执行
+        quickCommand: `docker exec -it ${container.ID} /bin/bash`
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: 'Failed to get exec command',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/docker/ps/:containerid - 获取容器的直接交互端点信息
+router.get('/ps/:containerid', async (req, res) => {
+  try {
+    const { containerid } = req.params;
+    const inspect = await executeDockerCommand('inspect', [containerid]);
+
+    if (!Array.isArray(inspect) || inspect.length === 0) {
+      return res.status(404).json({
+        error: 'Container not found'
+      });
+    }
+
+    const container = inspect[0];
+    const isRunning = container.State.Running;
+
+    res.json({
+      status: 'ok',
+      data: {
+        id: container.Id.substring(0, 12),
+        name: container.Name.replace('/', ''),
+        state: isRunning ? 'running' : 'exited',
+        running: isRunning,
+        image: container.Config.Image,
+        entrypoint: container.Config.Entrypoint,
+        cmd: container.Config.Cmd,
+        workdir: container.Config.WorkingDir,
+        user: container.Config.User,
+        mounts: container.Mounts.map(m => ({
+          source: m.Source,
+          destination: m.Destination,
+          mode: m.Mode,
+          rw: m.RW
+        })),
+        ports: Object.entries(container.NetworkSettings.Ports || {}).map(([port, bindings]) => ({
+          port,
+          bindings: bindings || []
+        })),
+        networks: Object.entries(container.NetworkSettings.Networks || {}).map(([name, config]) => ({
+          name,
+          ipAddress: config.IPAddress,
+          gateway: config.Gateway,
+          ipPrefixLen: config.IPPrefixLen
+        }))
+      }
+    });
+  } catch (error) {
+    res.status(404).json({
+      error: 'Container not found',
+      message: error.message
+    });
+  }
+});
+
 // Health check
 router.get('/health', (req, res) => {
   executeDockerCommand('ps', ['-q', '--limit', '1'])
