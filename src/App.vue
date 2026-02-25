@@ -149,7 +149,9 @@ const tabLoaders = {
   weibo: () => import('./pages/WeiboCrawler.vue'),
   scheduler: () => import('./pages/ScheduledTaskManager.vue'),
   docs: () => import('./pages/DocumentationCenter.vue'),
-  ffmpeg: () => import('./pages/FfmpegTool.vue')
+  ffmpeg: () => import('./pages/FfmpegTool.vue'),
+  monitor: () => import('./pages/SystemMonitorDashboard.vue'),
+  docker: () => import('./pages/DockerVisualizer.vue')
 }
 
 function createAsyncPage(loader) {
@@ -185,6 +187,8 @@ const WeiboCrawler = createAsyncPage(tabLoaders.weibo)
 const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 const DocumentationCenter = createAsyncPage(tabLoaders.docs)
 const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
+const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
+const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 
 export default {
   components: {
@@ -204,7 +208,9 @@ export default {
     WeiboCrawler,
     ScheduledTaskManager,
     DocumentationCenter,
-    FfmpegTool
+    FfmpegTool,
+    SystemMonitorDashboard,
+    DockerVisualizer
   },
   data() {
     return {
@@ -225,7 +231,9 @@ export default {
         { id: 'weibo', label: '微博抓取' },
         { id: 'scheduler', label: '定时任务' },
         { id: 'docs', label: '📚 文档中心' },
-        { id: 'ffmpeg', label: 'FFmpeg 工具' }
+        { id: 'ffmpeg', label: 'FFmpeg 工具' },
+        { id: 'monitor', label: '设备状态大屏' },
+        { id: 'docker', label: '🐳 Docker 管理' }
       ],
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
@@ -289,7 +297,9 @@ export default {
         weibo: WeiboCrawler,
         scheduler: ScheduledTaskManager,
         docs: DocumentationCenter,
-        ffmpeg: FfmpegTool
+        ffmpeg: FfmpegTool,
+        monitor: SystemMonitorDashboard,
+        docker: DockerVisualizer
       }
       return componentMap[this.activeTab] || HomePage
     },
