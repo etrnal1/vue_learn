@@ -165,6 +165,7 @@ export const api = {
       xhr.onerror = () => reject(new Error('上传失败：网络异常'));
       xhr.send(file);
     }),
+    clip: (payload) => apiRequest('/videos/clip', { method: 'POST', body: JSON.stringify(payload) }),
     optimize: (payload) => apiRequest('/videos/optimize', { method: 'POST', body: JSON.stringify(payload) }),
     streamUrl: (filePath) => getApiUrl(`/videos/stream?path=${encodeURIComponent(filePath)}`),
     downloadUrl: (filePath) => getApiUrl(`/videos/download?path=${encodeURIComponent(filePath)}`)

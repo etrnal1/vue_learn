@@ -325,6 +325,17 @@
                 {{ ffmpegWorking ? '处理中...' : '执行处理' }}
               </button>
             </div>
+            <div v-if="currentVideo.localPath" class="yt-clip-row">
+              <span class="yt-ffmpeg-label">剪切到桌面</span>
+              <div class="yt-clip-time">{{ formatDuration(clipStartSec) }}</div>
+              <button class="btn btn-sm" @click="setClipStartFromCurrent">开始=当前</button>
+              <div class="yt-clip-time">{{ formatDuration(clipEndSec) }}</div>
+              <button class="btn btn-sm" @click="setClipEndFromCurrent">结束=当前</button>
+              <button class="btn btn-sm btn-primary" :disabled="clipWorking" @click="runClipCurrentVideo">
+                {{ clipWorking ? '剪切中...' : '开始剪切' }}
+              </button>
+            </div>
+            <div v-if="clipFeedback" class="yt-clip-feedback">{{ clipFeedback }}</div>
             <p v-if="currentVideo.note" class="yt-meta-note">{{ currentVideo.note }}</p>
           </div>
 
@@ -502,6 +513,10 @@ export default {
       optimizing: false,
       ffmpegMode: 'faststart',
       ffmpegWorking: false,
+      clipStartSec: 0,
+      clipEndSec: 0,
+      clipWorking: false,
+      clipFeedback: '',
       uploadingVideo: false,
       uploadProgress: 0,
       uploadFeedback: '',
@@ -1202,6 +1217,86 @@ export default {
         this.ffmpegWorking = false
       }
     },
+    setClipStartFromCurrent() {
+      this.clipStartSec = Math.max(0, Math.floor(Number(this.currentTime) || 0))
+      if (this.clipEndSec <= this.clipStartSec) {
+        this.clipEndSec = this.clipStartSec + 1
+      }
+      this.clipFeedback = ''
+    },
+    setClipEndFromCurrent() {
+      this.clipEndSec = Math.max(0, Math.floor(Number(this.currentTime) || 0))
+      if (this.clipEndSec <= this.clipStartSec) {
+        this.clipStartSec = Math.max(0, this.clipEndSec - 1)
+      }
+      this.clipFeedback = ''
+    },
+    async runClipCurrentVideo() {
+      if (!this.currentVideo?.localPath) {
+        alert('仅本地视频支持剪切')
+        return
+      }
+      const start = Math.max(0, Number(this.clipStartSec) || 0)
+      const end = Math.max(0, Number(this.clipEndSec) || 0)
+      if (!(end > start)) {
+        alert('结束时间必须大于开始时间')
+        return
+      }
+      if (this.clipWorking) return
+      this.clipWorking = true
+      this.clipFeedback = '正在剪切并保存到桌面...'
+      const taskStart = performance.now()
+      try {
+        const result = await api.videos.clip({
+          path: this.currentVideo.localPath,
+          startSec: start,
+          endSec: end
+        })
+        const now = Date.now()
+        const newTitle = `${this.currentVideo.title}_片段_${this.formatDuration(start).replace(':', '-')}_${this.formatDuration(end).replace(':', '-')}`
+        if (!this.hasVideoByLocalPath(result.outputPath)) {
+          this.videos.unshift({
+            id: `video_${now}_${Math.random().toString(16).slice(2, 6)}`,
+            title: newTitle,
+            url: result.streamUrl,
+            category: this.currentVideo.category || '本地视频',
+            collection: this.currentVideo.collection || '',
+            episodeNo: null,
+            status: 'watchlist',
+            tags: ['local', 'clip'],
+            note: `剪切片段 ${this.formatDuration(start)} - ${this.formatDuration(end)}`,
+            localPath: result.outputPath,
+            mediaDuration: Number(result.durationSec) > 0 ? Number(result.durationSec) : 0,
+            createdAt: now,
+            updatedAt: now
+          })
+          await this.persist()
+        }
+        this.clipFeedback = `剪切完成，已保存到桌面：${result.outputPath}`
+        this.recordLog({
+          module: 'video',
+          action: 'clip_done',
+          status: 'ok',
+          durationMs: performance.now() - taskStart,
+          name: this.currentVideo.title,
+          path: result.outputPath || '',
+          detail: `${start}-${end}`
+        })
+      } catch (error) {
+        this.clipFeedback = `剪切失败：${error.message || '未知错误'}`
+        this.recordLog({
+          module: 'video',
+          action: 'clip_error',
+          status: 'error',
+          durationMs: performance.now() - taskStart,
+          name: this.currentVideo.title,
+          path: this.currentVideo.localPath,
+          detail: error?.message || 'clip failed'
+        })
+      } finally {
+        this.clipWorking = false
+      }
+    },
     triggerVideoUpload() {
       const input = this.$refs.videoUploadInput
       if (!input) return
@@ -1656,6 +1751,9 @@ export default {
       this.activeTab = 'player'
       this.duration = 0
       this.currentTime = 0
+      this.clipStartSec = 0
+      this.clipEndSec = 0
+      this.clipFeedback = ''
       const progress = this.getProgressRecord(item)
       this.resumePendingTime = progress?.time > 0 ? progress.time : 0
       this.isPlaying = false
@@ -2280,6 +2378,9 @@ export default {
 .yt-ffmpeg-row { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .yt-ffmpeg-label { font-size: 0.74em; color: #6b7280; font-weight: 700; }
 .yt-ffmpeg-select { max-width: 220px; }
+.yt-clip-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.yt-clip-time { min-width: 52px; text-align: center; font-size: 0.76em; color: #111827; background: #f3f4f6; border-radius: 8px; padding: 6px 8px; font-variant-numeric: tabular-nums; }
+.yt-clip-feedback { margin-top: 8px; font-size: 0.76em; color: #0369a1; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 6px 8px; word-break: break-all; }
 .yt-meta-note { margin: 8px 0 0; color: #374151; font-size: 0.84em; white-space: pre-wrap; }
 .yt-live-log { margin-top: 2px; }
 .yt-side-column { border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; padding: 10px; position: sticky; top: 10px; max-height: calc(100vh - 140px); overflow: auto; }

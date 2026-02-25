@@ -35,6 +35,9 @@ const VIDEO_LIBRARY_FILE = path.join(VIDEO_DATA_DIR, 'library.json');
 const VIDEO_UPLOAD_DIR = process.env.VIDEO_UPLOAD_DIR
   ? path.resolve(process.env.VIDEO_UPLOAD_DIR)
   : path.join(os.homedir(), 'Movies');
+const VIDEO_CLIP_OUTPUT_DIR = process.env.VIDEO_CLIP_OUTPUT_DIR
+  ? path.resolve(process.env.VIDEO_CLIP_OUTPUT_DIR)
+  : path.join(os.homedir(), 'Desktop');
 const MAX_DURATION_PROBE_FILES = 200;
 const MAX_UPLOAD_SIZE_BYTES = (() => {
   const gb = Number(process.env.VIDEO_UPLOAD_MAX_GB);
@@ -194,6 +197,10 @@ async function ensureVideoDataDir() {
 
 async function ensureVideoUploadDir() {
   await fsp.mkdir(VIDEO_UPLOAD_DIR, { recursive: true });
+}
+
+async function ensureVideoClipOutputDir() {
+  await fsp.mkdir(VIDEO_CLIP_OUTPUT_DIR, { recursive: true });
 }
 
 function safeFileName(input) {
@@ -476,6 +483,75 @@ router.post('/optimize', async (req, res) => {
     }
     console.error('视频优化失败:', error);
     return res.status(500).json({ error: '视频优化失败，请稍后重试' });
+  }
+});
+
+// POST /api/videos/clip
+router.post('/clip', async (req, res) => {
+  const { path: inputPath, startSec = 0, endSec } = req.body || {};
+  const validated = resolveAndValidatePath(inputPath);
+  if (!validated.ok) {
+    return res.status(400).json({ error: validated.error });
+  }
+
+  let sourceStat;
+  try {
+    sourceStat = await fsp.stat(validated.value);
+    if (!sourceStat.isFile()) {
+      return res.status(400).json({ error: '指定路径不是文件' });
+    }
+  } catch (error) {
+    return res.status(404).json({ error: '文件不存在或不可访问' });
+  }
+
+  const start = Math.max(0, Number(startSec) || 0);
+  const end = Number(endSec);
+  if (!Number.isFinite(end) || end <= start) {
+    return res.status(400).json({ error: '结束时间必须大于开始时间' });
+  }
+  const duration = end - start;
+  if (duration <= 0) {
+    return res.status(400).json({ error: '剪切时长必须大于 0 秒' });
+  }
+
+  try {
+    await ensureVideoClipOutputDir();
+    const parsed = path.parse(validated.value);
+    const outputPath = path.join(
+      VIDEO_CLIP_OUTPUT_DIR,
+      `${parsed.name}_clip_${Date.now()}.mp4`
+    );
+
+    await runFfmpeg([
+      '-y',
+      '-ss', String(start),
+      '-i', validated.value,
+      '-t', String(duration),
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-movflags', '+faststart',
+      outputPath
+    ]);
+
+    return res.json({
+      sourcePath: validated.value,
+      outputPath,
+      startSec: start,
+      endSec: end,
+      durationSec: duration,
+      streamUrl: `/api/videos/stream?path=${encodeURIComponent(outputPath)}`,
+      downloadUrl: `/api/videos/download?path=${encodeURIComponent(outputPath)}`
+    });
+  } catch (error) {
+    const detail = String(error?.message || '');
+    if (detail.includes('spawn ffmpeg ENOENT')) {
+      return res.status(500).json({ error: '未检测到 ffmpeg，请先安装 ffmpeg 后重试' });
+    }
+    console.error('视频剪切失败:', error);
+    return res.status(500).json({ error: '视频剪切失败，请稍后重试' });
   }
 });
 
