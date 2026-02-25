@@ -28,6 +28,7 @@ import runtimeLogsRouter from './routes/runtimeLogs.js';
 import docsRouter from './routes/docs.js';
 import ffmpegRouter from './routes/ffmpeg.js';
 import systemMonitorRouter from './routes/systemMonitor.js';
+import dockerRouter from './routes/docker.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -87,6 +88,7 @@ app.use('/api/runtime-logs', runtimeLogsRouter);
 app.use('/api/docs', docsRouter);
 app.use('/api/ffmpeg', ffmpegRouter);
 app.use('/api/system-monitor', systemMonitorRouter);
+app.use('/api/docker', dockerRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -148,6 +150,7 @@ async function startServer() {
     console.log(`  - /api/runtime-logs`);
     console.log(`  - /api/ffmpeg`);
     console.log(`  - /api/system-monitor`);
+    console.log(`  - /api/docker`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 
