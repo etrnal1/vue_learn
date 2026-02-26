@@ -274,6 +274,22 @@ async function initDatabase() {
     `);
     console.log('✅ 表 flow_steps 已创建');
 
+    // 11. 流程发布历史表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_releases (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        version VARCHAR(50) NOT NULL,
+        note TEXT,
+        payload JSON,
+        created_at BIGINT NOT NULL,
+        INDEX idx_flow_releases (flow_id),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_releases 已创建');
+    await connection.query('ALTER TABLE flow_releases ADD COLUMN IF NOT EXISTS payload JSON');
+
     // 10. 聊天记录表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS chats (

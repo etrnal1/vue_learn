@@ -26,7 +26,16 @@ async function testConnection() {
     connection.release();
     return true;
   } catch (error) {
-    console.error('❌ MySQL 连接失败:', error.message);
+    console.error('❌ MySQL 连接失败:', {
+      message: error?.message || '',
+      code: error?.code || '',
+      errno: error?.errno || '',
+      address: error?.address || '',
+      port: error?.port || '',
+      host: dbConfig.host,
+      user: dbConfig.user,
+      database: dbConfig.database
+    });
     return false;
   }
 }
