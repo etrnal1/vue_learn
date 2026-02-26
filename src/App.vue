@@ -19,6 +19,10 @@
           <input v-model="authForm.password" type="password" class="auth-input" placeholder="至少 6 位" required />
         </label>
         <label v-if="authMode === 'register'" class="auth-label">
+          <span>确认密码</span>
+          <input v-model="authForm.confirmPassword" type="password" class="auth-input" placeholder="请再次输入密码" required />
+        </label>
+        <label v-if="authMode === 'register'" class="auth-label">
           <span>邮箱（可选）</span>
           <input v-model.trim="authForm.email" class="auth-input" placeholder="name@example.com" />
         </label>
@@ -188,6 +192,27 @@
       </button>
     </div>
     <div v-if="permissionMessage" class="permission-message">{{ permissionMessage }}</div>
+    <div class="platform-menu" v-if="platformMenuGroups.length">
+      <div
+        v-for="group in platformMenuGroups"
+        :key="group.title"
+        class="platform-group"
+      >
+        <div class="platform-group-title">{{ group.title }}</div>
+        <div class="platform-group-items">
+          <button
+            v-for="tab in group.tabs"
+            :key="tab.id"
+            class="platform-btn"
+            :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
+            @click="onTabClick(tab.id)"
+          >
+            <span>{{ tab.label }}</span>
+            <small v-if="!canAccessTab(tab.id)">需要权限</small>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <HomePage v-if="activeTab === 'home'" />
     <KeepAlive :max="8" v-else>
@@ -233,7 +258,16 @@ const tabLoaders = {
   docker: () => import('./pages/DockerVisualizer.vue'),
   terminal: () => import('./pages/TerminalConsole.vue'),
   authLogs: () => import('./pages/AuthLogCenter.vue'),
-  runtimeLogs: () => import('./pages/RuntimeLogsViewer.vue')
+  runtimeLogs: () => import('./pages/RuntimeLogsViewer.vue'),
+  database: () => import('./pages/DatabaseConsole.vue'),
+  userAdmin: () => import('./pages/UserAdminConsole.vue'),
+  flowTracking: () => import('./pages/workflow/FlowTracking.vue'),
+  flowDiagram: () => import('./pages/workflow/FlowDiagramEditor.vue'),
+  flowTasks: () => import('./pages/workflow/FlowTasks.vue'),
+  flowFiles: () => import('./pages/workflow/FlowFileManager.vue'),
+  flowInstances: () => import('./pages/workflow/FlowInstances.vue'),
+  flowWorkItems: () => import('./pages/workflow/FlowWorkItems.vue'),
+  flowManagement: () => import('./pages/workflow/FlowManagement.vue')
 }
 
 function createAsyncPage(loader) {
@@ -274,6 +308,15 @@ const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
 const AuthLogCenter = createAsyncPage(tabLoaders.authLogs)
 const RuntimeLogsViewer = createAsyncPage(tabLoaders.runtimeLogs)
+const DatabaseConsole = createAsyncPage(tabLoaders.database)
+const UserAdminConsole = createAsyncPage(tabLoaders.userAdmin)
+const FlowTracking = createAsyncPage(tabLoaders.flowTracking)
+const FlowDiagramEditor = createAsyncPage(tabLoaders.flowDiagram)
+const FlowTasks = createAsyncPage(tabLoaders.flowTasks)
+const FlowFileManager = createAsyncPage(tabLoaders.flowFiles)
+const FlowInstances = createAsyncPage(tabLoaders.flowInstances)
+const FlowWorkItems = createAsyncPage(tabLoaders.flowWorkItems)
+const FlowManagement = createAsyncPage(tabLoaders.flowManagement)
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
     { id: 'admin', label: '管理员' },
@@ -299,6 +342,15 @@ const DEFAULT_PERMISSION_CONFIG = {
     monitor: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
+    database: ['admin'],
+    userAdmin: ['admin', 'operator', 'viewer'],
+    flowTracking: ['admin', 'operator'],
+    flowDiagram: ['admin', 'operator'],
+    flowTasks: ['admin', 'operator'],
+    flowFiles: ['admin', 'operator'],
+    flowInstances: ['admin', 'operator'],
+    flowWorkItems: ['admin', 'operator'],
+    flowManagement: ['admin', 'operator'],
     authLogs: ['admin', 'operator'],
     runtimeLogs: ['admin']
   }
@@ -327,7 +379,9 @@ export default {
     DockerVisualizer,
     TerminalConsole,
     AuthLogCenter,
-    RuntimeLogsViewer
+    RuntimeLogsViewer,
+    DatabaseConsole,
+    UserAdminConsole
   },
   data() {
     return {
@@ -344,6 +398,7 @@ export default {
         id: '',
         name: '',
         password: '',
+        confirmPassword: '',
         email: ''
       },
       currentTheme: 'blue',
@@ -366,6 +421,15 @@ export default {
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
         { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
+        { id: 'database', label: '🗄️ 数据库', roles: ['admin'] },
+        { id: 'userAdmin', label: '后台用户', roles: ['admin', 'operator', 'viewer'], menuGroup: 'platform', hidden: true },
+        { id: 'flowTracking', label: '流程追踪', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowDiagram', label: '流程图编辑', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowTasks', label: '流程任务', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowFiles', label: '流程文件管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowInstances', label: '流程实例管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowWorkItems', label: '流程工作项管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowManagement', label: '流程管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] },
         { id: 'runtimeLogs', label: '📊 实时日志', roles: ['admin'] }
       ],
@@ -424,8 +488,25 @@ export default {
   },
   computed: {
     visibleTabs() {
-      if (this.isDebugMode) return this.tabs
-      return this.tabs.filter((tab) => !DEBUG_ONLY_TAB_IDS.has(tab.id))
+      return this.tabs.filter((tab) => !tab.hidden && !DEBUG_ONLY_TAB_IDS.has(tab.id))
+    },
+    platformMenuGroups() {
+      const groups = [
+        { title: '平台管理', ids: ['userAdmin'] },
+        {
+          title: '工作流管理',
+          ids: ['flowTracking', 'flowDiagram', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
+        }
+      ]
+
+      return groups
+        .map((group) => ({
+          title: group.title,
+          tabs: group.ids
+            .map((id) => this.tabs.find((tab) => tab.id === id))
+            .filter((tab) => tab)
+        }))
+        .filter((group) => group.tabs.length > 0)
     },
     unauthDebugComponent() {
       return this.unauthDebugTab === 'logs' ? LogCenter : AuthLogCenter
@@ -449,6 +530,15 @@ export default {
         monitor: SystemMonitorDashboard,
         docker: DockerVisualizer,
         terminal: TerminalConsole,
+        database: DatabaseConsole,
+        userAdmin: UserAdminConsole,
+        flowTracking: FlowTracking,
+        flowDiagram: FlowDiagramEditor,
+        flowTasks: FlowTasks,
+        flowFiles: FlowFileManager,
+        flowInstances: FlowInstances,
+        flowWorkItems: FlowWorkItems,
+        flowManagement: FlowManagement,
         authLogs: AuthLogCenter,
         runtimeLogs: RuntimeLogsViewer
       }
@@ -509,9 +599,45 @@ export default {
     switchAuthMode(mode) {
       this.authMode = mode === 'register' ? 'register' : 'login'
       this.authMessage = ''
+      this.authForm.password = ''
+      this.authForm.confirmPassword = ''
+    },
+    validateAuthForm() {
+      const id = String(this.authForm.id || '').trim()
+      const password = String(this.authForm.password || '')
+      const isRegister = this.authMode === 'register'
+
+      if (!/^[a-zA-Z0-9_-]{3,40}$/.test(id)) {
+        return '账号 ID 仅支持 3-40 位字母/数字/下划线/短横线'
+      }
+      if (password.length < 6) {
+        return '密码至少 6 位'
+      }
+      if (!isRegister) {
+        return ''
+      }
+
+      const name = String(this.authForm.name || '').trim()
+      if (name.length < 2 || name.length > 40) {
+        return '昵称长度需在 2-40 个字符之间'
+      }
+      if (this.authForm.confirmPassword !== password) {
+        return '两次输入的密码不一致'
+      }
+
+      const email = String(this.authForm.email || '').trim()
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return '邮箱格式不正确'
+      }
+      return ''
     },
     async submitAuth() {
       if (this.authBusy) return
+      const formError = this.validateAuthForm()
+      if (formError) {
+        this.authMessage = formError
+        return
+      }
       this.authBusy = true
       this.authMessage = ''
       try {
@@ -534,7 +660,9 @@ export default {
           this.activeTab = this.findFirstAccessibleTab()
         }
       } catch (error) {
-        this.authMessage = error?.message || '认证失败'
+        const status = Number(error?.status || 0)
+        const backendMessage = String(error?.message || '认证失败')
+        this.authMessage = status ? `${backendMessage}（HTTP ${status}）` : backendMessage
       } finally {
         this.authBusy = false
       }
@@ -574,6 +702,8 @@ export default {
         this.isLoggedIn = false
         this.authMode = 'login'
         this.authMessage = ''
+        this.authForm.password = ''
+        this.authForm.confirmPassword = ''
         this.authBusy = false
       }
     },
@@ -1126,6 +1256,54 @@ export default {
   font-size: 0.74em;
   font-weight: 700;
   cursor: pointer;
+}
+
+.platform-menu {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.platform-group {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 14px 18px;
+  background: rgba(15, 23, 42, 0.6);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.35);
+}
+.platform-group-title {
+  font-size: 0.95em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.platform-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.platform-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.9em;
+}
+.platform-btn small {
+  font-size: 0.65em;
+  color: #f9a8d4;
+}
+.platform-btn.active {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.25);
+  color: #ffffff;
+}
+.platform-btn.locked {
+  opacity: 0.6;
 }
 
 .role-options {

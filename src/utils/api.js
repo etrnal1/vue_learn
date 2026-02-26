@@ -270,7 +270,10 @@ export const api = {
     getOne: (id) => apiRequest(`/flows/${id}`),
     create: (flow) => apiRequest('/flows', { method: 'POST', body: JSON.stringify(flow) }),
     update: (id, data) => apiRequest(`/flows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id) => apiRequest(`/flows/${id}`, { method: 'DELETE' })
+    delete: (id) => apiRequest(`/flows/${id}`, { method: 'DELETE' }),
+    getReleases: () => apiRequest('/flows/releases'),
+    createRelease: (flowId, payload) => apiRequest(`/flows/${flowId}/releases`, { method: 'POST', body: JSON.stringify(payload) }),
+    rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' })
   },
 
   // Chats
@@ -442,6 +445,12 @@ export const api = {
       body: JSON.stringify({ input })
     }),
     closeSession: (sessionId) => apiRequest(`/terminal/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  },
+
+  // Database Console
+  database: {
+    listDatabases: () => apiRequest('/database/databases'),
+    execute: (payload) => apiRequest('/database/execute', { method: 'POST', body: JSON.stringify(payload) })
   },
 
   // Documentation
