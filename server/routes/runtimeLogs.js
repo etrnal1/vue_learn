@@ -4,6 +4,7 @@ import {
   getRuntimeLogs,
   subscribeRuntimeLogs
 } from '../runtimeLogs.js';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
 const runtimeLogsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_RUNTIME_LOGS === 'true';
@@ -14,6 +15,9 @@ router.use((req, res, next) => {
   }
   next();
 });
+
+router.use(requireAuth);
+router.use(requireRoles(...getRoleGroup('audit')));
 
 // GET /api/runtime-logs
 router.get('/', (req, res) => {

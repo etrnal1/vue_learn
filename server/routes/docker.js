@@ -1,7 +1,10 @@
 import express from 'express';
 import { spawn } from 'child_process';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
+router.use(requireAuth);
+router.use(requireRoles(...getRoleGroup('admin')));
 
 // Helper to execute docker CLI commands
 function executeDockerCommand(cmd, args = []) {

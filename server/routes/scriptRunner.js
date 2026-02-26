@@ -3,8 +3,11 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fsp from 'fs/promises';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
+router.use(requireAuth);
+router.use(requireRoles(...getRoleGroup('admin')));
 const execFileAsync = promisify(execFile);
 
 const MAX_CONTENT_LENGTH = 20000;

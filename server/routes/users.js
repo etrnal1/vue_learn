@@ -1,9 +1,13 @@
 import express from 'express';
 import pool from '../db.js';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
 const APP_ROLE_SETTING_KEY = 'app_current_role';
 const APP_PERMISSION_SETTING_KEY = 'app_permission_config';
+const userManagementRbacDisabled = String(process.env.RBAC_USER_MANAGEMENT_DISABLED || 'true').trim().toLowerCase() === 'true';
+const userReadProtect = userManagementRbacDisabled ? (_req, _res, next) => next() : requireRoles(...getRoleGroup('audit'));
+const userAdminProtect = userManagementRbacDisabled ? (_req, _res, next) => next() : requireRoles(...getRoleGroup('admin'));
 
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
@@ -30,6 +34,7 @@ const DEFAULT_PERMISSION_CONFIG = {
     monitor: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
+    database: ['admin'],
     authLogs: ['admin', 'operator']
   }
 };
@@ -103,8 +108,10 @@ async function savePermissionConfig(config) {
   );
 }
 
+router.use(requireAuth);
+
 // GET /api/users - 获取所有用户
-router.get('/', async (req, res) => {
+router.get('/', userReadProtect, async (req, res) => {
   try {
     const [users] = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
     res.json(users);
@@ -198,7 +205,7 @@ router.get('/permission-config', async (req, res) => {
 });
 
 // PUT /api/users/permission-config - 更新可配置权限模型
-router.put('/permission-config', async (req, res) => {
+router.put('/permission-config', userAdminProtect, async (req, res) => {
   try {
     const config = normalizePermissionConfig(req.body || {});
     await savePermissionConfig(config);
@@ -210,7 +217,7 @@ router.put('/permission-config', async (req, res) => {
 });
 
 // POST /api/users/switch/:id - 切换当前用户
-router.post('/switch/:id', async (req, res) => {
+router.post('/switch/:id', userAdminProtect, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -236,7 +243,7 @@ router.post('/switch/:id', async (req, res) => {
 });
 
 // POST /api/users - 创建用户
-router.post('/', async (req, res) => {
+router.post('/', userAdminProtect, async (req, res) => {
   const { id, name, role, avatar, email } = req.body;
 
   if (!id || !name) {
@@ -260,7 +267,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/users/:id - 更新用户
-router.put('/:id', async (req, res) => {
+router.put('/:id', userAdminProtect, async (req, res) => {
   const { id } = req.params;
   const { name, role, avatar, email } = req.body;
 
@@ -310,7 +317,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/users/:id - 删除用户
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', userAdminProtect, async (req, res) => {
   const { id } = req.params;
 
   try {

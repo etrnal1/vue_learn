@@ -32,10 +32,13 @@ import ffmpegRouter from './routes/ffmpeg.js';
 import systemMonitorRouter from './routes/systemMonitor.js';
 import dockerRouter from './routes/docker.js';
 import terminalRouter from './routes/terminal.js';
+import databaseRouter from './routes/database.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const HOST = process.env.HOST || '127.0.0.1';
 const runtimeLogsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_RUNTIME_LOGS === 'true';
+let dbReady = false;
 
 if (runtimeLogsEnabled) {
   initRuntimeLogCapture();
@@ -98,12 +101,20 @@ if (runtimeLogsEnabled) {
 
 // 健康检查
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  res.json({
+    status: dbReady ? 'ok' : 'degraded',
+    dbReady,
+    timestamp: Date.now()
+  });
 });
 
 // 健康检查（API 路径，便于前端代理访问）
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  res.json({
+    status: dbReady ? 'ok' : 'degraded',
+    dbReady,
+    timestamp: Date.now()
+  });
 });
 
 // API 路由
@@ -132,6 +143,7 @@ app.use('/api/ffmpeg', ffmpegRouter);
 app.use('/api/system-monitor', systemMonitorRouter);
 app.use('/api/docker', dockerRouter);
 app.use('/api/terminal', terminalRouter);
+app.use('/api/database', databaseRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -157,22 +169,27 @@ app.use((err, req, res, next) => {
 // 启动服务器
 async function startServer() {
   // 测试数据库连接
-  const dbConnected = await testConnection();
+  dbReady = await testConnection();
 
-  if (!dbConnected) {
-    console.error('❌ 无法连接到数据库，请检查配置');
-    process.exit(1);
+  if (!dbReady) {
+    console.error('⚠️ 数据库未连接，服务将以降级模式启动（仅日志/健康检查等可用）');
+  } else {
+    try {
+      await ensureAuthSchema();
+    } catch (error) {
+      dbReady = false;
+      console.error('⚠️ 认证表结构检查失败，服务切换为降级模式:', error);
+    }
   }
 
-  await ensureAuthSchema();
-
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, HOST, () => {
     const env = process.env.NODE_ENV || 'development';
     const envEmoji = env === 'production' ? '🔴' : '🟢';
     console.log(`\n🚀 ITSM 后端服务器启动成功！`);
     console.log(`${envEmoji} 环境: ${env.toUpperCase()}`);
-    console.log(`📍 监听端口: http://localhost:${PORT}`);
+    console.log(`📍 监听地址: http://${HOST}:${PORT}`);
     console.log(`📊 API 基础路径: http://localhost:${PORT}/api`);
+    console.log(`🗄️ 数据库状态: ${dbReady ? '已连接' : '未连接（降级模式）'}`);
     console.log(`\n可用的 API 端点:`);
     console.log(`  - /api/users`);
     console.log(`  - /api/auth`);
@@ -202,7 +219,20 @@ async function startServer() {
     console.log(`  - /api/system-monitor`);
     console.log(`  - /api/docker`);
     console.log(`  - /api/terminal`);
+    console.log(`  - /api/database`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
+  });
+
+  server.on('error', (error) => {
+    console.error('❌ HTTP 服务监听失败:', {
+      message: error?.message || '',
+      code: error?.code || '',
+      errno: error?.errno || '',
+      syscall: error?.syscall || '',
+      address: error?.address || HOST,
+      port: error?.port || PORT
+    });
+    process.exit(1);
   });
 
   // 支持大文件长时间流式上传，避免默认 requestTimeout 中断上传。

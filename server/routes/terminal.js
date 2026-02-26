@@ -3,8 +3,11 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fsp from 'fs/promises';
 import { randomUUID } from 'crypto';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
+router.use(requireAuth);
+router.use(requireRoles(...getRoleGroup('admin')));
 
 const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 const MAX_SESSIONS = 6;

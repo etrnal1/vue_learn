@@ -17,6 +17,7 @@ router.post('/', async (req, res) => {
     articles: 0,
     flows: 0,
     flowSteps: 0,
+    flowReleases: 0,
     chats: 0,
     chatComments: 0,
     codeSnippets: 0,
@@ -225,7 +226,30 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 7. 迁移聊天记录
+    // 7. 迁移流程发布历史
+    if (data.itsm_flowReleases) {
+      const releases = JSON.parse(data.itsm_flowReleases);
+      for (const release of releases) {
+        await connection.query(
+          `INSERT INTO flow_releases (id, flow_id, version, note, payload, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+           version = VALUES(version), note = VALUES(note),
+           payload = VALUES(payload), created_at = VALUES(created_at)`,
+          [
+            release.id,
+            release.flow_id ?? release.flowId,
+            release.version,
+            release.note || null,
+            JSON.stringify(release.payload ?? release.data ?? null),
+            release.created_at || release.createdAt || Date.now()
+          ]
+        );
+        stats.flowReleases++;
+      }
+    }
+
+    // 8. 迁移聊天记录
     if (data.chat_history) {
       const chats = JSON.parse(data.chat_history);
       for (const chat of chats) {
@@ -369,6 +393,9 @@ router.get('/export', async (req, res) => {
       flow.steps = steps;
     }
     exportData.itsm_flows = JSON.stringify(flows);
+
+    const [releases] = await pool.query('SELECT * FROM flow_releases ORDER BY created_at ASC');
+    exportData.itsm_flowReleases = JSON.stringify(releases);
 
     // 导出聊天记录（含评论）
     const [chats] = await pool.query('SELECT * FROM chats');

@@ -14,6 +14,9 @@ import { pushRuntimeLog } from '../runtimeLogs.js';
 
 const router = express.Router();
 const ALLOWED_ROLES = new Set(['admin', 'member', 'approver']);
+const SELF_REGISTER_ROLE = String(process.env.AUTH_SELF_REGISTER_ROLE || 'member').trim();
+const DEFAULT_SELF_REGISTER_ROLE = ALLOWED_ROLES.has(SELF_REGISTER_ROLE) ? SELF_REGISTER_ROLE : 'member';
+const USER_ID_PATTERN = /^[a-zA-Z0-9_-]{3,40}$/;
 
 async function ensureAuthSchemaSafe() {
   try {
@@ -33,14 +36,22 @@ router.post('/register', async (req, res) => {
   const password = String(req.body?.password || '');
   const email = req.body?.email ? String(req.body.email).trim() : null;
   const avatar = req.body?.avatar ? String(req.body.avatar).trim() : '👨‍💻';
-  const roleCandidate = String(req.body?.role || 'member').trim();
-  const role = ALLOWED_ROLES.has(roleCandidate) ? roleCandidate : 'member';
+  const role = DEFAULT_SELF_REGISTER_ROLE;
 
   if (!id || !name || !password) {
     return res.status(400).json({ error: '缺少必填字段：id/name/password' });
   }
+  if (!USER_ID_PATTERN.test(id)) {
+    return res.status(400).json({ error: '用户 ID 仅支持 3-40 位字母/数字/下划线/短横线' });
+  }
+  if (name.length < 2 || name.length > 40) {
+    return res.status(400).json({ error: '昵称长度需在 2-40 个字符之间' });
+  }
   if (password.length < 6) {
     return res.status(400).json({ error: '密码长度至少 6 位' });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: '邮箱格式不正确' });
   }
 
   try {

@@ -3,8 +3,11 @@ import fsp from 'fs/promises';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
+router.use(requireAuth);
+router.use(requireRoles(...getRoleGroup('admin')));
 const execFileAsync = promisify(execFile);
 
 const DATA_DIR = path.resolve('server/data/scheduler');
