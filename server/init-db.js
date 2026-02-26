@@ -288,7 +288,21 @@ async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ 表 flow_releases 已创建');
-    await connection.query('ALTER TABLE flow_releases ADD COLUMN IF NOT EXISTS payload JSON');
+
+    // 检查 payload 列是否存在，如果不存在则添加
+    try {
+      await connection.query(`
+        ALTER TABLE flow_releases
+        ADD COLUMN payload JSON
+      `);
+      console.log('✅ 表 flow_releases payload 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_releases payload 字段已存在');
+      } else {
+        throw err;
+      }
+    }
 
     // 10. 聊天记录表
     await connection.query(`
