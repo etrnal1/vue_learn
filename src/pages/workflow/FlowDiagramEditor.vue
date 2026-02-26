@@ -82,7 +82,10 @@
       <!-- 步骤编辑 -->
       <div class="steps-editor">
         <div class="steps-header">
-          <h3>流程步骤</h3>
+          <div>
+            <h3>流程步骤</h3>
+            <p class="steps-count">共 {{ editingFlow.steps?.length || 0 }} 个步骤</p>
+          </div>
           <button class="btn btn-small" @click="addStep">+ 添加步骤</button>
         </div>
 
@@ -90,72 +93,103 @@
           <p>暂无步骤，点击上面的按钮添加</p>
         </div>
 
-        <div v-else class="steps-list">
-          <div
-            v-for="(step, index) in editingFlow.steps"
-            :key="step.id || index"
-            class="step-item"
-            :class="{ 'editing-step': editingStepIndex === index }"
-          >
-            <div class="step-number">{{ index + 1 }}</div>
-            <div class="step-content">
-              <input
-                v-model="step.name"
-                class="step-input"
-                placeholder="步骤名称"
-                @input="scheduleAutoSave"
-              />
-              <textarea
-                v-model="step.description"
-                class="step-textarea"
-                placeholder="步骤描述"
-                rows="2"
-                @input="scheduleAutoSave"
-              ></textarea>
-              <div class="step-meta">
+        <div v-else class="steps-list-wrapper">
+          <div class="steps-list">
+            <div
+              v-for="(step, index) in editingFlow.steps"
+              :key="step.id || index"
+              class="step-item"
+              :class="{ 'editing-step': editingStepIndex === index }"
+            >
+              <div class="step-header-row">
+                <div class="step-number">{{ index + 1 }}</div>
                 <input
-                  v-model="step.assignee"
-                  class="step-input-sm"
-                  placeholder="负责人"
+                  v-model="step.name"
+                  class="step-input"
+                  placeholder="步骤名称"
                   @input="scheduleAutoSave"
                 />
-                <input
-                  v-model="step.duration"
-                  class="step-input-sm"
-                  placeholder="预计耗时（如 2h）"
-                  @input="scheduleAutoSave"
-                />
-                <label class="checkbox">
+                <div class="step-actions">
+                  <button
+                    class="btn-icon"
+                    :disabled="index === 0"
+                    @click="moveStep(index, -1)"
+                    title="上移"
+                  >
+                    ⬆️
+                  </button>
+                  <button
+                    class="btn-icon"
+                    :disabled="index === editingFlow.steps.length - 1"
+                    @click="moveStep(index, 1)"
+                    title="下移"
+                  >
+                    ⬇️
+                  </button>
+                  <button
+                    class="btn-icon btn-danger"
+                    @click="removeStep(index)"
+                    title="删除"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+
+              <div class="step-content">
+                <div class="step-field">
+                  <label class="step-label">
+                    <span class="label-text">描述</span>
+                    <span class="label-hint">说明这个步骤的内容和目的</span>
+                  </label>
+                  <textarea
+                    v-model="step.description"
+                    class="step-textarea"
+                    placeholder="例如：评估申请人的请假理由和工作状况"
+                    rows="2"
+                    @input="scheduleAutoSave"
+                  ></textarea>
+                </div>
+
+                <div class="step-fields-row">
+                  <div class="step-field">
+                    <label class="step-label">
+                      <span class="label-text">负责人</span>
+                      <span class="label-hint">完成此步骤的人员角色或名称</span>
+                    </label>
+                    <input
+                      v-model="step.assignee"
+                      class="step-input-sm"
+                      placeholder="例如：部门经理"
+                      @input="scheduleAutoSave"
+                    />
+                  </div>
+                  <div class="step-field">
+                    <label class="step-label">
+                      <span class="label-text">预计耗时</span>
+                      <span class="label-hint">完成此步骤的大约时间</span>
+                    </label>
+                    <input
+                      v-model="step.duration"
+                      class="step-input-sm"
+                      placeholder="例如：2h、30min"
+                      @input="scheduleAutoSave"
+                    />
+                  </div>
+                </div>
+
+                <label class="step-label checkbox-label">
                   <input v-model="step.conditional" type="checkbox" @change="scheduleAutoSave" />
-                  <span>条件触发</span>
+                  <span class="label-text">条件触发</span>
+                  <span class="label-hint">勾选表示该步骤仅在满足特定条件时执行</span>
                 </label>
               </div>
             </div>
-            <div class="step-actions">
-              <button
-                class="btn-icon"
-                :disabled="index === 0"
-                @click="moveStep(index, -1)"
-                title="上移"
-              >
-                ↑
-              </button>
-              <button
-                class="btn-icon"
-                :disabled="index === editingFlow.steps.length - 1"
-                @click="moveStep(index, 1)"
-                title="下移"
-              >
-                ↓
-              </button>
-              <button
-                class="btn-icon btn-danger"
-                @click="removeStep(index)"
-                title="删除"
-              >
-                ✕
-              </button>
-            </div>
+          </div>
+
+          <!-- 步骤数量提示 -->
+          <div v-if="editingFlow.steps && editingFlow.steps.length > 0" class="steps-info">
+            <p>💡 已添加 {{ editingFlow.steps.length }} 个步骤，可以使用上⬆️ 下⬇️ 按钮调整顺序</p>
           </div>
         </div>
       </div>
@@ -333,13 +367,25 @@ export default {
       }
     },
     moveStep(index, direction) {
-      if (!this.editingFlow.steps) return
+      if (!this.editingFlow.steps || this.editingFlow.steps.length < 2) return
       const newIndex = index + direction
-      if (newIndex >= 0 && newIndex < this.editingFlow.steps.length) {
-        const temp = this.editingFlow.steps[index]
-        this.$set(this.editingFlow.steps, index, this.editingFlow.steps[newIndex])
-        this.$set(this.editingFlow.steps, newIndex, temp)
-        this.scheduleAutoSave()
+
+      // 检查新索引是否有效
+      if (newIndex < 0 || newIndex >= this.editingFlow.steps.length) return
+
+      // 交换步骤
+      const temp = this.editingFlow.steps[index]
+      this.$set(this.editingFlow.steps, index, this.editingFlow.steps[newIndex])
+      this.$set(this.editingFlow.steps, newIndex, temp)
+
+      // 触发自动保存
+      this.scheduleAutoSave()
+
+      // 提示用户
+      if (direction === -1) {
+        this.showMessage(`已将第 ${index + 1} 步上移到第 ${newIndex + 1} 步`, 'info')
+      } else {
+        this.showMessage(`已将第 ${index + 1} 步下移到第 ${newIndex + 1} 步`, 'info')
       }
     },
     // 自动保存功能
@@ -744,6 +790,12 @@ export default {
   font-size: 1.1em;
 }
 
+.steps-count {
+  margin: 4px 0 0;
+  font-size: 0.85em;
+  color: var(--app-text-muted);
+}
+
 .no-steps {
   text-align: center;
   padding: 40px 20px;
@@ -753,25 +805,60 @@ export default {
   background: var(--app-card-elevated);
 }
 
+/* 步骤列表容器 - 支持滚动 */
+.steps-list-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .steps-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.steps-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.steps-list::-webkit-scrollbar-track {
+  background: var(--app-card);
+  border-radius: 3px;
+}
+
+.steps-list::-webkit-scrollbar-thumb {
+  background: var(--app-border);
+  border-radius: 3px;
+}
+
+.steps-list::-webkit-scrollbar-thumb:hover {
+  background: var(--app-text-muted);
 }
 
 .step-item {
   display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--app-border);
   border-radius: 10px;
   background: var(--app-card-elevated);
-  align-items: flex-start;
 }
 
 .step-item.editing-step {
   border-color: var(--app-primary);
   background: rgba(0, 122, 255, 0.05);
+}
+
+/* 步骤头部行 - 包含编号、名称、操作按钮 */
+.step-header-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .step-number {
@@ -789,20 +876,45 @@ export default {
 }
 
 .step-content {
-  flex: 1;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+}
+
+.step-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label-text {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: var(--app-text);
+}
+
+.label-hint {
+  font-size: 0.75em;
+  color: var(--app-text-muted);
+  font-weight: normal;
 }
 
 .step-input {
-  width: 100%;
+  flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--app-border);
   border-radius: 6px;
   background: var(--app-card);
   color: var(--app-text);
   font-weight: 600;
+  min-width: 200px;
 }
 
 .step-textarea {
@@ -817,16 +929,15 @@ export default {
   resize: vertical;
 }
 
-.step-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
+/* 步骤属性行 */
+.step-fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .step-input-sm {
-  flex: 1;
-  min-width: 120px;
+  width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--app-border);
   border-radius: 6px;
@@ -835,22 +946,39 @@ export default {
   font-size: 0.85em;
 }
 
-.checkbox {
+.checkbox-label {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 0.9em;
+  flex-direction: row;
 }
 
-.checkbox input {
+.checkbox-label input {
   cursor: pointer;
+  margin: 0;
 }
 
+/* 操作按钮 */
 .step-actions {
   display: flex;
-  gap: 4px;
-  flex-direction: column;
+  gap: 6px;
+  flex-direction: row;
+}
+
+/* 步骤信息提示 */
+.steps-info {
+  padding: 12px;
+  background: rgba(0, 122, 255, 0.05);
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  border-radius: 8px;
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.steps-info p {
+  margin: 0;
 }
 
 /* 预览 */
@@ -960,6 +1088,38 @@ export default {
 
   .editor-header h2 {
     font-size: 1.4em;
+  }
+
+  /* 移动端步骤列表 */
+  .steps-list {
+    max-height: 60vh;
+  }
+
+  .step-header-row {
+    flex-wrap: wrap;
+  }
+
+  .step-input {
+    min-width: auto;
+  }
+
+  .step-fields-row {
+    grid-template-columns: 1fr;
+  }
+
+  .step-actions {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .btn-icon {
+    padding: 4px 8px;
+    font-size: 0.9em;
+  }
+
+  .steps-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .flow-cards {
