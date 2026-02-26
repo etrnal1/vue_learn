@@ -1,6 +1,60 @@
 <template>
   <div class="app" :data-theme="currentTheme" :style="appStyleVars">
     <Header />
+    <div v-if="!authReady" class="auth-loading">登录状态检查中...</div>
+    <div v-else-if="!isLoggedIn" class="auth-card">
+      <h2 class="auth-title">{{ authMode === 'login' ? '账号登录' : '账号注册' }}</h2>
+      <p class="auth-subtitle">登录后可访问业务模块和权限配置</p>
+      <form class="auth-form" @submit.prevent="submitAuth">
+        <label class="auth-label">
+          <span>账号 ID</span>
+          <input v-model.trim="authForm.id" class="auth-input" placeholder="例如: u1" required />
+        </label>
+        <label v-if="authMode === 'register'" class="auth-label">
+          <span>昵称</span>
+          <input v-model.trim="authForm.name" class="auth-input" placeholder="例如: 张三" required />
+        </label>
+        <label class="auth-label">
+          <span>密码</span>
+          <input v-model="authForm.password" type="password" class="auth-input" placeholder="至少 6 位" required />
+        </label>
+        <label v-if="authMode === 'register'" class="auth-label">
+          <span>邮箱（可选）</span>
+          <input v-model.trim="authForm.email" class="auth-input" placeholder="name@example.com" />
+        </label>
+        <button class="auth-submit" :disabled="authBusy">
+          {{ authBusy ? '处理中...' : (authMode === 'login' ? '登录' : '注册并登录') }}
+        </button>
+      </form>
+      <button class="auth-switch" @click="switchAuthMode(authMode === 'login' ? 'register' : 'login')" :disabled="authBusy">
+        {{ authMode === 'login' ? '没有账号？去注册' : '已有账号？去登录' }}
+      </button>
+      <div v-if="authMessage" class="permission-message auth-message">{{ authMessage }}</div>
+
+      <div v-if="isDebugMode" class="auth-debug">
+        <div class="auth-debug-title">调试模块（免登录）</div>
+        <div class="auth-debug-actions">
+          <button
+            class="auth-debug-btn"
+            :class="{ active: unauthDebugTab === 'authLogs' }"
+            @click="unauthDebugTab = 'authLogs'"
+          >
+            认证日志
+          </button>
+          <button
+            class="auth-debug-btn"
+            :class="{ active: unauthDebugTab === 'logs' }"
+            @click="unauthDebugTab = 'logs'"
+          >
+            日志中心
+          </button>
+        </div>
+        <div class="auth-debug-panel">
+          <component :is="unauthDebugComponent" />
+        </div>
+      </div>
+    </div>
+    <template v-else>
 
     <!-- Global Theme Switcher -->
     <div class="global-theme-bar">
@@ -113,11 +167,15 @@
           {{ role.label }}
         </button>
       </div>
+      <div class="user-session">
+        <span class="user-chip">{{ currentUser?.name || currentUser?.id }}（{{ currentUser?.role || 'member' }}）</span>
+        <button class="logout-btn" :disabled="authBusy" @click="logout">退出登录</button>
+      </div>
     </div>
 
     <div class="tabs-container">
       <button
-        v-for="tab in tabs"
+        v-for="tab in visibleTabs"
         :key="tab.id"
         class="tab-btn"
         :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
@@ -135,6 +193,7 @@
     <KeepAlive :max="8" v-else>
       <component :is="currentAsyncComponent" :key="activeTab" />
     </KeepAlive>
+    </template>
   </div>
 </template>
 
@@ -143,6 +202,8 @@ import { KeepAlive, defineAsyncComponent } from 'vue'
 import Header from './components/Header.vue'
 import HomePage from './pages/HomePage.vue'
 import { api } from './utils/api.js'
+const IS_DEBUG_MODE = import.meta.env.MODE !== 'production' || import.meta.env.VITE_DEBUG_MODE === 'true'
+const DEBUG_ONLY_TAB_IDS = new Set(['logs', 'authLogs'])
 
 const AsyncLoadingView = {
   template: '<div class="tab-loading">页面加载中...</div>'
@@ -170,7 +231,8 @@ const tabLoaders = {
   ffmpeg: () => import('./pages/FfmpegTool.vue'),
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
   docker: () => import('./pages/DockerVisualizer.vue'),
-  terminal: () => import('./pages/TerminalConsole.vue')
+  terminal: () => import('./pages/TerminalConsole.vue'),
+  authLogs: () => import('./pages/AuthLogCenter.vue')
 }
 
 function createAsyncPage(loader) {
@@ -209,6 +271,35 @@ const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
+const AuthLogCenter = createAsyncPage(tabLoaders.authLogs)
+const DEFAULT_PERMISSION_CONFIG = {
+  roles: [
+    { id: 'admin', label: '管理员' },
+    { id: 'operator', label: '运维' },
+    { id: 'viewer', label: '访客' }
+  ],
+  tabPermissions: {
+    home: ['admin', 'operator', 'viewer'],
+    spring: ['admin', 'operator', 'viewer'],
+    excel: ['admin', 'operator', 'viewer'],
+    chat: ['admin', 'operator'],
+    itsm: ['admin', 'operator'],
+    git: ['admin', 'operator'],
+    video: ['admin', 'operator'],
+    music: ['admin', 'operator'],
+    album: ['admin', 'operator'],
+    wiki: ['admin', 'operator', 'viewer'],
+    logs: ['admin'],
+    weibo: ['admin', 'operator'],
+    scheduler: ['admin'],
+    docs: ['admin', 'operator', 'viewer'],
+    ffmpeg: ['admin', 'operator'],
+    monitor: ['admin', 'operator'],
+    docker: ['admin'],
+    terminal: ['admin'],
+    authLogs: ['admin', 'operator']
+  }
+}
 
 export default {
   components: {
@@ -231,11 +322,26 @@ export default {
     FfmpegTool,
     SystemMonitorDashboard,
     DockerVisualizer,
-    TerminalConsole
+    TerminalConsole,
+    AuthLogCenter
   },
   data() {
     return {
       activeTab: 'home',
+      isDebugMode: IS_DEBUG_MODE,
+      authReady: false,
+      authBusy: false,
+      isLoggedIn: false,
+      authMode: 'login',
+      authMessage: '',
+      unauthDebugTab: 'authLogs',
+      currentUser: null,
+      authForm: {
+        id: '',
+        name: '',
+        password: '',
+        email: ''
+      },
       currentTheme: 'blue',
       tabs: [
         { id: 'home', label: '首页', roles: ['admin', 'operator', 'viewer'] },
@@ -255,7 +361,8 @@ export default {
         { id: 'ffmpeg', label: 'FFmpeg 工具', roles: ['admin', 'operator'] },
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
-        { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] }
+        { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
+        { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] }
       ],
       currentRole: 'operator',
       roles: [
@@ -311,6 +418,13 @@ export default {
     }
   },
   computed: {
+    visibleTabs() {
+      if (this.isDebugMode) return this.tabs
+      return this.tabs.filter((tab) => !DEBUG_ONLY_TAB_IDS.has(tab.id))
+    },
+    unauthDebugComponent() {
+      return this.unauthDebugTab === 'logs' ? LogCenter : AuthLogCenter
+    },
     currentAsyncComponent() {
       const componentMap = {
         spring: SpringReference,
@@ -329,7 +443,8 @@ export default {
         ffmpeg: FfmpegTool,
         monitor: SystemMonitorDashboard,
         docker: DockerVisualizer,
-        terminal: TerminalConsole
+        terminal: TerminalConsole,
+        authLogs: AuthLogCenter
       }
       return componentMap[this.activeTab] || HomePage
     },
@@ -384,6 +499,64 @@ export default {
         }
         this.syncBodyBackground()
       })
+    },
+    switchAuthMode(mode) {
+      this.authMode = mode === 'register' ? 'register' : 'login'
+      this.authMessage = ''
+    },
+    async submitAuth() {
+      if (this.authBusy) return
+      this.authBusy = true
+      this.authMessage = ''
+      try {
+        if (this.authMode === 'login') {
+          const result = await api.auth.login(this.authForm.id, this.authForm.password)
+          this.currentUser = result?.user || null
+        } else {
+          const result = await api.auth.register({
+            id: this.authForm.id,
+            name: this.authForm.name,
+            password: this.authForm.password,
+            email: this.authForm.email || null
+          })
+          this.currentUser = result?.user || null
+        }
+        this.isLoggedIn = true
+        await this.loadPermissionConfig()
+        await this.loadCurrentRole()
+        if (!this.canAccessTab(this.activeTab)) {
+          this.activeTab = this.findFirstAccessibleTab()
+        }
+      } catch (error) {
+        this.authMessage = error?.message || '认证失败'
+      } finally {
+        this.authBusy = false
+      }
+    },
+    async checkAuthSession() {
+      try {
+        const result = await api.auth.me()
+        this.currentUser = result?.user || null
+        this.isLoggedIn = Boolean(this.currentUser)
+      } catch (error) {
+        this.currentUser = null
+        this.isLoggedIn = false
+      } finally {
+        this.authReady = true
+      }
+    },
+    async logout() {
+      if (this.authBusy) return
+      this.authBusy = true
+      try {
+        await api.auth.logout()
+      } finally {
+        this.currentUser = null
+        this.isLoggedIn = false
+        this.authMode = 'login'
+        this.authMessage = ''
+        this.authBusy = false
+      }
     },
     syncBodyBackground() {
       document.body.style.background = getComputedStyle(this.$el).getPropertyValue('--app-bg').trim()
@@ -502,13 +675,15 @@ export default {
       return `无权限访问：${this.getTabLabel(tabId)}`
     },
     canAccessTab(tabId) {
+      if (!this.isLoggedIn && this.isDebugMode && DEBUG_ONLY_TAB_IDS.has(tabId)) return true
+      if (!this.isDebugMode && DEBUG_ONLY_TAB_IDS.has(tabId)) return false
       const tab = this.tabs.find((item) => item.id === tabId)
       if (!tab) return false
       const roles = Array.isArray(tab.roles) ? tab.roles : []
       return roles.includes(this.currentRole)
     },
     findFirstAccessibleTab() {
-      return this.tabs.find((tab) => this.canAccessTab(tab.id))?.id || 'home'
+      return this.visibleTabs.find((tab) => this.canAccessTab(tab.id))?.id || 'home'
     },
     async switchRole(roleId) {
       try {
@@ -533,6 +708,51 @@ export default {
         console.warn('加载当前角色失败，使用默认角色', error)
       }
     },
+    applyPermissionConfig(config) {
+      const source = config && typeof config === 'object' ? config : DEFAULT_PERMISSION_CONFIG
+      const nextRoles = Array.isArray(source.roles) ? source.roles : []
+      const normalizedRoles = nextRoles
+        .map((role) => ({
+          id: String(role?.id || '').trim().toLowerCase(),
+          label: String(role?.label || role?.id || '').trim()
+        }))
+        .filter((role, index, arr) => role.id && role.label && arr.findIndex((item) => item.id === role.id) === index)
+
+      if (normalizedRoles.length > 0) {
+        this.roles = normalizedRoles
+      }
+
+      const validRoleIds = this.roles.map((role) => role.id)
+      const tabPermissions = source.tabPermissions && typeof source.tabPermissions === 'object'
+        ? source.tabPermissions
+        : {}
+
+      this.tabs = this.tabs.map((tab) => {
+        const candidate = Array.isArray(tabPermissions[tab.id]) ? tabPermissions[tab.id] : tab.roles
+        const nextTabRoles = Array.from(
+          new Set((candidate || [])
+            .map((id) => String(id || '').trim().toLowerCase())
+            .filter((id) => validRoleIds.includes(id)))
+        )
+        return {
+          ...tab,
+          roles: nextTabRoles.length > 0 ? nextTabRoles : [validRoleIds[0] || 'operator']
+        }
+      })
+
+      if (!validRoleIds.includes(this.currentRole)) {
+        this.currentRole = validRoleIds[0] || 'operator'
+      }
+    },
+    async loadPermissionConfig() {
+      try {
+        const config = await api.users.getPermissionConfig()
+        this.applyPermissionConfig(config)
+      } catch (error) {
+        console.warn('加载权限配置失败，使用默认配置', error)
+        this.applyPermissionConfig(DEFAULT_PERMISSION_CONFIG)
+      }
+    },
     preloadTab(tabId) {
       if (!tabId || tabId === 'home') return
       if (!this.canAccessTab(tabId)) return
@@ -545,10 +765,10 @@ export default {
       })
     },
     preloadNextTabs(tabId) {
-      const index = this.tabs.findIndex((item) => item.id === tabId)
+      const index = this.visibleTabs.findIndex((item) => item.id === tabId)
       if (index < 0) return
-      const next = this.tabs[index + 1]?.id
-      const next2 = this.tabs[index + 2]?.id
+      const next = this.visibleTabs[index + 1]?.id
+      const next2 = this.visibleTabs[index + 2]?.id
       this.preloadTab(next)
       this.preloadTab(next2)
     },
@@ -572,7 +792,6 @@ export default {
   async mounted() {
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
-    await this.loadCurrentRole()
     const savedAppearance = localStorage.getItem('app_appearance')
     if (savedAppearance) {
       try {
@@ -594,7 +813,15 @@ export default {
       }
       this.syncBodyBackground()
     })
-    this.warmupCommonTabs()
+    await this.checkAuthSession()
+    if (this.isLoggedIn) {
+      await this.loadPermissionConfig()
+      await this.loadCurrentRole()
+      if (!this.canAccessTab(this.activeTab)) {
+        this.activeTab = this.findFirstAccessibleTab()
+      }
+      this.warmupCommonTabs()
+    }
   },
   watch: {
     currentTheme() {
@@ -627,6 +854,127 @@ export default {
   box-shadow: var(--app-soft-shadow);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.auth-loading {
+  padding: 28px 14px;
+  border: 1px dashed var(--app-border);
+  border-radius: 14px;
+  background: var(--app-card);
+  color: var(--app-text-muted);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.auth-card {
+  max-width: 460px;
+  margin: 12px auto 20px;
+  padding: 20px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-card);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.auth-title {
+  margin: 0 0 6px;
+  font-size: 1.2em;
+}
+
+.auth-subtitle {
+  margin: 0 0 12px;
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--app-text-secondary);
+}
+
+.auth-input {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+}
+
+.auth-submit {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  font-weight: 700;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.auth-switch {
+  margin-top: 10px;
+  border: none;
+  background: transparent;
+  color: var(--app-primary);
+  font-size: 0.86em;
+  cursor: pointer;
+}
+
+.auth-message {
+  margin-top: 10px;
+}
+
+.auth-debug {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--app-border);
+}
+
+.auth-debug-title {
+  font-size: 0.84em;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  margin-bottom: 8px;
+}
+
+.auth-debug-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.auth-debug-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.74em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-debug-btn.active {
+  border-color: transparent;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+}
+
+.auth-debug-panel {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px;
+  max-height: 52vh;
+  overflow: auto;
+  background: var(--app-card-elevated);
 }
 
 .theme-label {
@@ -730,6 +1078,34 @@ export default {
   border: 1px solid var(--app-border);
   border-radius: 14px;
   box-shadow: var(--app-soft-shadow);
+}
+
+.user-session {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-chip {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
+.logout-btn {
+  border: 1px solid color-mix(in srgb, #ff3b30 42%, var(--app-border));
+  background: color-mix(in srgb, #ff3b30 11%, var(--app-card-elevated));
+  color: #b91c1c;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.74em;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .role-options {
@@ -930,6 +1306,11 @@ export default {
     gap: 8px;
     margin-bottom: 8px;
   }
+  .user-session {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
   .theme-pill {
     padding: 5px 9px;
     font-size: 0.75em;
@@ -959,6 +1340,7 @@ export default {
   .global-theme-bar { padding: 6px 8px; }
   .global-palette-bar { padding: 6px 8px; }
   .permission-bar { padding: 6px 8px; }
+  .auth-card { padding: 14px; border-radius: 12px; }
   .theme-pill { padding: 5px 8px; gap: 4px; }
   .palette-pill { padding: 5px 8px; gap: 4px; }
   .theme-label { font-size: 0.75em; }

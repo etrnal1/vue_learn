@@ -202,6 +202,8 @@ export const api = {
     getCurrent: () => apiRequest('/users/current'),
     getCurrentRole: () => apiRequest('/users/current-role'),
     setCurrentRole: (role) => apiRequest('/users/current-role', { method: 'POST', body: JSON.stringify({ role }) }),
+    getPermissionConfig: () => apiRequest('/users/permission-config'),
+    setPermissionConfig: (config) => apiRequest('/users/permission-config', { method: 'PUT', body: JSON.stringify(config) }),
     create: (user) => apiRequest('/users', { method: 'POST', body: JSON.stringify(user) }),
     update: (id, data) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => apiRequest(`/users/${id}`, { method: 'DELETE' }),
@@ -210,7 +212,11 @@ export const api = {
 
   // Auth
   auth: {
-    register: (payload) => apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    register: async (payload) => {
+      const result = await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+      if (result?.token) saveAuthToken(result.token);
+      return result;
+    },
     login: async (id, password) => {
       const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ id, password }) });
       if (result?.token) saveAuthToken(result.token);
