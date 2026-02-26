@@ -32,7 +32,10 @@
             <div class="steps-preview-items">
               <div v-for="(step, idx) in flow.steps.slice(0, 3)" :key="step.id || idx" class="preview-step">
                 <span class="step-num">{{ idx + 1 }}</span>
-                <span class="step-title">{{ step.name || '（未命名）' }}</span>
+                <div class="step-info">
+                  <span class="step-title">{{ step.name || '（未命名）' }}</span>
+                  <span v-if="step.description" class="step-desc">{{ step.description }}</span>
+                </div>
               </div>
               <div v-if="flow.steps.length > 3" class="preview-more">
                 +{{ flow.steps.length - 3 }} 更多...
@@ -654,31 +657,52 @@ export default {
 
 .preview-step {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   font-size: 0.85em;
+  padding: 6px 0;
 }
 
 .step-num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--app-primary);
   color: var(--app-on-primary);
   font-weight: 600;
-  font-size: 0.8em;
+  font-size: 0.75em;
   flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .step-title {
   color: var(--app-text);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+}
+
+.step-desc {
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
 }
 
 .preview-more {
@@ -948,12 +972,17 @@ export default {
 
   .preview-step {
     font-size: 0.8em;
+    gap: 6px;
   }
 
   .step-num {
-    width: 16px;
-    height: 16px;
-    font-size: 0.7em;
+    width: 18px;
+    height: 18px;
+    font-size: 0.65em;
+  }
+
+  .step-desc {
+    font-size: 0.85em;
   }
 
   .step-meta {
