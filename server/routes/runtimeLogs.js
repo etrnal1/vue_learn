@@ -6,6 +6,14 @@ import {
 } from '../runtimeLogs.js';
 
 const router = express.Router();
+const runtimeLogsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_RUNTIME_LOGS === 'true';
+
+router.use((req, res, next) => {
+  if (!runtimeLogsEnabled) {
+    return res.status(403).json({ error: '运行日志在生产模式下已禁用' });
+  }
+  next();
+});
 
 // GET /api/runtime-logs
 router.get('/', (req, res) => {

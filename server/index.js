@@ -35,8 +35,11 @@ import terminalRouter from './routes/terminal.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const runtimeLogsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_RUNTIME_LOGS === 'true';
 
-initRuntimeLogCapture();
+if (runtimeLogsEnabled) {
+  initRuntimeLogCapture();
+}
 
 // 中间件
 // CORS 配置 - 允许局域网和本地访问
@@ -80,16 +83,18 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api', camelCaseResponse);
 
 // HTTP 请求日志（用于实时日志面板）
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    pushRuntimeLog(
-      'http',
-      `${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`
-    );
+if (runtimeLogsEnabled) {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      pushRuntimeLog(
+        'http',
+        `${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`
+      );
+    });
+    next();
   });
-  next();
-});
+}
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -188,7 +193,11 @@ async function startServer() {
     console.log(`  - /api/script-runner`);
     console.log(`  - /api/scheduler-tasks`);
     console.log(`  - /api/wiki`);
-    console.log(`  - /api/runtime-logs`);
+    if (runtimeLogsEnabled) {
+      console.log(`  - /api/runtime-logs`);
+    } else {
+      console.log(`  - /api/runtime-logs (生产模式已禁用，设置 ENABLE_RUNTIME_LOGS=true 可启用)`);
+    }
     console.log(`  - /api/ffmpeg`);
     console.log(`  - /api/system-monitor`);
     console.log(`  - /api/docker`);
