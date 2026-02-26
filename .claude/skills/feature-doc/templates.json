@@ -1,0 +1,234 @@
+{
+  "documentTemplates": {
+    "DESIGN_GUIDE": {
+      "name": "设计文档",
+      "suffix": "DESIGN_GUIDE.md",
+      "sections": [
+        "功能概述",
+        "核心特性",
+        "工作原理",
+        "技术实现",
+        "API 文档",
+        "数据结构",
+        "相关文件"
+      ],
+      "targetAudience": ["开发者", "架构师"],
+      "estimatedLength": "800-1200 行"
+    },
+    "USER_GUIDE": {
+      "name": "用户指南",
+      "suffix": "USER_GUIDE.md",
+      "sections": [
+        "功能概述",
+        "快速开始",
+        "详细步骤",
+        "关键交互",
+        "最佳实践",
+        "常见问题"
+      ],
+      "targetAudience": ["最终用户", "产品经理"],
+      "estimatedLength": "300-500 行"
+    },
+    "TROUBLESHOOTING": {
+      "name": "故障排除",
+      "suffix": "TROUBLESHOOTING.md",
+      "sections": [
+        "常见问题",
+        "根本原因分析",
+        "解决方案",
+        "调试技巧",
+        "性能优化",
+        "获取帮助"
+      ],
+      "targetAudience": ["支持团队", "开发者"],
+      "estimatedLength": "400-600 行"
+    },
+    "QUICK_FIX": {
+      "name": "快速参考",
+      "suffix": "QUICK_FIX.md",
+      "sections": [
+        "功能概述",
+        "快速开始",
+        "关键改进",
+        "修复验证清单",
+        "后续建议"
+      ],
+      "targetAudience": ["所有人"],
+      "estimatedLength": "150-300 行"
+    },
+    "API_REFERENCE": {
+      "name": "API 参考",
+      "suffix": "API_REFERENCE.md",
+      "sections": [
+        "API 概览",
+        "认证",
+        "端点",
+        "请求/响应格式",
+        "错误处理",
+        "示例代码",
+        "限流和配额"
+      ],
+      "targetAudience": ["开发者"],
+      "estimatedLength": "500-800 行"
+    }
+  },
+  "featureCategories": {
+    "data-persistence": {
+      "name": "数据持久化",
+      "examples": ["自动保存", "本地存储", "数据库操作"],
+      "requiredSections": ["API 文档", "数据结构", "故障排除"],
+      "templates": ["DESIGN_GUIDE", "API_REFERENCE", "TROUBLESHOOTING"]
+    },
+    "ui-component": {
+      "name": "UI 组件",
+      "examples": ["步骤预览", "卡片组件", "模态框"],
+      "requiredSections": ["样式指南", "使用示例", "响应式设计"],
+      "templates": ["DESIGN_GUIDE", "USER_GUIDE", "QUICK_FIX"]
+    },
+    "bug-fix": {
+      "name": "问题修复",
+      "examples": ["Duplicate Entry 错误", "响应式问题", "内存泄漏"],
+      "requiredSections": ["根本原因", "修复过程", "验证清单"],
+      "templates": ["QUICK_FIX", "TROUBLESHOOTING", "API_REFERENCE"]
+    },
+    "performance": {
+      "name": "性能优化",
+      "examples": ["加载优化", "渲染优化", "内存优化"],
+      "requiredSections": ["性能指标", "优化方案", "测试结果"],
+      "templates": ["DESIGN_GUIDE", "TROUBLESHOOTING", "QUICK_FIX"]
+    },
+    "responsive-design": {
+      "name": "响应式设计",
+      "examples": ["移动端适配", "平板支持", "媒体查询"],
+      "requiredSections": ["断点规划", "布局调整", "触摸优化"],
+      "templates": ["DESIGN_GUIDE", "USER_GUIDE", "TROUBLESHOOTING"]
+    }
+  },
+  "documentationRules": {
+    "naming": {
+      "pattern": "<FEATURE_NAME>_<TYPE>.md",
+      "examples": {
+        "自动保存": "AUTO_SAVE_GUIDE.md",
+        "Duplicate Entry 错误": "DUPLICATE_ENTRY_FIX.md",
+        "工作流设计": "WORKFLOW_DESIGN_GUIDE.md",
+        "步骤管理": "WORKFLOW_STEP_MANAGEMENT.md"
+      }
+    },
+    "location": {
+      "default": "项目根目录",
+      "alternatives": [
+        "docs/ - 通用文档",
+        "docs/workflow/ - 工作流相关",
+        "docs/guides/ - 使用指南",
+        "docs/api/ - API 文档",
+        "docs/troubleshooting/ - 故障排除"
+      ]
+    },
+    "versioning": {
+      "format": "**文档版本**: X.Y",
+      "semantics": {
+        "major": "文档结构重大变更",
+        "minor": "新增章节或内容",
+        "patch": "修正错误或改进表述"
+      }
+    },
+    "metadata": {
+      "required": [
+        "创建日期",
+        "最后更新日期",
+        "文档版本",
+        "维护人",
+        "目标受众"
+      ]
+    }
+  },
+  "contentStandards": {
+    "codeBlocks": {
+      "rule": "所有代码示例必须实际存在于项目中",
+      "format": "使用 ```language 标记",
+      "include": [
+        "源代码路径和行号",
+        "预期输出或结果",
+        "常见错误和修正"
+      ]
+    },
+    "examples": {
+      "minimumCount": 3,
+      "types": [
+        "简单用例（5-10 行代码）",
+        "复杂用例（20-50 行代码）",
+        "常见错误示例"
+      ]
+    },
+    "diagrams": {
+      "tools": ["ASCII 艺术", "Mermaid", "文字描述"],
+      "types": [
+        "数据流图",
+        "架构图",
+        "状态转移图",
+        "时序图"
+      ]
+    },
+    "language": {
+      "rule": "使用清晰的技术中文",
+      "avoid": [
+        "过度简化",
+        "非标准术语",
+        "个人观点"
+      ],
+      "ensure": [
+        "准确性",
+        "完整性",
+        "可读性"
+      ]
+    }
+  },
+  "qualityChecklist": {
+    "structure": [
+      "标题层级正确（# ## ###）",
+      "目录清晰完整",
+      "章节顺序合理"
+    ],
+    "content": [
+      "技术内容准确",
+      "代码示例可运行",
+      "说明清楚无歧义",
+      "没有过期信息"
+    ],
+    "formatting": [
+      "代码块格式正确",
+      "表格格式规范",
+      "链接可点击正确",
+      "图片路径有效"
+    ],
+    "completeness": [
+      "覆盖主要用例",
+      "包含故障排除",
+      "有测试验证方法",
+      "提供扩展指南"
+    ],
+    "maintenance": [
+      "版本号已更新",
+      "日期已更新",
+      "维护人已标注",
+      "相关链接已更新"
+    ]
+  },
+  "autoGenerationRules": {
+    "detectFeatureType": {
+      "apiChanges": "数据持久化 → 需要 API 文档",
+      "vueFiles": "UI 组件 → 需要样式指南",
+      "routerChanges": "路由变更 → 需要架构文档",
+      "fixCommit": "包含 fix/修复 → 优先生成快速参考",
+      "performanceCommit": "包含 optimize/优化 → 生成性能指南"
+    },
+    "selectTemplates": {
+      "simple": "选择 1-2 个模板",
+      "medium": "选择 2-3 个模板",
+      "complex": "选择 3-4 个模板"
+    },
+    "estimateLength": {
+      "rule": "根据代码行数和复杂度估算"
+    }
+  }
+}
