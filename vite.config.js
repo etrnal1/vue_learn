@@ -29,6 +29,12 @@ export default defineConfig({
     port: 5173,
     host: true,
     open: true,
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '*.local',
+      'macdemac-mini.taileeb849.ts.net'
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:4000',

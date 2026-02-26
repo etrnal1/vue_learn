@@ -100,19 +100,36 @@
       <button class="reset-adjust-btn" @click="resetAppearance">重置外观</button>
     </div>
 
+    <div class="permission-bar">
+      <span class="theme-label">当前角色</span>
+      <div class="role-options">
+        <button
+          v-for="role in roles"
+          :key="role.id"
+          class="role-pill"
+          :class="{ active: currentRole === role.id }"
+          @click="switchRole(role.id)"
+        >
+          {{ role.label }}
+        </button>
+      </div>
+    </div>
+
     <div class="tabs-container">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         class="tab-btn"
-        :class="{ active: activeTab === tab.id }"
+        :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
         @click="onTabClick(tab.id)"
         @mouseenter="preloadTab(tab.id)"
         @touchstart.passive="preloadTab(tab.id)"
+        :title="getTabTitle(tab.id)"
       >
-        {{ tab.label }}
+        {{ tab.label }}<span v-if="!canAccessTab(tab.id)" class="lock-mark">🔒</span>
       </button>
     </div>
+    <div v-if="permissionMessage" class="permission-message">{{ permissionMessage }}</div>
 
     <HomePage v-if="activeTab === 'home'" />
     <KeepAlive :max="8" v-else>
@@ -125,6 +142,7 @@
 import { KeepAlive, defineAsyncComponent } from 'vue'
 import Header from './components/Header.vue'
 import HomePage from './pages/HomePage.vue'
+import { api } from './utils/api.js'
 
 const AsyncLoadingView = {
   template: '<div class="tab-loading">页面加载中...</div>'
@@ -151,7 +169,8 @@ const tabLoaders = {
   docs: () => import('./pages/DocumentationCenter.vue'),
   ffmpeg: () => import('./pages/FfmpegTool.vue'),
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
-  docker: () => import('./pages/DockerVisualizer.vue')
+  docker: () => import('./pages/DockerVisualizer.vue'),
+  terminal: () => import('./pages/TerminalConsole.vue')
 }
 
 function createAsyncPage(loader) {
@@ -189,6 +208,7 @@ const DocumentationCenter = createAsyncPage(tabLoaders.docs)
 const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
+const TerminalConsole = createAsyncPage(tabLoaders.terminal)
 
 export default {
   components: {
@@ -210,31 +230,40 @@ export default {
     DocumentationCenter,
     FfmpegTool,
     SystemMonitorDashboard,
-    DockerVisualizer
+    DockerVisualizer,
+    TerminalConsole
   },
   data() {
     return {
       activeTab: 'home',
       currentTheme: 'blue',
       tabs: [
-        { id: 'home', label: '首页' },
-        { id: 'spring', label: 'Spring 参考' },
-        { id: 'excel', label: 'Excel 参考' },
-        { id: 'chat', label: '聊天记录' },
-        { id: 'itsm', label: 'IT 服务管理' },
-        { id: 'git', label: 'Git 管理' },
-        { id: 'video', label: '视频管理' },
-        { id: 'music', label: '音乐管理' },
-        { id: 'album', label: '相册管理' },
-        { id: 'wiki', label: '维基百科' },
-        { id: 'logs', label: '日志中心' },
-        { id: 'weibo', label: '微博抓取' },
-        { id: 'scheduler', label: '定时任务' },
-        { id: 'docs', label: '📚 文档中心' },
-        { id: 'ffmpeg', label: 'FFmpeg 工具' },
-        { id: 'monitor', label: '设备状态大屏' },
-        { id: 'docker', label: '🐳 Docker 管理' }
+        { id: 'home', label: '首页', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'spring', label: 'Spring 参考', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'excel', label: 'Excel 参考', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'chat', label: '聊天记录', roles: ['admin', 'operator'] },
+        { id: 'itsm', label: 'IT 服务管理', roles: ['admin', 'operator'] },
+        { id: 'git', label: 'Git 管理', roles: ['admin', 'operator'] },
+        { id: 'video', label: '视频管理', roles: ['admin', 'operator'] },
+        { id: 'music', label: '音乐管理', roles: ['admin', 'operator'] },
+        { id: 'album', label: '相册管理', roles: ['admin', 'operator'] },
+        { id: 'wiki', label: '维基百科', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'logs', label: '日志中心', roles: ['admin'] },
+        { id: 'weibo', label: '微博抓取', roles: ['admin', 'operator'] },
+        { id: 'scheduler', label: '定时任务', roles: ['admin'] },
+        { id: 'docs', label: '📚 文档中心', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'ffmpeg', label: 'FFmpeg 工具', roles: ['admin', 'operator'] },
+        { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
+        { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
+        { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] }
       ],
+      currentRole: 'operator',
+      roles: [
+        { id: 'admin', label: '管理员' },
+        { id: 'operator', label: '运维' },
+        { id: 'viewer', label: '访客' }
+      ],
+      permissionMessage: '',
       themes: [
         { id: 'blue', name: '经典蓝', preview: 'linear-gradient(135deg, #667eea, #764ba2)' },
         { id: 'green', name: '森林绿', preview: 'linear-gradient(135deg, #10b981, #047857)' },
@@ -299,7 +328,8 @@ export default {
         docs: DocumentationCenter,
         ffmpeg: FfmpegTool,
         monitor: SystemMonitorDashboard,
-        docker: DockerVisualizer
+        docker: DockerVisualizer,
+        terminal: TerminalConsole
       }
       return componentMap[this.activeTab] || HomePage
     },
@@ -456,11 +486,56 @@ export default {
       return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
     },
     onTabClick(tabId) {
+      if (!this.canAccessTab(tabId)) {
+        this.permissionMessage = `当前角色无权限访问「${this.getTabLabel(tabId)}」`
+        return
+      }
+      this.permissionMessage = ''
       this.activeTab = tabId
       this.preloadNextTabs(tabId)
     },
+    getTabLabel(tabId) {
+      return this.tabs.find((tab) => tab.id === tabId)?.label || tabId
+    },
+    getTabTitle(tabId) {
+      if (this.canAccessTab(tabId)) return this.getTabLabel(tabId)
+      return `无权限访问：${this.getTabLabel(tabId)}`
+    },
+    canAccessTab(tabId) {
+      const tab = this.tabs.find((item) => item.id === tabId)
+      if (!tab) return false
+      const roles = Array.isArray(tab.roles) ? tab.roles : []
+      return roles.includes(this.currentRole)
+    },
+    findFirstAccessibleTab() {
+      return this.tabs.find((tab) => this.canAccessTab(tab.id))?.id || 'home'
+    },
+    async switchRole(roleId) {
+      try {
+        const result = await api.users.setCurrentRole(roleId)
+        this.currentRole = result?.role || roleId
+        if (!this.canAccessTab(this.activeTab)) {
+          this.activeTab = this.findFirstAccessibleTab()
+        }
+        this.permissionMessage = ''
+      } catch (error) {
+        this.permissionMessage = `切换角色失败：${error?.message || '未知错误'}`
+      }
+    },
+    async loadCurrentRole() {
+      try {
+        const result = await api.users.getCurrentRole()
+        const role = String(result?.role || '').trim()
+        if (this.roles.some((item) => item.id === role)) {
+          this.currentRole = role
+        }
+      } catch (error) {
+        console.warn('加载当前角色失败，使用默认角色', error)
+      }
+    },
     preloadTab(tabId) {
       if (!tabId || tabId === 'home') return
+      if (!this.canAccessTab(tabId)) return
       if (this.prefetchedTabs[tabId]) return
       const loader = tabLoaders[tabId]
       if (!loader) return
@@ -494,9 +569,10 @@ export default {
       }
     }
   },
-  mounted() {
+  async mounted() {
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
+    await this.loadCurrentRole()
     const savedAppearance = localStorage.getItem('app_appearance')
     if (savedAppearance) {
       try {
@@ -508,6 +584,9 @@ export default {
       } catch (error) {
         console.warn('解析外观设置失败，已使用默认值', error)
       }
+    }
+    if (!this.canAccessTab(this.activeTab)) {
+      this.activeTab = this.findFirstAccessibleTab()
     }
     this.$nextTick(() => {
       if (!this.appearance.useCustomColors) {
@@ -641,6 +720,41 @@ export default {
   -webkit-overflow-scrolling: touch;
 }
 
+.permission-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--app-group-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow: var(--app-soft-shadow);
+}
+
+.role-options {
+  display: flex;
+  gap: 8px;
+}
+
+.role-pill {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.76em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.role-pill.active {
+  border-color: transparent;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  box-shadow: 0 6px 16px var(--app-shadow);
+}
+
 .palette-options {
   display: flex;
   gap: 8px;
@@ -760,6 +874,32 @@ export default {
   box-shadow: 0 8px 18px var(--app-shadow);
 }
 
+.tab-btn.locked {
+  opacity: 0.55;
+}
+
+.tab-btn.locked:hover {
+  background: transparent;
+  color: var(--app-text-secondary);
+}
+
+.lock-mark {
+  margin-left: 4px;
+  font-size: 0.88em;
+}
+
+.permission-message {
+  margin-top: -12px;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #ff3b30 36%, var(--app-border));
+  background: color-mix(in srgb, #ff3b30 10%, var(--app-card));
+  color: #b91c1c;
+  font-size: 0.84em;
+  font-weight: 600;
+}
+
 .tab-loading {
   padding: 28px 12px;
   border: 1px dashed var(--app-border);
@@ -785,6 +925,11 @@ export default {
     gap: 8px;
     margin-bottom: 8px;
   }
+  .permission-bar {
+    padding: 8px 10px;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   .theme-pill {
     padding: 5px 9px;
     font-size: 0.75em;
@@ -792,6 +937,10 @@ export default {
   .palette-pill {
     padding: 5px 9px;
     font-size: 0.75em;
+  }
+  .role-pill {
+    padding: 5px 8px;
+    font-size: 0.74em;
   }
   .pill-dot { width: 9px; height: 9px; }
   .pill-name { display: none; }
@@ -809,6 +958,7 @@ export default {
 @media (max-width: 480px) {
   .global-theme-bar { padding: 6px 8px; }
   .global-palette-bar { padding: 6px 8px; }
+  .permission-bar { padding: 6px 8px; }
   .theme-pill { padding: 5px 8px; gap: 4px; }
   .palette-pill { padding: 5px 8px; gap: 4px; }
   .theme-label { font-size: 0.75em; }

@@ -40,6 +40,95 @@ function executeDockerCommand(cmd, args = []) {
   });
 }
 
+function parseDockerJsonLines(payload) {
+  if (Array.isArray(payload)) {
+    return payload.filter(Boolean);
+  }
+
+  if (payload && typeof payload === 'object') {
+    return [payload];
+  }
+
+  if (typeof payload !== 'string') {
+    return [];
+  }
+
+  return payload
+    .split('\n')
+    .filter(line => line.trim())
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+const SHELL_CANDIDATES = [
+  { shell: '/bin/bash', label: 'Bash' },
+  { shell: '/bin/sh', label: 'Sh' },
+  { shell: '/bin/ash', label: 'Ash' },
+  { shell: 'sh', label: 'Sh (PATH)' }
+];
+
+async function canExecShell(containerId, shellPath) {
+  try {
+    await executeDockerCommand('exec', [containerId, shellPath, '-c', 'exit 0']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveShellOptions(containerId) {
+  const available = [];
+  for (const candidate of SHELL_CANDIDATES) {
+    // Try candidates one by one and keep only shells that really exist in the target container.
+    if (await canExecShell(containerId, candidate.shell)) {
+      available.push({
+        shell: candidate.shell,
+        label: candidate.label,
+        command: `docker exec -it ${containerId} ${candidate.shell}`
+      });
+    }
+  }
+  return available;
+}
+
+function executeDockerExecCommand(containerId, shellPath, command) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', ['exec', containerId, shellPath, '-c', command], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120000
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      resolve({
+        exitCode: Number.isFinite(code) ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
 // GET /api/docker/info - Get Docker daemon info
 router.get('/info', async (req, res) => {
   try {
@@ -81,17 +170,7 @@ router.get('/containers', async (req, res) => {
     ]);
 
     // Parse JSONL output
-    const containerList = containers
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const containerList = parseDockerJsonLines(containers);
 
     // Enrich with stats for running containers
     const enrichedContainers = await Promise.all(
@@ -104,10 +183,11 @@ router.get('/containers', async (req, res) => {
               '--format', 'json'
             ]);
 
-            if (Array.isArray(stats) && stats[0]) {
+            const statsList = parseDockerJsonLines(stats);
+            if (statsList[0]) {
               return {
                 ...container,
-                stats: stats[0]
+                stats: statsList[0]
               };
             }
           } catch {
@@ -244,17 +324,7 @@ router.get('/images', async (req, res) => {
       '--format', '{{json .}}'
     ]);
 
-    const imageList = images
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const imageList = parseDockerJsonLines(images);
 
     res.json({
       status: 'ok',
@@ -299,17 +369,7 @@ router.get('/networks', async (req, res) => {
       '--format', '{{json .}}'
     ]);
 
-    const networkList = networks
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const networkList = parseDockerJsonLines(networks);
 
     res.json({
       status: 'ok',
@@ -331,17 +391,7 @@ router.get('/volumes', async (req, res) => {
       '--format', '{{json .}}'
     ]);
 
-    const volumeList = volumes
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const volumeList = parseDockerJsonLines(volumes);
 
     res.json({
       status: 'ok',
@@ -443,17 +493,7 @@ router.get('/exec/:containerid', async (req, res) => {
       '--format', '{{json .}}'
     ]);
 
-    const containerList = containers
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const containerList = parseDockerJsonLines(containers);
 
     if (containerList.length === 0) {
       return res.status(404).json({
@@ -463,31 +503,35 @@ router.get('/exec/:containerid', async (req, res) => {
 
     const container = containerList[0];
 
+    const shellOptions = await resolveShellOptions(container.ID);
+    const fallbackCommand = `docker exec -it ${container.ID} /bin/bash || docker exec -it ${container.ID} /bin/sh || docker exec -it ${container.ID} /bin/ash || docker exec -it ${container.ID} sh`;
+
+    if (shellOptions.length === 0) {
+      return res.status(422).json({
+        error: 'No interactive shell found in container',
+        message: 'This container image may be distroless/scratch and does not include sh/bash.',
+        data: {
+          containerid: container.ID,
+          name: container.Names || 'unknown',
+          shellOptions: [],
+          quickCommand: fallbackCommand,
+          fallbackCommand
+        }
+      });
+    }
+
+    const quickCommand = shellOptions[0].command;
+
     // 返回可用的 shell 选项
     res.json({
       status: 'ok',
       data: {
         containerid: container.ID,
-        name: container.Names[0]?.replace('/', '') || 'unknown',
-        shellOptions: [
-          {
-            shell: '/bin/bash',
-            label: 'Bash',
-            command: `docker exec -it ${container.ID} /bin/bash`
-          },
-          {
-            shell: '/bin/sh',
-            label: 'Sh',
-            command: `docker exec -it ${container.ID} /bin/sh`
-          },
-          {
-            shell: '/bin/bash -c "cd / && bash"',
-            label: 'Bash (Root)',
-            command: `docker exec -it ${container.ID} /bin/bash -c "cd / && bash"`
-          }
-        ],
-        // 用户可以复制此命令到终端执行
-        quickCommand: `docker exec -it ${container.ID} /bin/bash`
+        name: container.Names || 'unknown',
+        shellOptions,
+        // 用户可以复制此命令到终端执行（已按容器实际可用 shell 自动选择）
+        quickCommand,
+        fallbackCommand
       }
     });
   } catch (error) {
@@ -546,6 +590,170 @@ router.get('/ps/:containerid', async (req, res) => {
   } catch (error) {
     res.status(404).json({
       error: 'Container not found',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/docker/terminal/:containerid/exec - 在容器中执行命令
+router.post('/terminal/:containerid/exec', async (req, res) => {
+  try {
+    const { containerid } = req.params;
+    const rawCommand = String(req.body?.command || '').trim();
+    const requestedShell = String(req.body?.shell || '').trim();
+
+    if (!rawCommand) {
+      return res.status(400).json({
+        error: 'Command is required'
+      });
+    }
+
+    if (rawCommand.length > 4000) {
+      return res.status(400).json({
+        error: 'Command too long'
+      });
+    }
+
+    const containers = await executeDockerCommand('ps', [
+      '--filter', `id=${containerid}`,
+      '--format', '{{json .}}'
+    ]);
+    const containerList = parseDockerJsonLines(containers);
+
+    if (containerList.length === 0) {
+      return res.status(404).json({
+        error: 'Container not found or not running'
+      });
+    }
+
+    const container = containerList[0];
+    const shellOptions = await resolveShellOptions(container.ID);
+    if (shellOptions.length === 0) {
+      return res.status(422).json({
+        error: 'No interactive shell found in container'
+      });
+    }
+
+    const shell = shellOptions.find(item => item.shell === requestedShell)?.shell || shellOptions[0].shell;
+    const execution = await executeDockerExecCommand(container.ID, shell, rawCommand);
+
+    res.json({
+      status: 'ok',
+      data: {
+        containerid: container.ID,
+        shell,
+        command: rawCommand,
+        exitCode: execution.exitCode,
+        stdout: execution.stdout,
+        stderr: execution.stderr
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: 'Failed to execute container command',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/docker/terminal/:containerid/stream - 流式执行命令并实时返回输出
+router.post('/terminal/:containerid/stream', async (req, res) => {
+  try {
+    const { containerid } = req.params;
+    const rawCommand = String(req.body?.command || '').trim();
+    const requestedShell = String(req.body?.shell || '').trim();
+
+    if (!rawCommand) {
+      return res.status(400).json({
+        error: 'Command is required'
+      });
+    }
+
+    if (rawCommand.length > 4000) {
+      return res.status(400).json({
+        error: 'Command too long'
+      });
+    }
+
+    const containers = await executeDockerCommand('ps', [
+      '--filter', `id=${containerid}`,
+      '--format', '{{json .}}'
+    ]);
+    const containerList = parseDockerJsonLines(containers);
+    if (containerList.length === 0) {
+      return res.status(404).json({
+        error: 'Container not found or not running'
+      });
+    }
+
+    const container = containerList[0];
+    const shellOptions = await resolveShellOptions(container.ID);
+    if (shellOptions.length === 0) {
+      return res.status(422).json({
+        error: 'No interactive shell found in container'
+      });
+    }
+
+    const shell = shellOptions.find(item => item.shell === requestedShell)?.shell || shellOptions[0].shell;
+    const child = spawn('docker', ['exec', container.ID, shell, '-c', rawCommand], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const writeEvent = (event) => {
+      if (res.writableEnded) return;
+      res.write(`${JSON.stringify(event)}\n`);
+    };
+
+    writeEvent({
+      type: 'start',
+      containerid: container.ID,
+      shell,
+      command: rawCommand
+    });
+
+    child.stdout.on('data', (chunk) => {
+      writeEvent({
+        type: 'stdout',
+        chunk: chunk.toString()
+      });
+    });
+
+    child.stderr.on('data', (chunk) => {
+      writeEvent({
+        type: 'stderr',
+        chunk: chunk.toString()
+      });
+    });
+
+    child.on('close', (code) => {
+      writeEvent({
+        type: 'exit',
+        exitCode: Number.isFinite(code) ? code : 1
+      });
+      res.end();
+    });
+
+    child.on('error', (error) => {
+      writeEvent({
+        type: 'error',
+        message: error.message
+      });
+      res.end();
+    });
+
+    req.on('close', () => {
+      if (!child.killed) {
+        child.kill('SIGTERM');
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: 'Failed to stream container command',
       message: error.message
     });
   }

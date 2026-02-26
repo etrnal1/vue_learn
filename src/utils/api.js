@@ -1,5 +1,6 @@
 // API 辅助函数
 const API_BASE_STORAGE_KEY = 'vue_learning_api_base_url';
+const AUTH_TOKEN_STORAGE_KEY = 'vue_learning_auth_token';
 const configuredBaseRaw = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
 function normalizeApiBase(base) {
@@ -26,6 +27,7 @@ function isHttpRuntime() {
 const configuredApiBase = normalizeApiBase(configuredBaseRaw);
 const relativeApiBase = '/api';
 let activeApiBase = '';
+let activeAuthToken = '';
 
 function getApiBaseCandidates() {
   const seen = new Set();
@@ -61,6 +63,34 @@ function buildApiUrl(base, endpoint) {
   return `${base}${normalizedEndpoint}`;
 }
 
+function getRuntimeAuthToken() {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(window.localStorage?.getItem(AUTH_TOKEN_STORAGE_KEY) || '').trim();
+  } catch (error) {
+    return '';
+  }
+}
+
+function getActiveAuthToken() {
+  return String(activeAuthToken || getRuntimeAuthToken() || '').trim();
+}
+
+function saveAuthToken(token) {
+  const value = String(token || '').trim();
+  activeAuthToken = value;
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) {
+      window.localStorage?.setItem(AUTH_TOKEN_STORAGE_KEY, value);
+    } else {
+      window.localStorage?.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
 function rememberActiveApiBase(base) {
   const normalized = normalizeApiBase(base);
   if (!normalized) return;
@@ -85,15 +115,21 @@ async function apiRequest(endpoint, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const canRetryResponseError = method === 'GET' || method === 'HEAD';
   let lastError = null;
+  const token = getActiveAuthToken();
+  const optionHeaders = options.headers || {};
+  const headers = {
+    'Content-Type': 'application/json',
+    ...optionHeaders
+  };
+  if (token && !headers.Authorization && !headers.authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   for (const base of getApiBaseCandidates()) {
     const url = buildApiUrl(base, endpoint);
     try {
       const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
-        },
+        headers,
         ...options
       });
 
@@ -143,6 +179,9 @@ export const api = {
     configured: configuredApiBase || '',
     runtime: getRuntimeApiBase() || ''
   }),
+  setAuthToken: (token) => saveAuthToken(token),
+  getAuthToken: () => getActiveAuthToken(),
+  clearAuthToken: () => saveAuthToken(''),
   request: apiRequest,
   get: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'GET' }),
   post: (endpoint, body, options = {}) => apiRequest(endpoint, {
@@ -161,10 +200,30 @@ export const api = {
   users: {
     getAll: () => apiRequest('/users'),
     getCurrent: () => apiRequest('/users/current'),
+    getCurrentRole: () => apiRequest('/users/current-role'),
+    setCurrentRole: (role) => apiRequest('/users/current-role', { method: 'POST', body: JSON.stringify({ role }) }),
     create: (user) => apiRequest('/users', { method: 'POST', body: JSON.stringify(user) }),
     update: (id, data) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => apiRequest(`/users/${id}`, { method: 'DELETE' }),
     switchCurrent: (id) => apiRequest(`/users/switch/${id}`, { method: 'POST' })
+  },
+
+  // Auth
+  auth: {
+    register: (payload) => apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    login: async (id, password) => {
+      const result = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ id, password }) });
+      if (result?.token) saveAuthToken(result.token);
+      return result;
+    },
+    me: () => apiRequest('/auth/me'),
+    logout: async () => {
+      try {
+        return await apiRequest('/auth/logout', { method: 'POST' });
+      } finally {
+        saveAuthToken('');
+      }
+    }
   },
 
   // Tickets
@@ -365,6 +424,18 @@ export const api = {
   // System Monitor
   systemMonitor: {
     getStatus: () => apiRequest('/system-monitor/status')
+  },
+
+  // Terminal Console
+  terminal: {
+    createSession: (payload = {}) => apiRequest('/terminal/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+    listSessions: () => apiRequest('/terminal/sessions'),
+    getOutput: (sessionId, cursor = 0) => apiRequest(`/terminal/sessions/${encodeURIComponent(sessionId)}/output?cursor=${encodeURIComponent(cursor)}`),
+    sendInput: (sessionId, input) => apiRequest(`/terminal/sessions/${encodeURIComponent(sessionId)}/input`, {
+      method: 'POST',
+      body: JSON.stringify({ input })
+    }),
+    closeSession: (sessionId) => apiRequest(`/terminal/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
   },
 
   // Documentation

@@ -101,7 +101,7 @@
             </div>
             <div class="card-actions">
               <button
-                @click="enterContainer(container.id, container.fullId)"
+                @click="enterContainer(container.id, container.fullId, container.name)"
                 class="action-btn-small"
                 title="进入容器"
                 v-if="container.state === 'running'"
@@ -416,6 +416,91 @@
         </div>
       </div>
     </section>
+
+    <div v-if="execPanel.visible" class="exec-modal-mask" @click.self="closeExecPanel">
+      <div class="exec-modal">
+        <div class="exec-modal-header">
+          <h3>进入容器命令</h3>
+          <button class="action-btn-small" @click="closeExecPanel">关闭</button>
+        </div>
+        <p class="exec-meta">容器：{{ execPanel.containerName || '-' }}</p>
+
+        <p v-if="execPanel.errorMessage" class="exec-error">{{ execPanel.errorMessage }}</p>
+
+        <div v-if="execPanel.quickCommand" class="command-block">
+          <div class="command-title">推荐命令</div>
+          <code>{{ execPanel.quickCommand }}</code>
+          <button class="action-btn-small" @click="copyCommand(execPanel.quickCommand, '推荐命令')">复制</button>
+        </div>
+
+        <div v-if="execPanel.fallbackCommand" class="command-block">
+          <div class="command-title">兜底命令</div>
+          <code>{{ execPanel.fallbackCommand }}</code>
+          <button class="action-btn-small" @click="copyCommand(execPanel.fallbackCommand, '兜底命令')">复制</button>
+        </div>
+
+        <div v-if="execPanel.shellOptions.length > 0" class="command-list">
+          <div class="command-title">可用 Shell</div>
+          <div class="shell-list">
+            <button
+              v-for="item in execPanel.shellOptions"
+              :key="item.shell"
+              class="shell-item"
+              @click="copyCommand(item.command, item.label)"
+            >
+              <span>{{ item.label }}</span>
+              <code>{{ item.command }}</code>
+            </button>
+          </div>
+        </div>
+
+        <p v-if="execPanel.copyStatus" class="copy-status">{{ execPanel.copyStatus }}</p>
+      </div>
+    </div>
+
+    <div v-if="terminal.visible" class="terminal-mask" @click.self="closeTerminal">
+      <div class="terminal-modal">
+        <div class="terminal-header">
+          <div>
+            <h3>容器终端</h3>
+            <p>{{ terminal.containerName }} · {{ terminal.shell }}</p>
+          </div>
+          <div class="terminal-header-actions">
+            <button class="action-btn-small" @click="clearTerminal">清屏</button>
+            <button class="action-btn-small" @click="closeTerminal">关闭</button>
+          </div>
+        </div>
+
+        <div class="terminal-output" ref="terminalOutputRef">
+          <div
+            v-for="(line, idx) in terminal.lines"
+            :key="`terminal-line-${idx}`"
+            class="terminal-line"
+            :class="line.type"
+          >
+            {{ line.text }}
+          </div>
+        </div>
+
+        <form class="terminal-input-row" @submit.prevent="runTerminalCommand">
+          <span class="terminal-prompt">{{ terminal.containerName || 'container' }}$</span>
+          <input
+            ref="terminalInputRef"
+            v-model="terminal.input"
+            class="terminal-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            :disabled="terminal.running"
+            @keydown="onTerminalKeydown"
+            placeholder="输入命令，例如：ls -al"
+          />
+          <button class="action-btn-small" type="submit" :disabled="terminal.running">
+            {{ terminal.running ? '执行中...' : '执行' }}
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -609,7 +694,30 @@ export default {
         { id: 'networks', label: '网络', icon: '🌐' },
         { id: 'volumes', label: '卷', icon: '💾' },
         { id: 'info', label: '信息', icon: 'ℹ️' }
-      ]
+      ],
+
+      execPanel: {
+        visible: false,
+        containerName: '',
+        quickCommand: '',
+        fallbackCommand: '',
+        shellOptions: [],
+        errorMessage: '',
+        copyStatus: ''
+      },
+      copyStatusTimer: null,
+      terminal: {
+        visible: false,
+        containerId: '',
+        containerName: '',
+        shell: '/bin/sh',
+        lines: [],
+        input: '',
+        running: false,
+        history: [],
+        historyIndex: -1
+      },
+      terminalAbortController: null
     }
   },
 
@@ -659,23 +767,266 @@ export default {
       return statusMap[state] || '❓'
     },
 
-    async enterContainer(id, fullId) {
+    async enterContainer(id, fullId, containerName) {
       try {
         const response = await fetch(`/api/docker/exec/${fullId}`)
         const result = await response.json()
 
         if (response.ok && result.status === 'ok') {
-          const { quickCommand, shellOptions } = result.data
-          const message = `✅ 进入容器命令:\n\n${quickCommand}\n\n在你的终端中执行此命令。\n\nShell 选项:\n${shellOptions.map(s => `• ${s.label}: ${s.command}`).join('\n')}`
-          alert(message)
-          console.log('Container exec command:', quickCommand)
+          const { name, quickCommand, shellOptions, fallbackCommand } = result.data
+          const resolvedShell = (Array.isArray(shellOptions) && shellOptions[0]?.shell) || ''
+          if (!resolvedShell) {
+            this.execPanel = {
+              visible: true,
+              containerName: fullId || id,
+              quickCommand: quickCommand || '',
+              fallbackCommand: fallbackCommand || '',
+              shellOptions: Array.isArray(shellOptions) ? shellOptions : [],
+              errorMessage: '容器没有可用 shell，无法打开内置终端',
+              copyStatus: ''
+            }
+            return
+          }
+          this.openTerminal({
+            containerId: fullId || id,
+            containerName: containerName || name || fullId || id,
+            shell: resolvedShell
+          })
         } else {
-          alert(`❌ 错误: ${result.error}`)
+          const fallback = result?.data?.fallbackCommand
+          const detail = result?.message ? `（${result.message}）` : ''
+          this.execPanel = {
+            visible: true,
+            containerName: fullId || id,
+            quickCommand: '',
+            fallbackCommand: fallback || '',
+            shellOptions: [],
+            errorMessage: `${result.error || '无法获取进入容器命令'}${detail}`,
+            copyStatus: ''
+          }
         }
       } catch (error) {
-        alert(`❌ 无法获取进入容器的命令: ${error.message}`)
+        this.execPanel = {
+          visible: true,
+          containerName: fullId || id,
+          quickCommand: '',
+          fallbackCommand: '',
+          shellOptions: [],
+          errorMessage: `无法获取进入容器的命令: ${error.message}`,
+          copyStatus: ''
+        }
         console.error('Error entering container:', error)
       }
+    },
+
+    openTerminal({ containerId, containerName, shell }) {
+      this.terminal.visible = true
+      this.terminal.containerId = containerId || ''
+      this.terminal.containerName = containerName || 'container'
+      this.terminal.shell = shell || '/bin/sh'
+      this.terminal.lines = [
+        { type: 'info', text: `Connected: ${this.terminal.containerName}` },
+        { type: 'info', text: `Shell: ${this.terminal.shell}` },
+        { type: 'info', text: '输入 help 查看内置命令，输入 exit 关闭终端。' }
+      ]
+      this.terminal.input = ''
+      this.terminal.running = false
+      this.terminal.history = []
+      this.terminal.historyIndex = -1
+      this.$nextTick(() => {
+        this.$refs.terminalInputRef?.focus()
+        this.scrollTerminalToBottom()
+      })
+    },
+
+    closeTerminal() {
+      if (this.terminalAbortController) {
+        this.terminalAbortController.abort()
+        this.terminalAbortController = null
+      }
+      this.terminal.visible = false
+      this.terminal.running = false
+    },
+
+    clearTerminal() {
+      this.terminal.lines = []
+    },
+
+    appendTerminalLine(text, type = 'output') {
+      if (!text && text !== 0) return
+      const lines = String(text).replace(/\r/g, '').split('\n')
+      lines.forEach((line) => {
+        if (line === '') return
+        this.terminal.lines.push({ type, text: line })
+      })
+      this.$nextTick(() => {
+        this.scrollTerminalToBottom()
+      })
+    },
+
+    scrollTerminalToBottom() {
+      const el = this.$refs.terminalOutputRef
+      if (!el) return
+      el.scrollTop = el.scrollHeight
+    },
+
+    onTerminalKeydown(event) {
+      if (!Array.isArray(this.terminal.history) || this.terminal.history.length === 0) return
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        if (this.terminal.historyIndex <= 0) {
+          this.terminal.historyIndex = 0
+        } else {
+          this.terminal.historyIndex -= 1
+        }
+        this.terminal.input = this.terminal.history[this.terminal.historyIndex] || ''
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        if (this.terminal.historyIndex >= this.terminal.history.length - 1) {
+          this.terminal.historyIndex = this.terminal.history.length
+          this.terminal.input = ''
+        } else {
+          this.terminal.historyIndex += 1
+          this.terminal.input = this.terminal.history[this.terminal.historyIndex] || ''
+        }
+      }
+    },
+
+    async runTerminalCommand() {
+      const command = String(this.terminal.input || '').trim()
+      if (!command || this.terminal.running) return
+
+      this.appendTerminalLine(`${this.terminal.containerName}$ ${command}`, 'command')
+      this.terminal.history.push(command)
+      this.terminal.historyIndex = this.terminal.history.length
+      this.terminal.input = ''
+
+      if (command === 'clear') {
+        this.clearTerminal()
+        return
+      }
+      if (command === 'exit') {
+        this.closeTerminal()
+        return
+      }
+      if (command === 'help') {
+        this.appendTerminalLine('内置命令: help, clear, exit', 'info')
+        this.appendTerminalLine('其余命令将通过 docker exec 在容器内执行。', 'info')
+        return
+      }
+
+      this.terminal.running = true
+      try {
+        this.terminalAbortController = new AbortController()
+        const response = await fetch(`/api/docker/terminal/${encodeURIComponent(this.terminal.containerId)}/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: this.terminalAbortController.signal,
+          body: JSON.stringify({
+            command,
+            shell: this.terminal.shell
+          })
+        })
+
+        if (!response.ok) {
+          const failed = await response.json().catch(() => ({}))
+          const msg = `${failed.error || 'Command failed'}${failed.message ? `: ${failed.message}` : ''}`
+          this.appendTerminalLine(msg, 'error')
+          return
+        }
+
+        if (!response.body) {
+          this.appendTerminalLine('stream not available', 'error')
+          return
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let finalExitCode = 0
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          let idx = buffer.indexOf('\n')
+          while (idx >= 0) {
+            const rawLine = buffer.slice(0, idx).trim()
+            buffer = buffer.slice(idx + 1)
+            if (rawLine) {
+              let evt = null
+              try {
+                evt = JSON.parse(rawLine)
+              } catch {
+                evt = null
+              }
+
+              if (evt?.type === 'stdout') {
+                this.appendTerminalLine(evt.chunk || '', 'output')
+              } else if (evt?.type === 'stderr') {
+                this.appendTerminalLine(evt.chunk || '', 'error')
+              } else if (evt?.type === 'error') {
+                this.appendTerminalLine(evt.message || 'command error', 'error')
+              } else if (evt?.type === 'exit') {
+                finalExitCode = Number(evt.exitCode || 0)
+              }
+            }
+            idx = buffer.indexOf('\n')
+          }
+        }
+
+        const tail = buffer.trim()
+        if (tail) {
+          try {
+            const evt = JSON.parse(tail)
+            if (evt?.type === 'stdout') this.appendTerminalLine(evt.chunk || '', 'output')
+            if (evt?.type === 'stderr') this.appendTerminalLine(evt.chunk || '', 'error')
+            if (evt?.type === 'error') this.appendTerminalLine(evt.message || 'command error', 'error')
+            if (evt?.type === 'exit') finalExitCode = Number(evt.exitCode || 0)
+          } catch {
+            // ignore malformed tail
+          }
+        }
+
+        if (finalExitCode !== 0) {
+          this.appendTerminalLine(`exit code: ${finalExitCode}`, 'error')
+        }
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          this.appendTerminalLine(`network error: ${error.message || error}`, 'error')
+        }
+      } finally {
+        this.terminalAbortController = null
+        this.terminal.running = false
+        this.$nextTick(() => {
+          this.$refs.terminalInputRef?.focus()
+        })
+      }
+    },
+
+    closeExecPanel() {
+      this.execPanel.visible = false
+      this.execPanel.copyStatus = ''
+    },
+
+    async copyCommand(command, label) {
+      if (!command) return
+      try {
+        await navigator.clipboard.writeText(command)
+        this.execPanel.copyStatus = `已复制：${label}`
+      } catch {
+        window.prompt(`剪贴板不可用，请手动复制（${label}）`, command)
+        this.execPanel.copyStatus = `已打开手动复制：${label}`
+      }
+
+      if (this.copyStatusTimer) {
+        clearTimeout(this.copyStatusTimer)
+      }
+      this.copyStatusTimer = setTimeout(() => {
+        this.execPanel.copyStatus = ''
+      }, 1800)
     },
 
     async toggleContainer(id, state) {
@@ -790,6 +1141,11 @@ export default {
         if (response.ok && result.status === 'ok') {
           this.containers = result.data.map(container => {
             const isRunning = container.State === 'running'
+            const cpuRaw = container.stats?.CPUPercent ?? container.stats?.CPUPerc ?? '0%'
+            const memUsageRaw = String(container.stats?.MemUsage || '')
+            const memParts = memUsageRaw.split('/').map(part => part.trim()).filter(Boolean)
+            const usedMemText = memParts[0] || '0'
+            const totalMemText = memParts[1] || container.stats?.MemLimit || '0'
             return {
               id: container.ID.substring(0, 12),
               fullId: container.ID,
@@ -799,9 +1155,9 @@ export default {
               status: container.Status || '未知',
               ports: container.Ports.split(',').filter(p => p.trim()).map(p => p.trim()),
               networks: Object.keys(container.NetworkSettings?.Networks || {}),
-              cpuPercent: parseFloat(container.stats?.CPUPercent?.replace('%', '') || 0),
-              memoryUsage: this.parseSize(container.stats?.MemUsage?.split(' ')[0] || '0'),
-              memoryLimit: this.parseSize(container.stats?.MemLimit?.split(' ')[0] || '0'),
+              cpuPercent: parseFloat(String(cpuRaw).replace('%', '')) || 0,
+              memoryUsage: this.parseSize(usedMemText),
+              memoryLimit: this.parseSize(totalMemText),
               created: new Date(container.Created || Date.now()),
               started: new Date(container.StartedAt || Date.now())
             }
@@ -873,12 +1229,32 @@ export default {
     },
 
     parseSize(sizeStr) {
-      // 解析 Docker 的大小格式如 "256MB", "1.5GB"
-      if (!sizeStr) return 0
-      const units = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
-      const match = sizeStr.match(/^([\d.]+)([A-Z]+)$/)
+      // 兼容 Docker 返回单位：MB/GB、MiB/GiB、kB/B
+      if (!sizeStr && sizeStr !== 0) return 0
+      const raw = String(sizeStr).trim()
+      if (!raw) return 0
+      if (/^\d+(\.\d+)?$/.test(raw)) return Math.round(parseFloat(raw))
+
+      const compact = raw.replace(/\s+/g, '')
+      const units = {
+        B: 1,
+        KB: 1024,
+        MB: 1024 ** 2,
+        GB: 1024 ** 3,
+        TB: 1024 ** 4,
+        PB: 1024 ** 5,
+        KIB: 1024,
+        MIB: 1024 ** 2,
+        GIB: 1024 ** 3,
+        TIB: 1024 ** 4,
+        PIB: 1024 ** 5
+      }
+      const match = compact.match(/^([\d.]+)([a-zA-Z]+)$/)
       if (!match) return 0
-      return Math.round(parseFloat(match[1]) * (units[match[2]] || 1))
+      const unit = match[2].toUpperCase()
+      const multiplier = units[unit]
+      if (!multiplier) return 0
+      return Math.round(parseFloat(match[1]) * multiplier)
     },
 
     async refreshStatus() {
@@ -918,6 +1294,14 @@ export default {
   beforeUnmount() {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
+    }
+    if (this.copyStatusTimer) {
+      clearTimeout(this.copyStatusTimer)
+      this.copyStatusTimer = null
+    }
+    if (this.terminalAbortController) {
+      this.terminalAbortController.abort()
+      this.terminalAbortController = null
     }
   }
 }
@@ -1477,6 +1861,215 @@ export default {
   color: var(--app-text);
 }
 
+.exec-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 16px;
+}
+
+.exec-modal {
+  width: min(920px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--app-card);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--app-soft-shadow);
+}
+
+.exec-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.exec-modal-header h3 {
+  margin: 0;
+  color: var(--app-text);
+}
+
+.exec-meta {
+  color: var(--app-text-muted);
+  margin: 8px 0 14px;
+}
+
+.exec-error {
+  margin: 0 0 10px;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.command-block {
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.command-title {
+  color: var(--app-text);
+  font-weight: 700;
+  font-size: 0.92em;
+}
+
+.command-block code,
+.shell-item code {
+  display: block;
+  background: var(--app-group-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px;
+  color: var(--app-text-secondary);
+  font-family: monospace;
+  font-size: 0.84em;
+  word-break: break-all;
+  text-align: left;
+}
+
+.command-list {
+  margin-top: 12px;
+}
+
+.shell-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.shell-item {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  border-radius: 10px;
+  padding: 9px;
+  cursor: pointer;
+  color: var(--app-text);
+}
+
+.shell-item:hover {
+  border-color: var(--app-primary);
+}
+
+.copy-status {
+  margin: 10px 0 0;
+  color: var(--app-primary);
+  font-weight: 600;
+}
+
+.terminal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.terminal-modal {
+  width: min(1100px, 100%);
+  height: min(80vh, 760px);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px;
+  background: #0b1020;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.terminal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.terminal-header p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.84rem;
+}
+
+.terminal-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.terminal-output {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 10px;
+  overflow: auto;
+  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-line.command {
+  color: #93c5fd;
+}
+
+.terminal-line.error {
+  color: #fca5a5;
+}
+
+.terminal-line.info {
+  color: #cbd5e1;
+}
+
+.terminal-input-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.terminal-prompt {
+  color: #7dd3fc;
+  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.82rem;
+}
+
+.terminal-input {
+  width: 100%;
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f8fafc;
+  padding: 8px 10px;
+  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.84rem;
+}
+
+.terminal-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .docker-page {
@@ -1530,6 +2123,18 @@ export default {
 
   .card-actions {
     align-self: flex-end;
+  }
+
+  .terminal-modal {
+    height: 88vh;
+  }
+
+  .terminal-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .terminal-prompt {
+    display: none;
   }
 }
 

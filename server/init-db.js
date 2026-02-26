@@ -32,11 +32,19 @@ async function initDatabase() {
         role ENUM('admin', 'member', 'approver') NOT NULL DEFAULT 'member',
         avatar VARCHAR(10) DEFAULT '👨‍💻',
         email VARCHAR(255),
+        password_hash VARCHAR(255),
         created_at BIGINT NOT NULL,
         INDEX idx_role (role)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ 表 users 已创建');
+
+    await connection.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)
+      AFTER email
+    `);
+    console.log('✅ 表 users 密码字段已校准');
 
     // 2. 工单表
     await connection.query(`
@@ -307,6 +315,23 @@ async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ 表 user_settings 已创建');
+
+    // 15. 登录会话表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        token_hash CHAR(64) NOT NULL,
+        user_id VARCHAR(50) NOT NULL,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        revoked_at BIGINT NULL,
+        INDEX idx_token_hash (token_hash),
+        INDEX idx_user_id (user_id),
+        INDEX idx_expires_at (expires_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 auth_sessions 已创建');
 
     console.log('\n🎉 数据库初始化完成！所有表已成功创建。');
 

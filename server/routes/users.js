@@ -2,6 +2,8 @@ import express from 'express';
 import pool from '../db.js';
 
 const router = express.Router();
+const APP_ROLE_SETTING_KEY = 'app_current_role';
+const APP_ALLOWED_ROLES = new Set(['admin', 'operator', 'viewer']);
 
 // GET /api/users - 获取所有用户
 router.get('/', async (req, res) => {
@@ -31,6 +33,49 @@ router.get('/current', async (req, res) => {
     res.json(users.length > 0 ? users[0] : null);
   } catch (error) {
     console.error('获取当前用户失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/users/current-role - 获取全局当前角色（跨浏览器共享）
+router.get('/current-role', async (req, res) => {
+  try {
+    const [settings] = await pool.query(
+      'SELECT setting_value FROM user_settings WHERE setting_key = ?',
+      [APP_ROLE_SETTING_KEY]
+    );
+
+    const role = settings[0]?.setting_value;
+    if (!role || !APP_ALLOWED_ROLES.has(role)) {
+      return res.json({ role: 'operator' });
+    }
+
+    res.json({ role });
+  } catch (error) {
+    console.error('获取当前角色失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/users/current-role - 设置全局当前角色（跨浏览器共享）
+router.post('/current-role', async (req, res) => {
+  const role = String(req.body?.role || '').trim();
+
+  if (!APP_ALLOWED_ROLES.has(role)) {
+    return res.status(400).json({ error: '非法角色，仅支持：admin/operator/viewer' });
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO user_settings (setting_key, setting_value)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [APP_ROLE_SETTING_KEY, role]
+    );
+
+    res.json({ success: true, role });
+  } catch (error) {
+    console.error('设置当前角色失败:', error);
     res.status(500).json({ error: error.message });
   }
 });

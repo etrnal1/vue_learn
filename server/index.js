@@ -2,10 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import { testConnection } from './db.js';
+import { ensureAuthSchema } from './auth.js';
 import { camelCaseResponse } from './utils.js';
 import { initRuntimeLogCapture, pushRuntimeLog } from './runtimeLogs.js';
 
 // 导入路由
+import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import ticketsRouter from './routes/tickets.js';
 import serviceRequestsRouter from './routes/serviceRequests.js';
@@ -29,6 +31,7 @@ import docsRouter from './routes/docs.js';
 import ffmpegRouter from './routes/ffmpeg.js';
 import systemMonitorRouter from './routes/systemMonitor.js';
 import dockerRouter from './routes/docker.js';
+import terminalRouter from './routes/terminal.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -36,7 +39,40 @@ const PORT = process.env.PORT || 4000;
 initRuntimeLogCapture();
 
 // 中间件
-app.use(cors());
+// CORS 配置 - 允许局域网和本地访问
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://localhost:4000',
+  'http://127.0.0.1:4000',
+  'http://macdemac-mini.taileeb849.ts.net:5173',
+  'http://macdemac-mini.taileeb849.ts.net:5174'
+];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // 允许没有 Origin 的请求（如移动应用、curl 等）
+    if (!origin) return callback(null, true);
+
+    // 检查是否在白名单中
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // 开发环境下可以宽松一些，生产环境严格
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        console.warn(`⚠️  CORS: 请求来自非白名单源 ${origin}，已放行（开发模式）`);
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  credentials: true
+}));
+
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -66,6 +102,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // API 路由
+app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/tickets', ticketsRouter);
 app.use('/api/service-requests', serviceRequestsRouter);
@@ -89,6 +126,7 @@ app.use('/api/docs', docsRouter);
 app.use('/api/ffmpeg', ffmpegRouter);
 app.use('/api/system-monitor', systemMonitorRouter);
 app.use('/api/docker', dockerRouter);
+app.use('/api/terminal', terminalRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -121,6 +159,8 @@ async function startServer() {
     process.exit(1);
   }
 
+  await ensureAuthSchema();
+
   const server = app.listen(PORT, () => {
     const env = process.env.NODE_ENV || 'development';
     const envEmoji = env === 'production' ? '🔴' : '🟢';
@@ -130,6 +170,7 @@ async function startServer() {
     console.log(`📊 API 基础路径: http://localhost:${PORT}/api`);
     console.log(`\n可用的 API 端点:`);
     console.log(`  - /api/users`);
+    console.log(`  - /api/auth`);
     console.log(`  - /api/tickets`);
     console.log(`  - /api/service-requests`);
     console.log(`  - /api/articles`);
@@ -151,6 +192,7 @@ async function startServer() {
     console.log(`  - /api/ffmpeg`);
     console.log(`  - /api/system-monitor`);
     console.log(`  - /api/docker`);
+    console.log(`  - /api/terminal`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 
