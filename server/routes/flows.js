@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'crypto';
 import pool from '../db.js';
 
 const router = express.Router();
@@ -47,6 +48,92 @@ router.get('/', async (req, res) => {
     res.json(flowsWithSteps);
   } catch (error) {
     console.error('获取流程列表失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+function validateFlowPayload(payload) {
+  if (!payload || !Array.isArray(payload.steps) || payload.steps.length === 0) {
+    return { valid: false, message: '请确保流程至少包含一个步骤' };
+  }
+
+  for (let i = 0; i < payload.steps.length; i++) {
+    const step = payload.steps[i];
+    const title = String((step.name || step.title || '').trim());
+    if (!title) {
+      return { valid: false, message: `第 ${i + 1} 步缺少标题` };
+    }
+  }
+
+  return { valid: true };
+}
+
+// GET /api/flows/releases - 获取所有流程发布记录
+router.get('/releases', async (req, res) => {
+  try {
+    const [releases] = await pool.query(
+      'SELECT * FROM flow_releases ORDER BY created_at ASC'
+    );
+    res.json(releases);
+  } catch (error) {
+    console.error('获取流程发布历史失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/releases - 创建发布记录
+router.post('/:id/releases', async (req, res) => {
+  const { id } = req.params;
+  const { version, note, payload } = req.body;
+
+  if (!version || !version.trim()) {
+    return res.status(400).json({ error: '缺少版本号' });
+  }
+
+  try {
+    const [flows] = await pool.query('SELECT id FROM flows WHERE id = ?', [id]);
+    if (flows.length === 0) {
+      return res.status(404).json({ error: '流程不存在' });
+    }
+    const validation = validateFlowPayload(payload);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.message });
+    }
+    const releaseId = randomUUID();
+    const now = Date.now();
+    await pool.query(
+      `INSERT INTO flow_releases (id, flow_id, version, note, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [releaseId, id, version.trim(), note || null, JSON.stringify(payload), now]
+    );
+    const [rows] = await pool.query('SELECT * FROM flow_releases WHERE id = ?', [releaseId]);
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    console.error('创建发布记录失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/releases/rollback - 回滚到上一个版本
+router.post('/:id/releases/rollback', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [latest] = await pool.query(
+      'SELECT * FROM flow_releases WHERE flow_id = ? ORDER BY created_at DESC LIMIT 1',
+      [id]
+    );
+    if (latest.length === 0) {
+      return res.status(400).json({ error: '没有可回滚的版本' });
+    }
+    const release = latest[0];
+    await pool.query('DELETE FROM flow_releases WHERE id = ?', [release.id]);
+    const [remaining] = await pool.query(
+      'SELECT * FROM flow_releases WHERE flow_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+    res.json({ history: remaining });
+  } catch (error) {
+    console.error('回滚发布记录失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
