@@ -12,7 +12,12 @@
         </button>
       </header>
 
-      <div v-if="flows.length === 0" class="empty-state">
+      <div v-if="loading && flows.length === 0" class="list-loading">
+        <div class="list-loading__icon">⏳</div>
+        <p>正在加载流程...</p>
+      </div>
+
+      <div v-else-if="!loading && flows.length === 0" class="empty-state">
         <div class="empty-icon">🌀</div>
         <p>暂无流程</p>
         <button class="btn btn-primary" @click="createNewFlow">创建第一个流程</button>
@@ -30,15 +35,14 @@
           <div v-if="flow.steps && flow.steps.length > 0" class="steps-preview-list">
             <div class="preview-title">步骤预览：</div>
             <div class="steps-preview-items">
-              <div v-for="(step, idx) in flow.steps.slice(0, 3)" :key="step.id || idx" class="preview-step">
+              <div v-for="(step, idx) in flow.steps" :key="step.id || idx" class="preview-step">
                 <span class="step-num">{{ idx + 1 }}</span>
                 <div class="step-info">
                   <span class="step-title">{{ step.name || '（未命名）' }}</span>
                   <span v-if="step.description" class="step-desc">{{ step.description }}</span>
+                  <span v-if="step.tip" class="preview-tip">提示：{{ step.tip }}</span>
+                  <span v-if="step.note" class="preview-note">备注：{{ step.note }}</span>
                 </div>
-              </div>
-              <div v-if="flow.steps.length > 3" class="preview-more">
-                +{{ flow.steps.length - 3 }} 更多...
               </div>
             </div>
           </div>
@@ -73,7 +77,7 @@
           ></textarea>
         </div>
         <div class="editor-actions">
-          <button class="btn btn-success" :disabled="saving" @click="saveFlow">
+          <button class="btn btn-success" :disabled="!canSaveFlow" @click="saveFlow">
             {{ saving ? '保存中...' : '保存' }}
           </button>
         </div>
@@ -178,6 +182,33 @@
                   </div>
                 </div>
 
+                <div class="step-field">
+                  <label class="step-label">
+                    <span class="label-text">提示</span>
+                    <span class="label-hint">可写操作注意点或前置条件（选填）</span>
+                  </label>
+                  <textarea
+                    v-model="step.tip"
+                    class="step-textarea"
+                    placeholder="例如：先确认申请表已填写完整"
+                    rows="2"
+                    @input="scheduleAutoSave"
+                  ></textarea>
+                </div>
+                <div class="step-field">
+                  <label class="step-label">
+                    <span class="label-text">备注</span>
+                    <span class="label-hint">写下任何补充说明或交付内容（选填）</span>
+                  </label>
+                  <textarea
+                    v-model="step.note"
+                    class="step-textarea"
+                    placeholder="例如：本步骤需要同步记录在工单中"
+                    rows="2"
+                    @input="scheduleAutoSave"
+                  ></textarea>
+                </div>
+
                 <label class="step-label checkbox-label">
                   <input v-model="step.conditional" type="checkbox" @change="scheduleAutoSave" />
                   <span class="label-text">条件触发</span>
@@ -207,6 +238,8 @@
             <div class="preview-info">
               <p class="preview-title">{{ step.name || `步骤 ${index + 1}` }}</p>
               <p class="preview-desc">{{ step.description }}</p>
+              <p v-if="step.tip" class="preview-tip">提示：{{ step.tip }}</p>
+              <p v-if="step.note" class="preview-note">备注：{{ step.note }}</p>
               <div class="preview-meta">
                 <span v-if="step.assignee">👤 {{ step.assignee }}</span>
                 <span v-if="step.duration">⏱ {{ step.duration }}</span>
@@ -215,6 +248,42 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="versions-panel">
+        <div class="versions-header">
+          <div>
+            <h3>版本历史</h3>
+            <p class="subtitle">展示已发布的快照，支持手动创建与回滚</p>
+          </div>
+          <div class="versions-actions">
+            <button class="btn btn-small" :disabled="creatingVersion" @click="createVersion">
+              {{ creatingVersion ? '创建中…' : '创建版本' }}
+            </button>
+            <button class="btn btn-small btn-danger" :disabled="rollingBack || !flowVersions.length" @click="rollbackVersion">
+              {{ rollingBack ? '回滚中…' : '回滚最新' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="versionsLoading" class="versions-loading">
+          <span class="list-loading__icon">⏳</span>
+          <p>加载版本...</p>
+        </div>
+        <div v-else-if="versionError" class="versions-error">
+          <p>版本加载失败：{{ versionError }}</p>
+        </div>
+        <div v-else-if="flowVersions.length === 0" class="versions-empty">
+          <p>暂无版本</p>
+        </div>
+        <ul v-else class="versions-list">
+          <li v-for="version in flowVersions" :key="version.id" class="versions-item">
+            <div>
+              <strong>{{ version.name || version.note || version.id }}</strong>
+              <p>{{ formatDate(version.created_at || version.createdAt || version.timestamp) }}</p>
+            </div>
+            <span class="versions-status">{{ version.status || '未知' }}</span>
+          </li>
+        </ul>
       </div>
     </div>
 
@@ -227,6 +296,7 @@
 
 <script>
 import { api } from '../../utils/api.js'
+import { recordAudit } from '../../utils/auditLog.js'
 
 export default {
   name: 'FlowDiagramEditor',
@@ -242,10 +312,53 @@ export default {
       lastSavedFlow: null,
       isAutoSaving: false,
       autoSaveEnabled: true,
-      autoSaveInterval: 10000  // 每 10 秒自动保存一次
+      autoSaveInterval: 10000,  // 每 10 秒自动保存一次
+      flowVersions: [],
+      versionsLoading: false,
+      versionError: '',
+      creatingVersion: false,
+      rollingBack: false
+    }
+  },
+  computed: {
+    hasSteps() {
+      return Array.isArray(this.editingFlow?.steps) && this.editingFlow.steps.length > 0
+    },
+    canSaveFlow() {
+      return Boolean(
+        this.editingFlow &&
+        this.editingFlow.name?.trim() &&
+        this.hasSteps &&
+        !this.saving
+      )
     }
   },
   methods: {
+    buildFlowPayload(sourceFlow = this.editingFlow, options = {}) {
+      if (!sourceFlow) return null
+      const { fallbackName = '未命名流程' } = options
+      const now = Date.now()
+      const seed = Math.random().toString(36).substr(2, 6)
+      const steps = (Array.isArray(sourceFlow.steps) ? sourceFlow.steps : []).map((step, index) => ({
+        id: step.id || `step_${now}_${index}_${seed}`,
+        name: step.name || '',
+        description: step.description || '',
+        assignee: step.assignee || '',
+        duration: step.duration || '',
+        order: index,
+        conditional: !!step.conditional,
+        tip: step.tip || '',
+        note: step.note || ''
+      }))
+
+      return {
+        id: sourceFlow.id || `flow_${now}_${seed}`,
+        name: (sourceFlow.name || '').trim() || fallbackName,
+        description: sourceFlow.description || '',
+        icon: sourceFlow.icon || '🌀',
+        steps
+      }
+    },
     async loadFlows() {
       this.loading = true
       try {
@@ -255,6 +368,69 @@ export default {
         this.showMessage(`加载流程失败: ${error?.message}`, 'error')
       } finally {
         this.loading = false
+      }
+    },
+    async createVersion() {
+      if (!this.editingFlow) return
+      const note = window.prompt('请输入版本变更说明（可选）：', '')
+      if (note === null) return
+      this.creatingVersion = true
+      try {
+        const payload = this.buildFlowPayload(this.editingFlow)
+        await api.flows.createRelease(this.editingFlow.id, {
+          note: note.trim() || '手动版本',
+          snapshot: payload
+        })
+        this.showMessage('版本已创建', 'success')
+        recordAudit({ action: 'create_version', detail: note || '', flowId: this.editingFlow.id })
+        await this.loadVersions(this.editingFlow.id)
+      } catch (error) {
+        this.showMessage(`创建版本失败: ${error?.message}`, 'error')
+      } finally {
+        this.creatingVersion = false
+      }
+    },
+    async rollbackVersion() {
+      if (!this.editingFlow) return
+      if (!window.confirm('确定回滚到最近发布版本？')) {
+        return
+      }
+      this.rollingBack = true
+      try {
+        await api.flows.rollbackRelease(this.editingFlow.id)
+        this.showMessage('流程已回滚到发布版本', 'success')
+        recordAudit({ action: 'rollback_flow', detail: this.editingFlow.name || '', flowId: this.editingFlow.id })
+        await this.loadFlows()
+        this.editingFlow = null
+      } catch (error) {
+        this.showMessage(`回滚失败: ${error?.message}`, 'error')
+      } finally {
+        this.rollingBack = false
+      }
+    },
+    async loadVersions(flowId) {
+      if (!flowId) {
+        this.flowVersions = []
+        return
+      }
+      this.versionsLoading = true
+      this.versionError = ''
+      try {
+        const result = await api.flows.getReleases()
+        const candidates = Array.isArray(result) ? result : []
+        const normalized = candidates.filter((release) => {
+          const owner = release.flowId || release.flow_id || release.flow
+          return owner === flowId
+        })
+        this.flowVersions = normalized.sort((a, b) => {
+          const left = new Date(a.created_at || a.createdAt || a.timestamp || 0).getTime()
+          const right = new Date(b.created_at || b.createdAt || b.timestamp || 0).getTime()
+          return right - left
+        })
+      } catch (error) {
+        this.versionError = error?.message || '获取版本失败'
+      } finally {
+        this.versionsLoading = false
       }
     },
     createNewFlow() {
@@ -268,11 +444,15 @@ export default {
         updated_at: Date.now()
       }
       this.editingStepIndex = null
+      this.lastSavedFlow = null
+      this.flowVersions = []
+      this.versionError = ''
     },
     editFlow(flow) {
       this.editingFlow = JSON.parse(JSON.stringify(flow))
       this.lastSavedFlow = JSON.parse(JSON.stringify(flow))
       this.editingStepIndex = null
+      this.loadVersions(flow.id)
     },
     async saveFlow() {
       if (!this.editingFlow.name.trim()) {
@@ -287,37 +467,26 @@ export default {
 
       this.saving = true
       try {
-        // 检查是否是新流程：id 是临时生成的（包含 flow_）或在现有流程列表中不存在
-        const isNew = !this.flows.some(f => f.id === this.editingFlow.id)
-
-        // 准备流程数据，确保步骤有正确的 order 字段
-        const flowData = {
-          id: this.editingFlow.id || `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: this.editingFlow.name.trim(),
-          description: this.editingFlow.description || '',
-          icon: this.editingFlow.icon || '🌀',
-          steps: (this.editingFlow.steps || []).map((step, index) => ({
-            id: step.id || `step_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
-            name: step.name || '',
-            description: step.description || '',
-            assignee: step.assignee || '',
-            duration: step.duration || '',
-            order: index,
-            conditional: step.conditional || false
-          }))
+        const flowData = this.buildFlowPayload(this.editingFlow)
+        if (!flowData || flowData.steps.length === 0) {
+          this.showMessage('请至少添加一个步骤', 'error')
+          return
         }
 
-        let result
+        const isNew = !this.flows.some(f => f.id === flowData.id)
 
+        let result
         if (isNew) {
           result = await api.flows.create(flowData)
         } else {
-          result = await api.flows.update(this.editingFlow.id, flowData)
+          result = await api.flows.update(flowData.id, flowData)
         }
 
         this.showMessage('流程已保存', 'success')
         await this.loadFlows()
+        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
         this.editingFlow = null
+        recordAudit({ action: 'save_flow', detail: flowData.name, flowId: flowData.id })
       } catch (error) {
         this.showMessage(`保存失败: ${error?.message}`, 'error')
         console.error('保存流程错误:', error)
@@ -334,13 +503,14 @@ export default {
         await api.flows.delete(flow.id)
         this.showMessage('流程已删除', 'success')
         await this.loadFlows()
+        recordAudit({ action: 'delete_flow', detail: flow.name || '', flowId: flow.id })
       } catch (error) {
         this.showMessage(`删除失败: ${error?.message}`, 'error')
       }
     },
     addStep() {
       if (!this.editingFlow.steps) {
-        this.$set(this.editingFlow, 'steps', [])
+        this.editingFlow.steps = []
       }
       const newStep = {
         id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -348,7 +518,9 @@ export default {
         description: '',
         assignee: '',
         duration: '',
-        conditional: false
+        conditional: false,
+        tip: '',
+        note: ''
       }
       this.editingFlow.steps.push(newStep)
       this.scheduleAutoSave()
@@ -358,7 +530,6 @@ export default {
     },
     removeStep(index) {
       if (this.editingFlow.steps && this.editingFlow.steps.length > 0) {
-        this.$delete(this.editingFlow.steps, index)
         this.editingFlow.steps.splice(index, 1)
         if (this.editingStepIndex === index) {
           this.editingStepIndex = null
@@ -374,9 +545,14 @@ export default {
       if (newIndex < 0 || newIndex >= this.editingFlow.steps.length) return
 
       // 交换步骤
-      const temp = this.editingFlow.steps[index]
-      this.$set(this.editingFlow.steps, index, this.editingFlow.steps[newIndex])
-      this.$set(this.editingFlow.steps, newIndex, temp)
+      const stepsCopy = [...this.editingFlow.steps]
+      const [moved] = stepsCopy.splice(index, 1)
+      stepsCopy.splice(newIndex, 0, moved)
+      this.editingFlow.steps = stepsCopy
+
+      if (this.editingStepIndex === index) {
+        this.editingStepIndex = newIndex
+      }
 
       // 触发自动保存
       this.scheduleAutoSave()
@@ -417,32 +593,15 @@ export default {
 
       this.isAutoSaving = true
       try {
-        const isNew = !this.flows.some(f => f.id === this.editingFlow.id)
+        const flowData = this.buildFlowPayload(this.editingFlow)
+        if (!flowData || flowData.steps.length === 0) return
 
-        const flowData = {
-          id: this.editingFlow.id || `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: this.editingFlow.name.trim() || '未命名流程',
-          description: this.editingFlow.description || '',
-          icon: this.editingFlow.icon || '🌀',
-          steps: (this.editingFlow.steps || []).map((step, index) => ({
-            id: step.id || `step_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
-            name: step.name || '',
-            description: step.description || '',
-            assignee: step.assignee || '',
-            duration: step.duration || '',
-            order: index,
-            conditional: step.conditional || false
-          }))
-        }
-
-        // 如果没有步骤，则不保存（避免保存无效流程）
-        if (flowData.steps.length === 0) return
-
+        const isNew = !this.flows.some(f => f.id === flowData.id)
         let result
         if (isNew) {
           result = await api.flows.create(flowData)
         } else {
-          result = await api.flows.update(this.editingFlow.id, flowData)
+          result = await api.flows.update(flowData.id, flowData)
         }
 
         // 更新最后保存的状态
@@ -623,6 +782,23 @@ export default {
   background: var(--app-card);
 }
 
+.list-loading {
+  text-align: center;
+  padding: 40px 20px;
+  border: 1px dashed var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  color: var(--app-text-muted);
+}
+
+.list-loading__icon {
+  font-size: 2em;
+}
+
 .empty-icon {
   font-size: 3em;
   margin-bottom: 12px;
@@ -699,6 +875,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .preview-step {
@@ -1039,6 +1217,18 @@ export default {
   font-size: 0.9em;
 }
 
+.preview-tip,
+.preview-note {
+  margin: 4px 0 0;
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+}
+
+.preview-note {
+  color: var(--app-text);
+  font-weight: 500;
+}
+
 .preview-meta {
   display: flex;
   gap: 12px;
@@ -1046,6 +1236,69 @@ export default {
   flex-wrap: wrap;
   font-size: 0.85em;
   color: var(--app-text-muted);
+}
+
+.versions-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.versions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.versions-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.versions-loading,
+.versions-error,
+.versions-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--app-text-muted);
+}
+
+.versions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.versions-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+}
+
+.versions-item strong {
+  display: block;
+  font-size: 0.95em;
+}
+
+.versions-status {
+  font-size: 0.8em;
+  color: var(--app-text);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
 }
 
 /* 消息提示 */
