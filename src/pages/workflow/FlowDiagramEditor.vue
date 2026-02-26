@@ -43,6 +43,7 @@
               v-model="editingFlow.name"
               class="flow-name-input"
               placeholder="流程名称"
+              @input="scheduleAutoSave"
             />
           </h2>
           <textarea
@@ -50,6 +51,7 @@
             class="flow-desc-input"
             placeholder="流程描述"
             rows="2"
+            @input="scheduleAutoSave"
           ></textarea>
         </div>
         <div class="editor-actions">
@@ -83,26 +85,30 @@
                 v-model="step.name"
                 class="step-input"
                 placeholder="步骤名称"
+                @input="scheduleAutoSave"
               />
               <textarea
                 v-model="step.description"
                 class="step-textarea"
                 placeholder="步骤描述"
                 rows="2"
+                @input="scheduleAutoSave"
               ></textarea>
               <div class="step-meta">
                 <input
                   v-model="step.assignee"
                   class="step-input-sm"
                   placeholder="负责人"
+                  @input="scheduleAutoSave"
                 />
                 <input
                   v-model="step.duration"
                   class="step-input-sm"
                   placeholder="预计耗时（如 2h）"
+                  @input="scheduleAutoSave"
                 />
                 <label class="checkbox">
-                  <input v-model="step.conditional" type="checkbox" />
+                  <input v-model="step.conditional" type="checkbox" @change="scheduleAutoSave" />
                   <span>条件触发</span>
                 </label>
               </div>
@@ -161,7 +167,7 @@
     </div>
 
     <!-- 消息提示 -->
-    <div v-if="message" class="message" :class="message.type">
+    <div v-if="message" class="message" :class="[message.type, { 'auto-save': message.text.includes('自动') }]">
       {{ message.text }}
     </div>
   </div>
@@ -179,7 +185,12 @@ export default {
       editingStepIndex: null,
       loading: false,
       saving: false,
-      message: null
+      message: null,
+      autoSaveTimer: null,
+      lastSavedFlow: null,
+      isAutoSaving: false,
+      autoSaveEnabled: true,
+      autoSaveInterval: 10000  // 每 10 秒自动保存一次
     }
   },
   methods: {
@@ -208,6 +219,7 @@ export default {
     },
     editFlow(flow) {
       this.editingFlow = JSON.parse(JSON.stringify(flow))
+      this.lastSavedFlow = JSON.parse(JSON.stringify(flow))
       this.editingStepIndex = null
     },
     async saveFlow() {
@@ -287,6 +299,7 @@ export default {
         conditional: false
       }
       this.editingFlow.steps.push(newStep)
+      this.scheduleAutoSave()
       this.$nextTick(() => {
         this.editingStepIndex = this.editingFlow.steps.length - 1
       })
@@ -298,6 +311,7 @@ export default {
         if (this.editingStepIndex === index) {
           this.editingStepIndex = null
         }
+        this.scheduleAutoSave()
       }
     },
     moveStep(index, direction) {
@@ -307,6 +321,81 @@ export default {
         const temp = this.editingFlow.steps[index]
         this.$set(this.editingFlow.steps, index, this.editingFlow.steps[newIndex])
         this.$set(this.editingFlow.steps, newIndex, temp)
+        this.scheduleAutoSave()
+      }
+    },
+    // 自动保存功能
+    hasChanges() {
+      if (!this.editingFlow || !this.lastSavedFlow) return true
+      return JSON.stringify(this.editingFlow) !== JSON.stringify(this.lastSavedFlow)
+    },
+    scheduleAutoSave() {
+      // 清除旧的计时器
+      if (this.autoSaveTimer) {
+        clearTimeout(this.autoSaveTimer)
+      }
+
+      // 如果禁用了自动保存，则不调度
+      if (!this.autoSaveEnabled) return
+
+      // 设置新的计时器
+      this.autoSaveTimer = setTimeout(() => {
+        if (this.editingFlow && this.hasChanges()) {
+          this.autoSave()
+        }
+      }, this.autoSaveInterval)
+    },
+    async autoSave() {
+      if (!this.editingFlow || this.isAutoSaving || !this.autoSaveEnabled) return
+
+      // 如果有未保存的更改，执行保存
+      if (!this.hasChanges()) return
+
+      this.isAutoSaving = true
+      try {
+        const isNew = !this.flows.some(f => f.id === this.editingFlow.id)
+
+        const flowData = {
+          id: this.editingFlow.id || `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: this.editingFlow.name.trim() || '未命名流程',
+          description: this.editingFlow.description || '',
+          icon: this.editingFlow.icon || '🌀',
+          steps: (this.editingFlow.steps || []).map((step, index) => ({
+            id: step.id || `step_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+            name: step.name || '',
+            description: step.description || '',
+            assignee: step.assignee || '',
+            duration: step.duration || '',
+            order: index,
+            conditional: step.conditional || false
+          }))
+        }
+
+        // 如果没有步骤，则不保存（避免保存无效流程）
+        if (flowData.steps.length === 0) return
+
+        let result
+        if (isNew) {
+          result = await api.flows.create(flowData)
+        } else {
+          result = await api.flows.update(this.editingFlow.id, flowData)
+        }
+
+        // 更新最后保存的状态
+        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
+
+        // 显示自动保存提示（仅显示 2 秒）
+        this.message = { text: '✓ 已自动保存', type: 'success' }
+        setTimeout(() => {
+          if (this.message && this.message.text === '✓ 已自动保存') {
+            this.message = null
+          }
+        }, 2000)
+      } catch (error) {
+        console.error('自动保存失败:', error)
+        this.message = { text: `自动保存失败: ${error?.message}`, type: 'error' }
+      } finally {
+        this.isAutoSaving = false
       }
     },
     showMessage(text, type = 'info') {
@@ -318,6 +407,12 @@ export default {
   },
   mounted() {
     this.loadFlows()
+  },
+  beforeUnmount() {
+    // 页面卸载前，清除自动保存计时器
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer)
+    }
   }
 }
 </script>
@@ -745,6 +840,15 @@ export default {
 
 .message.error {
   background: #ef4444;
+}
+
+.message.auto-save {
+  bottom: 80px;
+  right: 20px;
+  background: #8b5cf6;
+  opacity: 0.9;
+  font-size: 0.85em;
+  padding: 8px 12px;
 }
 
 /* 移动端适配 */
