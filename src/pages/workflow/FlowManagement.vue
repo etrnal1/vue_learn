@@ -149,7 +149,6 @@ export default {
         const description = (flow.description || '').toLowerCase()
         return name.includes(normalizedQuery) || description.includes(normalizedQuery)
       })
-    }
     },
     selectedDiff() {
       if (!this.selectedFlow) return []
