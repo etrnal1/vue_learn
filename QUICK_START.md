@@ -1,236 +1,99 @@
-# ⚡ 5分钟快速启动
+# 🚀 快速启动指南（调试模式）
 
-## 最快的启动方式
+## 概述
 
-### 方式 1️⃣: 使用启动脚本（推荐）
+项目现已配置为 **调试模式**，可以：
+- ✅ 无需真实登录直接进入系统
+- ✅ 自动以管理员身份访问所有功能
+- ✅ 免去权限检查
 
-```bash
-cd /Users/mac/vue-learning-app
-./start.sh
-```
+## 快速启动步骤
 
-脚本会自动：
-✅ 检查 Node.js
-✅ 安装依赖（如果需要）
-✅ 启动开发服务器
-✅ 打开浏览器
-
-### 方式 2️⃣: 手动启动
+### 第 1 步：初始化数据库
 
 ```bash
-# 进入项目目录
-cd /Users/mac/vue-learning-app
-
-# 安装依赖（首次）
-npm install
-
-# 启动开发服务器
-npm run dev
+npm run init-db:test
 ```
 
-### 方式 3️⃣: 使用 VS Code
-
-1. 在 VS Code 中打开 `/Users/mac/vue-learning-app`
-2. 打开终端（Ctrl + `）
-3. 运行 `npm run dev`
-
----
-
-## 🎉 启动成功标志
-
-当看到这样的输出说明启动成功：
-
+**输出应该显示：**
 ```
-  VITE v4.3.9  ready in 234 ms
-
-  ➜  Local:   http://localhost:5173/
-  ➜  press h to show help
+✅ 连接到 MySQL 服务器
+✅ 数据库 itsm_db 已创建/存在
+✅ 表 users 已创建
+...
+🎉 数据库初始化完成！所有表已成功创建。
 ```
 
-浏览器会自动打开 `http://localhost:5173`
+### 第 2 步：启动后端
 
----
-
-## 📋 项目内容一览
-
-### 🏠 首页
-- 项目介绍
-- 功能特点
-- 技术栈
-
-### 🚀 Spring 参考
-**注解参考**
-- @SpringBootApplication
-- @Bean
-- @Component
-- @Service
-- @Autowired
-- @RestController
-- ...等更多
-
-**核心流程**
-- 启动流程图
-- 请求处理流程
-- Bean 生命周期
-
-### 📊 Excel 参考
-**5 个分类，25+ 个函数**
-- 📐 数学函数 (SUM, AVERAGE, MAX, MIN, COUNT, ROUND)
-- 🔀 逻辑函数 (IF, AND, OR, NOT)
-- 🔍 查找函数 (VLOOKUP, HLOOKUP, INDEX, MATCH)
-- ✏️ 文本函数 (CONCATENATE, LEFT, RIGHT, LEN, UPPER, LOWER)
-- 📅 日期函数 (TODAY, NOW, YEAR, MONTH, DAY)
-
----
-
-## 💻 开发中的实时修改
-
-当你修改代码时：
-
-```
-修改 src/App.vue
-     ↓
-保存文件
-     ↓
-Vite 检测到变化
-     ↓
-自动编译 (< 1秒)
-     ↓
-浏览器自动更新 (无需手动刷新)
-     ↓
-继续开发 ✓
+在一个终端中：
+```bash
+npm run server:test
 ```
 
----
+**应该看到：**
+```
+✅ 认证模块已初始化
+🚀 ITSM 后端服务器启动成功！
+🟢 环境: DEVELOPMENT
+📍 监听端口: http://localhost:4000
+```
 
-## 🛠️ 常用命令
+### 第 3 步：启动前端
 
-| 命令 | 说明 |
+在另一个终端中：
+```bash
+npm run client:test
+```
+
+**应该看到：**
+```
+Local:   http://localhost:5173/
+```
+
+### 第 4 步：访问应用
+
+打开浏览器访问：
+```
+http://localhost:5173/
+```
+
+✅ **你会自动以调试用户身份进入系统，无需登录！**
+
+## 🎯 现在可以使用的功能
+
+| 功能 | 说明 |
 |------|------|
-| `npm run dev` | 启动开发服务器 |
-| `npm run build` | 构建生产版本 |
-| `npm run preview` | 预览生产版本 |
-| `npm install` | 安装依赖 |
-| `npm update` | 更新依赖 |
+| 📊 实时日志 | 查看后端实时错误日志，完全透明的调试 |
+| 🐳 Docker 管理 | 管理本机运行的 Docker 容器和镜像 |
+| ⌨️ 本机终端 | 在网页中执行终端命令 |
+| 🔐 认证日志 | 查看用户认证相关的日志 |
+| 📚 其他功能 | 所有其他模块都已开放 |
+
+## 🔧 实时日志查看器
+
+当 **后端报错 500** 时：
+
+1. 点击左侧导航的 **📊 实时日志** 标签
+2. 查看实时流入的日志
+3. 按错误级别过滤或搜索关键字
+4. 展开错误详情查看完整信息
+
+这就是你要求的"能让我看到具体报错原因的页面"！
+
+## 💡 提示
+
+- 如果 MySQL 连接失败，检查 `.env` 中的 `DB_PASSWORD`（可能为空或有密码）
+- 后端日志会自动记录所有请求和错误
+- 调试模式仅在非生产环境启用
+
+## ⚡ 下一步
+
+完成上述步骤后，你就可以：
+1. 使用实时日志查看器调试任何 500 错误
+2. 管理 Docker 容器
+3. 测试所有应用功能而无需真实登录
 
 ---
 
-## 📂 项目文件树
-
-```
-vue-learning-app/
-├── 📄 package.json          # 项目配置
-├── 📄 vite.config.js        # Vite 配置
-├── 📄 index.html            # 入口 HTML
-├── 📄 README.md             # 项目文档
-├── 📄 STARTUP_GUIDE.md      # 详细启动指南
-├── 📄 QUICK_START.md        # 快速启动 (此文件)
-├── 📄 start.sh              # 启动脚本
-├── 📁 src/
-│   ├── 📄 main.js           # 应用入口
-│   ├── 📄 App.vue           # 根组件
-│   ├── 📄 style.css         # 全局样式
-│   ├── 📁 pages/            # 页面组件
-│   │   ├── HomePage.vue
-│   │   ├── SpringReference.vue
-│   │   └── ExcelReference.vue
-│   └── 📁 components/       # 可复用组件
-│       ├── Header.vue
-│       ├── ConceptCard.vue
-│       ├── FunctionCard.vue
-│       └── FlowChart.vue
-└── 📁 dist/                 # 生产输出 (npm run build)
-```
-
----
-
-## ❓ 故障排除
-
-### 问题：npm install 失败
-
-```bash
-npm cache clean --force
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### 问题：端口 5173 被占用
-
-```bash
-# 改用其他端口，编辑 vite.config.js:
-port: 3000  # 改为 3000
-
-# 或杀死占用进程
-lsof -i :5173
-kill -9 <PID>
-```
-
-### 问题：浏览器无法打开
-
-手动访问：`http://localhost:5173`
-
----
-
-## 📚 学到什么
-
-通过这个项目，你可以学到：
-
-✅ Vue 3 组件化开发
-✅ 响应式数据绑定
-✅ 组件通信 (props, emits)
-✅ Vite 构建工具
-✅ 模块化项目结构
-✅ 现代化前端开发流程
-
----
-
-## 🚀 下一步
-
-### 1. 理解项目结构
-- 打开 `src/App.vue` 了解组件结构
-- 查看 `src/pages/HomePage.vue` 学习组件用法
-
-### 2. 修改内容
-- 改变文字和颜色
-- 添加新的 Spring 注解
-- 添加新的 Excel 函数
-
-### 3. 创建新功能
-- 在 `src/pages/` 创建新页面
-- 在 `src/components/` 创建新组件
-- 在 `App.vue` 中集成
-
-### 4. 扩展项目
-- 添加路由 (Vue Router)
-- 集成状态管理 (Pinia)
-- 连接后端 API
-- 添加 TypeScript
-
----
-
-## 🎓 推荐学习资源
-
-- [Vue 3 官方教程](https://vuejs.org/guide/introduction.html)
-- [Vite 官方文档](https://vitejs.dev/)
-- [Vue 3 API 速查](https://vuejs.org/api/)
-
----
-
-## 💡 小贴士
-
-- 按 `h` 在终端查看 Vite 帮助
-- 按 `q` 停止开发服务器
-- 按 `F12` 打开浏览器开发者工具
-- 查看 `Network` 标签页理解资源加载
-- 查看 `Console` 标签页调试代码
-
----
-
-## 🎉 现在你已准备好了！
-
-```bash
-cd /Users/mac/vue-learning-app
-./start.sh
-```
-
-**Happy Coding! 🚀**
+**注意：** 这是开发调试配置。生产环境应禁用此模式。
