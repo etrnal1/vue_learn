@@ -81,19 +81,49 @@
           <h3>{{ selectedFlow.name }} · 步骤详情</h3>
           <p>{{ selectedFlow.description || '暂无说明' }}</p>
         </div>
-        <button class="btn btn--ghost" @click="selectedFlow = null">关闭</button>
+        <div class="flow-detail__header-actions">
+          <button class="btn btn--primary" @click="editFlowInEditor(selectedFlow)">编辑流程</button>
+          <button class="btn btn--ghost" @click="selectedFlow = null">关闭</button>
+        </div>
       </div>
       <ol class="flow-detail__steps">
         <li v-for="(step, index) in selectedFlow.steps || []" :key="step.id || index">
           <div class="step__index">{{ index + 1 }}</div>
-          <div>
+          <div class="step__content">
             <p class="step__title">{{ step.name || step.title || `步骤 ${index + 1}` }}</p>
-            <p class="step__desc">{{ step.description || '未提供步骤描述' }}</p>
-            <div class="step__meta">
-              <span>指派：{{ step.assignee || '待分配' }}</span>
-              <span>预计耗时：{{ step.duration || '未设定' }}</span>
-              <span v-if="step.conditional">条件触发</span>
+
+            <div class="step__field">
+              <label class="step__field-label">
+                <span class="field-label-text">步骤描述</span>
+                <span class="field-label-hint">说明这个步骤的内容和目的</span>
+              </label>
+              <p class="step__desc">{{ step.description || '暂无描述' }}</p>
             </div>
+
+            <div class="step__meta">
+              <span><strong>负责人：</strong>{{ step.assignee || '待分配' }}</span>
+              <span><strong>预计耗时：</strong>{{ step.duration || '未设定' }}</span>
+              <span v-if="step.conditional" class="conditional-badge">条件触发</span>
+            </div>
+          </div>
+
+          <div class="step__actions">
+            <button
+              class="step-action-btn"
+              :disabled="index === 0"
+              @click="moveStepInPreview(index, -1)"
+              title="上移步骤"
+            >
+              ⬆️
+            </button>
+            <button
+              class="step-action-btn"
+              :disabled="index === (selectedFlow.steps || []).length - 1"
+              @click="moveStepInPreview(index, 1)"
+              title="下移步骤"
+            >
+              ⬇️
+            </button>
           </div>
         </li>
         <li v-if="(selectedFlow.steps || []).length === 0" class="empty-step">该流程尚未定义步骤。</li>
@@ -347,6 +377,65 @@ export default {
       }
 
       return diff
+    },
+
+    /**
+     * 在预览界面中移动步骤
+     * @param {number} index - 当前步骤索引
+     * @param {number} direction - 移动方向 (-1: 上移, 1: 下移)
+     */
+    async moveStepInPreview(index, direction) {
+      if (!this.selectedFlow || !this.selectedFlow.steps) return
+
+      const steps = this.selectedFlow.steps
+      if (steps.length < 2) return
+
+      const newIndex = index + direction
+
+      // 边界检查
+      if (newIndex < 0 || newIndex >= steps.length) return
+
+      // 交换步骤
+      const temp = steps[index]
+      this.$set(steps, index, steps[newIndex])
+      this.$set(steps, newIndex, temp)
+
+      // 保存到数据库
+      try {
+        await api.flows.update(this.selectedFlow.id, {
+          name: this.selectedFlow.name,
+          description: this.selectedFlow.description,
+          icon: this.selectedFlow.icon,
+          steps: steps
+        })
+
+        // 同步更新流程列表中的数据
+        const flowIndex = this.flows.findIndex(f => f.id === this.selectedFlow.id)
+        if (flowIndex !== -1) {
+          this.$set(this.flows[flowIndex], 'steps', [...steps])
+        }
+
+        // 提示用户
+        const directionText = direction === -1 ? '上移' : '下移'
+        const message = `已将第 ${index + 1} 步${directionText}到第 ${newIndex + 1} 步`
+        console.log(message)
+
+      } catch (error) {
+        this.errorMessage = error?.message || '步骤排序失败'
+        console.error('步骤排序失败:', error)
+      }
+    },
+
+    /**
+     * 在编辑器中编辑流程
+     * @param {Object} flow - 流程对象
+     */
+    editFlowInEditor(flow) {
+      if (!flow) return
+
+      // 跳转到编辑器页面
+      // 假设编辑器的路由参数是流程 ID
+      window.location.href = `/workflow/editor/${flow.id}`
     }
   },
   mounted() {
@@ -584,6 +673,27 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.flow-detail__steps::-webkit-scrollbar {
+  width: 6px;
+}
+
+.flow-detail__steps::-webkit-scrollbar-track {
+  background: var(--app-card);
+  border-radius: 3px;
+}
+
+.flow-detail__steps::-webkit-scrollbar-thumb {
+  background: var(--app-border);
+  border-radius: 3px;
+}
+
+.flow-detail__steps::-webkit-scrollbar-thumb:hover {
+  background: var(--app-text-muted);
 }
 
 .flow-detail__steps li {
@@ -684,6 +794,111 @@ export default {
   margin: 4px 0 0;
   font-size: 0.85rem;
   color: var(--app-text-muted);
+}
+
+.flow-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.flow-detail__header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step__content {
+  flex: 1;
+}
+
+.step__field {
+  margin: 8px 0;
+}
+
+.step__field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.field-label-text {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--app-text);
+}
+
+.field-label-hint {
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+  font-weight: normal;
+}
+
+.step__meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--app-text-muted);
+  margin-top: 8px;
+}
+
+.step__meta strong {
+  color: var(--app-text);
+  font-weight: 600;
+}
+
+.conditional-badge {
+  background: var(--app-primary-light);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-primary);
+}
+
+.step__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.step-action-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.step-action-btn:hover:not(:disabled) {
+  background: var(--app-primary-light);
+  border-color: var(--app-primary);
+  transform: translateY(-2px);
+}
+
+.step-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.flow-detail__steps li {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
+  align-items: flex-start;
 }
 
 @media (max-width: 900px) {
