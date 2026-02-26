@@ -216,15 +216,39 @@ export default {
         return
       }
 
+      if (!this.editingFlow.steps || this.editingFlow.steps.length === 0) {
+        this.showMessage('请至少添加一个步骤', 'error')
+        return
+      }
+
       this.saving = true
       try {
-        const isNew = !this.editingFlow.id || this.editingFlow.id.startsWith('flow_')
+        // 检查是否是新流程：id 是临时生成的（包含 flow_）或在现有流程列表中不存在
+        const isNew = !this.flows.some(f => f.id === this.editingFlow.id)
+
+        // 准备流程数据，确保步骤有正确的 order 字段
+        const flowData = {
+          id: this.editingFlow.id || `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: this.editingFlow.name.trim(),
+          description: this.editingFlow.description || '',
+          icon: this.editingFlow.icon || '🌀',
+          steps: (this.editingFlow.steps || []).map((step, index) => ({
+            id: step.id || `step_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+            name: step.name || '',
+            description: step.description || '',
+            assignee: step.assignee || '',
+            duration: step.duration || '',
+            order: index,
+            conditional: step.conditional || false
+          }))
+        }
+
         let result
 
         if (isNew) {
-          result = await api.flows.create(this.editingFlow)
+          result = await api.flows.create(flowData)
         } else {
-          result = await api.flows.update(this.editingFlow.id, this.editingFlow)
+          result = await api.flows.update(this.editingFlow.id, flowData)
         }
 
         this.showMessage('流程已保存', 'success')
@@ -232,6 +256,7 @@ export default {
         this.editingFlow = null
       } catch (error) {
         this.showMessage(`保存失败: ${error?.message}`, 'error')
+        console.error('保存流程错误:', error)
       } finally {
         this.saving = false
       }

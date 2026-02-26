@@ -193,15 +193,16 @@ router.post('/', async (req, res) => {
 
     // 插入步骤
     if (steps && steps.length > 0) {
-      for (const step of steps) {
+      for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+        const step = steps[stepIndex];
         await connection.query(
           `INSERT INTO flow_steps (id, flow_id, step_order, name, description, assignee, duration, conditional)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            step.id,
+            step.id || `step_${Date.now()}_${stepIndex}`,
             id,
-            step.order,
-            step.name,
+            step.order !== undefined ? step.order : stepIndex,
+            step.name || '',
             step.description || null,
             step.assignee || null,
             step.duration || null,
@@ -276,15 +277,16 @@ router.put('/:id', async (req, res) => {
       await connection.query('DELETE FROM flow_steps WHERE flow_id = ?', [id]);
 
       if (steps.length > 0) {
-        for (const step of steps) {
+        for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+          const step = steps[stepIndex];
           await connection.query(
             `INSERT INTO flow_steps (id, flow_id, step_order, name, description, assignee, duration, conditional)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              step.id,
+              step.id || `step_${Date.now()}_${stepIndex}`,
               id,
-              step.order,
-              step.name,
+              step.order !== undefined ? step.order : stepIndex,
+              step.name || '',
               step.description || null,
               step.assignee || null,
               step.duration || null,
