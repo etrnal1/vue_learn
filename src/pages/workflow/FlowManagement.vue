@@ -673,7 +673,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 60vh;
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
   padding-right: 8px;
 }
