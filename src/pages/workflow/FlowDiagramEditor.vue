@@ -25,6 +25,21 @@
             <span class="badge">{{ (flow.steps || []).length }} 步</span>
           </div>
           <p class="card-desc">{{ flow.description || '暂无描述' }}</p>
+
+          <!-- 步骤预览 -->
+          <div v-if="flow.steps && flow.steps.length > 0" class="steps-preview-list">
+            <div class="preview-title">步骤预览：</div>
+            <div class="steps-preview-items">
+              <div v-for="(step, idx) in flow.steps.slice(0, 3)" :key="step.id || idx" class="preview-step">
+                <span class="step-num">{{ idx + 1 }}</span>
+                <span class="step-title">{{ step.name || '（未命名）' }}</span>
+              </div>
+              <div v-if="flow.steps.length > 3" class="preview-more">
+                +{{ flow.steps.length - 3 }} 更多...
+              </div>
+            </div>
+          </div>
+
           <div class="card-actions">
             <button class="btn btn-small" @click="editFlow(flow)">编辑</button>
             <button class="btn btn-small btn-danger" @click="deleteFlow(flow)">删除</button>
@@ -616,6 +631,63 @@ export default {
   line-height: 1.4;
 }
 
+/* 步骤预览 */
+.steps-preview-list {
+  padding: 10px;
+  background: var(--app-card-elevated);
+  border-radius: 8px;
+  border-left: 3px solid var(--app-primary);
+}
+
+.preview-title {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  margin-bottom: 6px;
+}
+
+.steps-preview-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  font-weight: 600;
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+
+.step-title {
+  color: var(--app-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.preview-more {
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  font-style: italic;
+  padding-left: 24px;
+}
+
 .card-actions {
   display: flex;
   gap: 8px;
@@ -868,6 +940,20 @@ export default {
 
   .flow-cards {
     grid-template-columns: 1fr;
+  }
+
+  .steps-preview-list {
+    padding: 8px;
+  }
+
+  .preview-step {
+    font-size: 0.8em;
+  }
+
+  .step-num {
+    width: 16px;
+    height: 16px;
+    font-size: 0.7em;
   }
 
   .step-meta {
