@@ -251,20 +251,24 @@ export default {
     },
     addStep() {
       if (!this.editingFlow.steps) {
-        this.editingFlow.steps = []
+        this.$set(this.editingFlow, 'steps', [])
       }
-      this.editingFlow.steps.push({
-        id: `step_${Date.now()}`,
+      const newStep = {
+        id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: '',
         description: '',
         assignee: '',
         duration: '',
         conditional: false
+      }
+      this.editingFlow.steps.push(newStep)
+      this.$nextTick(() => {
+        this.editingStepIndex = this.editingFlow.steps.length - 1
       })
-      this.editingStepIndex = this.editingFlow.steps.length - 1
     },
     removeStep(index) {
       if (this.editingFlow.steps && this.editingFlow.steps.length > 0) {
+        this.$delete(this.editingFlow.steps, index)
         this.editingFlow.steps.splice(index, 1)
         if (this.editingStepIndex === index) {
           this.editingStepIndex = null
@@ -276,8 +280,8 @@ export default {
       const newIndex = index + direction
       if (newIndex >= 0 && newIndex < this.editingFlow.steps.length) {
         const temp = this.editingFlow.steps[index]
-        this.editingFlow.steps[index] = this.editingFlow.steps[newIndex]
-        this.editingFlow.steps[newIndex] = temp
+        this.$set(this.editingFlow.steps, index, this.editingFlow.steps[newIndex])
+        this.$set(this.editingFlow.steps, newIndex, temp)
       }
     },
     showMessage(text, type = 'info') {
