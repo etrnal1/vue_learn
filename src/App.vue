@@ -263,6 +263,7 @@ const tabLoaders = {
   userAdmin: () => import('./pages/UserAdminConsole.vue'),
   flowTracking: () => import('./pages/workflow/FlowTracking.vue'),
   flowDiagram: () => import('./pages/workflow/FlowDiagramEditor.vue'),
+  flowPreview: () => import('./pages/workflow/FlowPreviewExport.vue'),
   flowTasks: () => import('./pages/workflow/FlowTasks.vue'),
   flowFiles: () => import('./pages/workflow/FlowFileManager.vue'),
   flowInstances: () => import('./pages/workflow/FlowInstances.vue'),
@@ -312,6 +313,7 @@ const DatabaseConsole = createAsyncPage(tabLoaders.database)
 const UserAdminConsole = createAsyncPage(tabLoaders.userAdmin)
 const FlowTracking = createAsyncPage(tabLoaders.flowTracking)
 const FlowDiagramEditor = createAsyncPage(tabLoaders.flowDiagram)
+const FlowPreviewExport = createAsyncPage(tabLoaders.flowPreview)
 const FlowTasks = createAsyncPage(tabLoaders.flowTasks)
 const FlowFileManager = createAsyncPage(tabLoaders.flowFiles)
 const FlowInstances = createAsyncPage(tabLoaders.flowInstances)
@@ -346,6 +348,7 @@ const DEFAULT_PERMISSION_CONFIG = {
     userAdmin: ['admin', 'operator', 'viewer'],
     flowTracking: ['admin', 'operator'],
     flowDiagram: ['admin', 'operator'],
+    flowPreview: ['admin', 'operator'],
     flowTasks: ['admin', 'operator'],
     flowFiles: ['admin', 'operator'],
     flowInstances: ['admin', 'operator'],
@@ -426,6 +429,7 @@ export default {
         { id: 'flowTracking', label: '流程追踪', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowDiagram', label: '流程图编辑', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowTasks', label: '流程任务', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowPreview', label: '流程预览/导出', roles: ['admin', 'operator'], menuGroup: 'workflow' },
         { id: 'flowFiles', label: '流程文件管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowInstances', label: '流程实例管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowWorkItems', label: '流程工作项管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
@@ -495,7 +499,7 @@ export default {
         { title: '平台管理', ids: ['userAdmin'] },
         {
           title: '工作流管理',
-          ids: ['flowTracking', 'flowDiagram', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
+          ids: ['flowTracking', 'flowDiagram', 'flowPreview', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
         }
       ]
 
@@ -534,6 +538,7 @@ export default {
         userAdmin: UserAdminConsole,
         flowTracking: FlowTracking,
         flowDiagram: FlowDiagramEditor,
+        flowPreview: FlowPreviewExport,
         flowTasks: FlowTasks,
         flowFiles: FlowFileManager,
         flowInstances: FlowInstances,
