@@ -545,8 +545,21 @@ export default {
         this.currentUser = result?.user || null
         this.isLoggedIn = Boolean(this.currentUser)
       } catch (error) {
-        this.currentUser = null
-        this.isLoggedIn = false
+        // 调试模式：如果验证失败且处于调试模式，自动跳过登录
+        if (this.isDebugMode) {
+          this.currentUser = {
+            id: 'debug_user',
+            name: '调试用户',
+            role: 'admin',
+            avatar: '🔧',
+            email: 'debug@example.com'
+          }
+          this.isLoggedIn = true
+          this.currentRole = 'admin'
+        } else {
+          this.currentUser = null
+          this.isLoggedIn = false
+        }
       } finally {
         this.authReady = true
       }
@@ -681,8 +694,9 @@ export default {
       return `无权限访问：${this.getTabLabel(tabId)}`
     },
     canAccessTab(tabId) {
-      if (!this.isLoggedIn && this.isDebugMode && DEBUG_ONLY_TAB_IDS.has(tabId)) return true
-      if (!this.isDebugMode && DEBUG_ONLY_TAB_IDS.has(tabId)) return false
+      // 调试模式下允许访问所有标签
+      if (this.isDebugMode) return true
+      if (!this.isLoggedIn && DEBUG_ONLY_TAB_IDS.has(tabId)) return true
       const tab = this.tabs.find((item) => item.id === tabId)
       if (!tab) return false
       const roles = Array.isArray(tab.roles) ? tab.roles : []

@@ -39,12 +39,21 @@ async function initDatabase() {
     `);
     console.log('✅ 表 users 已创建');
 
-    await connection.query(`
-      ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)
-      AFTER email
-    `);
-    console.log('✅ 表 users 密码字段已校准');
+    // 检查 password_hash 列是否存在，如果不存在则添加
+    try {
+      await connection.query(`
+        ALTER TABLE users
+        ADD COLUMN password_hash VARCHAR(255)
+        AFTER email
+      `);
+      console.log('✅ 表 users 密码字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 users 密码字段已存在');
+      } else {
+        throw err;
+      }
+    }
 
     // 2. 工单表
     await connection.query(`
@@ -124,12 +133,21 @@ async function initDatabase() {
     `);
     console.log('✅ 表 service_requests 状态枚举已校准');
 
-    await connection.query(`
-      ALTER TABLE service_requests
-      ADD COLUMN IF NOT EXISTS form_data JSON
-      AFTER description
-    `);
-    console.log('✅ 表 service_requests 动态表单字段已校准');
+    // 检查 form_data 列是否存在，如果不存在则添加
+    try {
+      await connection.query(`
+        ALTER TABLE service_requests
+        ADD COLUMN form_data JSON
+        AFTER description
+      `);
+      console.log('✅ 表 service_requests 动态表单字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 service_requests 动态表单字段已存在');
+      } else {
+        throw err;
+      }
+    }
 
     // 5. 服务目录表（自助门户 + 自动路由）
     await connection.query(`
@@ -155,12 +173,21 @@ async function initDatabase() {
     `);
     console.log('✅ 表 service_catalog 已创建');
 
-    await connection.query(`
-      ALTER TABLE service_catalog
-      ADD COLUMN IF NOT EXISTS form_schema JSON
-      AFTER description
-    `);
-    console.log('✅ 表 service_catalog 表单模板字段已校准');
+    // 检查 form_schema 列是否存在，如果不存在则添加
+    try {
+      await connection.query(`
+        ALTER TABLE service_catalog
+        ADD COLUMN form_schema JSON
+        AFTER description
+      `);
+      console.log('✅ 表 service_catalog 表单模板字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 service_catalog 表单模板字段已存在');
+      } else {
+        throw err;
+      }
+    }
 
     const now = Date.now();
     await connection.query(`

@@ -48,11 +48,18 @@ function verifyPassword(password, storedHash) {
 }
 
 export async function ensureAuthSchema() {
-  await pool.query(`
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255) NULL
-    AFTER email
-  `);
+  // 检查 password_hash 列是否存在，如果不存在则添加
+  try {
+    await pool.query(`
+      ALTER TABLE users
+      ADD COLUMN password_hash VARCHAR(255) NULL
+      AFTER email
+    `);
+  } catch (err) {
+    if (err.code !== 'ER_DUP_FIELDNAME') {
+      throw err;
+    }
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS auth_sessions (
