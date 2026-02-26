@@ -3,7 +3,105 @@ import pool from '../db.js';
 
 const router = express.Router();
 const APP_ROLE_SETTING_KEY = 'app_current_role';
-const APP_ALLOWED_ROLES = new Set(['admin', 'operator', 'viewer']);
+const APP_PERMISSION_SETTING_KEY = 'app_permission_config';
+
+const DEFAULT_PERMISSION_CONFIG = {
+  roles: [
+    { id: 'admin', label: '管理员' },
+    { id: 'operator', label: '运维' },
+    { id: 'viewer', label: '访客' }
+  ],
+  tabPermissions: {
+    home: ['admin', 'operator', 'viewer'],
+    spring: ['admin', 'operator', 'viewer'],
+    excel: ['admin', 'operator', 'viewer'],
+    chat: ['admin', 'operator'],
+    itsm: ['admin', 'operator'],
+    git: ['admin', 'operator'],
+    video: ['admin', 'operator'],
+    music: ['admin', 'operator'],
+    album: ['admin', 'operator'],
+    wiki: ['admin', 'operator', 'viewer'],
+    logs: ['admin'],
+    weibo: ['admin', 'operator'],
+    scheduler: ['admin'],
+    docs: ['admin', 'operator', 'viewer'],
+    ffmpeg: ['admin', 'operator'],
+    monitor: ['admin', 'operator'],
+    docker: ['admin'],
+    terminal: ['admin'],
+    authLogs: ['admin', 'operator']
+  }
+};
+
+function normalizeRoleId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePermissionConfig(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  const roleItems = Array.isArray(source.roles) ? source.roles : [];
+  const roleMap = new Map();
+
+  for (const role of roleItems) {
+    const id = normalizeRoleId(role?.id);
+    if (!id || !/^[a-z0-9_-]{1,40}$/.test(id) || roleMap.has(id)) continue;
+    const label = String(role?.label || id).trim() || id;
+    roleMap.set(id, { id, label });
+  }
+
+  const roles = roleMap.size > 0
+    ? Array.from(roleMap.values())
+    : DEFAULT_PERMISSION_CONFIG.roles.map((role) => ({ ...role }));
+  const roleIdSet = new Set(roles.map((role) => role.id));
+
+  const sourceTabPermissions = source.tabPermissions && typeof source.tabPermissions === 'object'
+    ? source.tabPermissions
+    : {};
+  const tabPermissions = {};
+  const defaultTabPermissions = DEFAULT_PERMISSION_CONFIG.tabPermissions;
+  const tabIds = new Set([
+    ...Object.keys(defaultTabPermissions),
+    ...Object.keys(sourceTabPermissions)
+  ]);
+
+  for (const tabId of tabIds) {
+    const candidate = Array.isArray(sourceTabPermissions[tabId])
+      ? sourceTabPermissions[tabId]
+      : defaultTabPermissions[tabId];
+    const normalized = Array.from(
+      new Set((candidate || [])
+        .map((item) => normalizeRoleId(item))
+        .filter((id) => roleIdSet.has(id)))
+    );
+    tabPermissions[tabId] = normalized.length > 0 ? normalized : roles.map((role) => role.id);
+  }
+
+  return { roles, tabPermissions };
+}
+
+async function getPermissionConfig() {
+  const [settings] = await pool.query(
+    'SELECT setting_value FROM user_settings WHERE setting_key = ?',
+    [APP_PERMISSION_SETTING_KEY]
+  );
+  const raw = settings[0]?.setting_value;
+  if (!raw) return normalizePermissionConfig(DEFAULT_PERMISSION_CONFIG);
+  try {
+    return normalizePermissionConfig(JSON.parse(raw));
+  } catch (error) {
+    return normalizePermissionConfig(DEFAULT_PERMISSION_CONFIG);
+  }
+}
+
+async function savePermissionConfig(config) {
+  await pool.query(
+    `INSERT INTO user_settings (setting_key, setting_value)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+    [APP_PERMISSION_SETTING_KEY, JSON.stringify(config)]
+  );
+}
 
 // GET /api/users - 获取所有用户
 router.get('/', async (req, res) => {
@@ -40,14 +138,19 @@ router.get('/current', async (req, res) => {
 // GET /api/users/current-role - 获取全局当前角色（跨浏览器共享）
 router.get('/current-role', async (req, res) => {
   try {
+    const permissionConfig = await getPermissionConfig();
+    const allowedRoleIds = permissionConfig.roles.map((role) => role.id);
+    const allowedRoleSet = new Set(allowedRoleIds);
+    const fallbackRole = allowedRoleIds[0] || 'operator';
+
     const [settings] = await pool.query(
       'SELECT setting_value FROM user_settings WHERE setting_key = ?',
       [APP_ROLE_SETTING_KEY]
     );
 
-    const role = settings[0]?.setting_value;
-    if (!role || !APP_ALLOWED_ROLES.has(role)) {
-      return res.json({ role: 'operator' });
+    const role = normalizeRoleId(settings[0]?.setting_value);
+    if (!role || !allowedRoleSet.has(role)) {
+      return res.json({ role: fallbackRole });
     }
 
     res.json({ role });
@@ -59,13 +162,16 @@ router.get('/current-role', async (req, res) => {
 
 // POST /api/users/current-role - 设置全局当前角色（跨浏览器共享）
 router.post('/current-role', async (req, res) => {
-  const role = String(req.body?.role || '').trim();
-
-  if (!APP_ALLOWED_ROLES.has(role)) {
-    return res.status(400).json({ error: '非法角色，仅支持：admin/operator/viewer' });
-  }
-
   try {
+    const permissionConfig = await getPermissionConfig();
+    const allowedRoleIds = permissionConfig.roles.map((item) => item.id);
+    const allowedRoleSet = new Set(allowedRoleIds);
+    const role = normalizeRoleId(req.body?.role);
+
+    if (!allowedRoleSet.has(role)) {
+      return res.status(400).json({ error: `非法角色，仅支持：${allowedRoleIds.join('/')}` });
+    }
+
     await pool.query(
       `INSERT INTO user_settings (setting_key, setting_value)
        VALUES (?, ?)
@@ -76,6 +182,29 @@ router.post('/current-role', async (req, res) => {
     res.json({ success: true, role });
   } catch (error) {
     console.error('设置当前角色失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/users/permission-config - 获取可配置权限模型
+router.get('/permission-config', async (req, res) => {
+  try {
+    const config = await getPermissionConfig();
+    res.json(config);
+  } catch (error) {
+    console.error('获取权限配置失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/users/permission-config - 更新可配置权限模型
+router.put('/permission-config', async (req, res) => {
+  try {
+    const config = normalizePermissionConfig(req.body || {});
+    await savePermissionConfig(config);
+    res.json(config);
+  } catch (error) {
+    console.error('更新权限配置失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
