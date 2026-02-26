@@ -232,7 +232,8 @@ const tabLoaders = {
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
   docker: () => import('./pages/DockerVisualizer.vue'),
   terminal: () => import('./pages/TerminalConsole.vue'),
-  authLogs: () => import('./pages/AuthLogCenter.vue')
+  authLogs: () => import('./pages/AuthLogCenter.vue'),
+  runtimeLogs: () => import('./pages/RuntimeLogsViewer.vue')
 }
 
 function createAsyncPage(loader) {
@@ -272,6 +273,7 @@ const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
 const AuthLogCenter = createAsyncPage(tabLoaders.authLogs)
+const RuntimeLogsViewer = createAsyncPage(tabLoaders.runtimeLogs)
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
     { id: 'admin', label: '管理员' },
@@ -297,7 +299,8 @@ const DEFAULT_PERMISSION_CONFIG = {
     monitor: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
-    authLogs: ['admin', 'operator']
+    authLogs: ['admin', 'operator'],
+    runtimeLogs: ['admin']
   }
 }
 
@@ -323,7 +326,8 @@ export default {
     SystemMonitorDashboard,
     DockerVisualizer,
     TerminalConsole,
-    AuthLogCenter
+    AuthLogCenter,
+    RuntimeLogsViewer
   },
   data() {
     return {
@@ -362,7 +366,8 @@ export default {
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
         { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
-        { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] }
+        { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] },
+        { id: 'runtimeLogs', label: '📊 实时日志', roles: ['admin'] }
       ],
       currentRole: 'operator',
       roles: [
@@ -444,7 +449,8 @@ export default {
         monitor: SystemMonitorDashboard,
         docker: DockerVisualizer,
         terminal: TerminalConsole,
-        authLogs: AuthLogCenter
+        authLogs: AuthLogCenter,
+        runtimeLogs: RuntimeLogsViewer
       }
       return componentMap[this.activeTab] || HomePage
     },
