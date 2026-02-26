@@ -1,24 +1,27 @@
 <template>
-  <div class="workflow-panel">
+  <div class="flow-instances">
     <h2>流程实例管理</h2>
-    <p>展示已启动的流程实例、节点状态以及运行时参数。</p>
-    <div class="workflow-placeholder">TODO: 实例列表 + 状态刷新</div>
+    <p>查看和管理流程的所有实例及其状态</p>
+    <div class="placeholder">📋 流程实例管理模块</div>
   </div>
 </template>
 
+<script>
+export default { name: 'FlowInstances' }
+</script>
+
 <style scoped>
-.workflow-panel {
-  padding: 18px;
-  border-radius: 16px;
+.flow-instances {
+  padding: 16px;
   background: var(--app-card);
-  box-shadow: var(--app-soft-shadow);
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
 }
-.workflow-placeholder {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px dashed var(--app-border);
+
+.placeholder {
+  padding: 40px;
+  text-align: center;
   color: var(--app-text-muted);
-  font-size: 0.9em;
+  font-size: 1.2em;
 }
 </style>
