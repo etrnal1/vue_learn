@@ -471,6 +471,50 @@ async function initDatabase() {
       }
     }
 
+    // 13.7 流程自动化规则表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_automation_rules (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        rule_name VARCHAR(200) NOT NULL,
+        rule_type ENUM('schedule', 'event', 'condition') NOT NULL,
+        trigger_type VARCHAR(50),
+        trigger_config JSON,
+        action_type ENUM('execute_flow', 'execute_step', 'skip_step', 'complete_step') NOT NULL,
+        action_config JSON,
+        is_enabled BOOLEAN DEFAULT TRUE,
+        created_by VARCHAR(50),
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow (flow_id),
+        INDEX idx_enabled (is_enabled),
+        INDEX idx_type (rule_type),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_automation_rules 已创建');
+
+    // 13.8 自动化规则执行日志表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_automation_logs (
+        id VARCHAR(50) PRIMARY KEY,
+        rule_id VARCHAR(50) NOT NULL,
+        execution_id VARCHAR(50),
+        trigger_time BIGINT NOT NULL,
+        action_executed BOOLEAN DEFAULT FALSE,
+        action_result JSON,
+        error_message TEXT,
+        created_at BIGINT NOT NULL,
+        INDEX idx_rule (rule_id),
+        INDEX idx_execution (execution_id),
+        INDEX idx_trigger_time (trigger_time DESC),
+        FOREIGN KEY (rule_id) REFERENCES flow_automation_rules(id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES flow_executions(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_automation_logs 已创建');
+
     // 14. 用户设置表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
