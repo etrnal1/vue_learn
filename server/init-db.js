@@ -414,6 +414,63 @@ async function initDatabase() {
     `);
     console.log('✅ 表 flow_execution_steps 已创建');
 
+    // 创建复合索引以优化查询性能
+    try {
+      await connection.query(`
+        CREATE INDEX IF NOT EXISTS idx_executions_status_created
+        ON flow_executions(status, created_at DESC)
+      `);
+      console.log('✅ 复合索引 idx_executions_status_created 已创建');
+    } catch (err) {
+      if (err.code === 'ER_DUP_KEYNAME') {
+        console.log('✅ 复合索引 idx_executions_status_created 已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        CREATE INDEX IF NOT EXISTS idx_executions_flow_status_created
+        ON flow_executions(flow_id, status, created_at DESC)
+      `);
+      console.log('✅ 复合索引 idx_executions_flow_status_created 已创建');
+    } catch (err) {
+      if (err.code === 'ER_DUP_KEYNAME') {
+        console.log('✅ 复合索引 idx_executions_flow_status_created 已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        CREATE INDEX IF NOT EXISTS idx_executions_initiator_created
+        ON flow_executions(initiator_id, created_at DESC)
+      `);
+      console.log('✅ 复合索引 idx_executions_initiator_created 已创建');
+    } catch (err) {
+      if (err.code === 'ER_DUP_KEYNAME') {
+        console.log('✅ 复合索引 idx_executions_initiator_created 已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        CREATE INDEX IF NOT EXISTS idx_steps_execution_status
+        ON flow_execution_steps(execution_id, status)
+      `);
+      console.log('✅ 复合索引 idx_steps_execution_status 已创建');
+    } catch (err) {
+      if (err.code === 'ER_DUP_KEYNAME') {
+        console.log('✅ 复合索引 idx_steps_execution_status 已存在');
+      } else {
+        throw err;
+      }
+    }
+
     // 14. 用户设置表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
