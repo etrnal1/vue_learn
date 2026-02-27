@@ -25,10 +25,25 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('exclusiveGateway')"
-            title="排他网关"
-            disabled
+            title="排他网关 - 条件分支"
           >
-            ◊ 分支
+            ◊ 排他分支
+          </button>
+          <button
+            class="palette-btn"
+            draggable="true"
+            @dragstart="onNodeDragStart('parallelGateway')"
+            title="并行网关 - 多路并行执行"
+          >
+            ⬠ 并行网关
+          </button>
+          <button
+            class="palette-btn"
+            draggable="true"
+            @dragstart="onNodeDragStart('inclusiveGateway')"
+            title="包容网关 - 多条件组合"
+          >
+            ◈ 包容网关
           </button>
           <button
             class="palette-btn"
@@ -81,6 +96,12 @@
         </template>
         <template #node-exclusiveGateway="nodeProps">
           <ExclusiveGatewayNode :data="nodeProps.data" />
+        </template>
+        <template #node-parallelGateway="nodeProps">
+          <ParallelGatewayNode :data="nodeProps.data" />
+        </template>
+        <template #node-inclusiveGateway="nodeProps">
+          <InclusiveGatewayNode :data="nodeProps.data" />
         </template>
         <template #node-endEvent="nodeProps">
           <EndNode :data="nodeProps.data" />
@@ -138,11 +159,14 @@
           />
         </div>
 
-        <div v-if="selectedNode.type === 'exclusiveGateway'" class="form-group">
+        <div v-if="['exclusiveGateway', 'parallelGateway', 'inclusiveGateway'].includes(selectedNode.type)" class="form-group">
           <label>条件配置</label>
           <button class="btn btn-sm btn-outline" @click="editConditions">
             编辑条件
           </button>
+          <div v-if="selectedNode.data.condition" class="condition-info">
+            <small>已设置条件</small>
+          </div>
         </div>
       </div>
     </div>
@@ -176,6 +200,14 @@
     <div v-if="saveStatus" class="save-status" :class="saveStatus.type">
       {{ saveStatus.message }}
     </div>
+
+    <!-- 条件编辑对话框 -->
+    <ConditionEditorDialog
+      v-if="showConditionEditor"
+      :condition="selectedNode?.data?.condition"
+      @save="onConditionSave"
+      @close="showConditionEditor = false"
+    />
   </div>
 </template>
 
@@ -184,7 +216,10 @@ import { VueFlow, Background, Controls, MiniMap, useVueFlow } from '@vue-flow/co
 import StartNode from './nodes/StartNode.vue'
 import UserTaskNode from './nodes/UserTaskNode.vue'
 import ExclusiveGatewayNode from './nodes/ExclusiveGatewayNode.vue'
+import ParallelGatewayNode from './nodes/ParallelGatewayNode.vue'
+import InclusiveGatewayNode from './nodes/InclusiveGatewayNode.vue'
 import EndNode from './nodes/EndNode.vue'
+import ConditionEditorDialog from './dialogs/ConditionEditorDialog.vue'
 import api from '../../utils/api.js'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -198,7 +233,10 @@ export default {
     StartNode,
     UserTaskNode,
     ExclusiveGatewayNode,
-    EndNode
+    ParallelGatewayNode,
+    InclusiveGatewayNode,
+    EndNode,
+    ConditionEditorDialog
   },
   props: {
     flowId: {
@@ -218,7 +256,8 @@ export default {
       saveStatus: null,
       draggedNodeType: null,
       defaultViewport: { zoom: 1, x: 0, y: 0 },
-      nodeIdCounter: 0
+      nodeIdCounter: 0,
+      showConditionEditor: false
     }
   },
   watch: {
@@ -326,7 +365,9 @@ export default {
       const labels = {
         startEvent: '开始',
         userTask: '新任务',
-        exclusiveGateway: '条件分支',
+        exclusiveGateway: '排他分支',
+        parallelGateway: '并行网关',
+        inclusiveGateway: '包容网关',
         endEvent: '结束'
       }
       return labels[nodeType] || nodeType
@@ -427,7 +468,15 @@ export default {
     },
 
     editConditions() {
-      this.$emit('edit-conditions', this.selectedNode)
+      this.showConditionEditor = true
+    },
+
+    onConditionSave(condition) {
+      if (this.selectedNode) {
+        this.selectedNode.data.condition = condition
+        this.hasChanges = true
+      }
+      this.showConditionEditor = false
     },
 
     showSaveStatus(message, type) {
@@ -586,6 +635,15 @@ export default {
 
 .app-textarea {
   resize: vertical;
+}
+
+.condition-info {
+  padding: 6px 8px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  text-align: center;
 }
 
 .loading-overlay {
