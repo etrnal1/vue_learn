@@ -104,6 +104,15 @@
           <button :class="{ active: view === 'canvas' }" @click="switchView('canvas')">
             🧩 画布拖拽
           </button>
+
+          <!-- Phase 3: 参数传递系统按钮 -->
+          <div class="toolbar-divider"></div>
+          <button class="btn btn-sm" :disabled="!canEditFlow" @click="openVariableManager" title="管理流程变量">
+            🔤 变量管理
+          </button>
+          <button v-if="selectedStepForParams" class="btn btn-sm" :disabled="!canEditFlow" @click="openParameterMapper" title="配置参数映射">
+            🔗 参数配置
+          </button>
         </div>
 
         <div v-if="!editingFlow.steps || editingFlow.steps.length === 0" class="no-steps">
@@ -535,6 +544,37 @@
       </div>
     </div>
 
+    <!-- Phase 3: 流程变量管理对话框 -->
+    <ItsmModal
+      v-if="showVariableManager"
+      title="流程变量管理"
+      size="large"
+      @close="showVariableManager = false"
+    >
+      <VariableDefinitionDialog
+        :flowId="editingFlow.id"
+        @close="showVariableManager = false"
+        @variables-updated="onVariablesUpdated"
+      />
+    </ItsmModal>
+
+    <!-- Phase 3: 参数映射对话框 -->
+    <ItsmModal
+      v-if="showParameterMapper && selectedStepForParams"
+      :title="`参数映射 - ${selectedStepForParams.name}`"
+      size="large"
+      @close="showParameterMapper = false"
+    >
+      <ParameterMappingDialog
+        :flowId="editingFlow.id"
+        :stepId="selectedStepForParams.id"
+        :stepName="selectedStepForParams.name"
+        :availableVariables="flowVariables"
+        @close="showParameterMapper = false"
+        @parameters-updated="onParametersUpdated"
+      />
+    </ItsmModal>
+
     <!-- 消息提示 -->
     <div v-if="message" class="message" :class="[message.type, { 'auto-save': message.auto }]">
       {{ message.text }}
@@ -549,12 +589,15 @@ import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 import TimelineView from '../../components/workflow/TimelineView.vue'
 import { VueFlow, applyNodeChanges } from '@vue-flow/core'
 import FlowEditor from '../../components/flow-editor/FlowEditor.vue'
+import ItsmModal from '../../components/itsm/ItsmModal.vue'
+import VariableDefinitionDialog from '../../components/flow-editor/dialogs/VariableDefinitionDialog.vue'
+import ParameterMappingDialog from '../../components/flow-editor/dialogs/ParameterMappingDialog.vue'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 
 export default {
   name: 'FlowDiagramEditor',
-  components: { TraceFlowDemo, TimelineView, VueFlow, FlowEditor },
+  components: { TraceFlowDemo, TimelineView, VueFlow, FlowEditor, ItsmModal, VariableDefinitionDialog, ParameterMappingDialog },
   data() {
     return {
       flows: [],
@@ -594,7 +637,13 @@ export default {
       sharedModules: [],
       sharedModulesLoading: false,
       view: 'list',  // 'list' | 'timeline' | 'canvas'
-      flowDiagram: { nodes: [], edges: [] }
+      flowDiagram: { nodes: [], edges: [] },
+      // Phase 3: 参数传递与数据映射
+      showVariableManager: false,
+      showParameterMapper: false,
+      flowVariables: [],
+      selectedStepForParams: null,
+      parametersLoading: false
     }
   },
   computed: {
@@ -1263,7 +1312,57 @@ export default {
       this.syncCanvasFromSteps()
       this.loadVersions(flow.id)
       this.loadComments(flow.id)
+      this.loadFlowVariables(flow.id)
     },
+
+    // Phase 3: 参数传递与数据映射相关方法
+    openVariableManager() {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限管理变量', 'error')
+        return
+      }
+      this.showVariableManager = true
+    },
+
+    openParameterMapper() {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限配置参数', 'error')
+        return
+      }
+      if (!this.selectedStepForParams) {
+        this.showMessage('请先选择一个步骤', 'error')
+        return
+      }
+      this.showParameterMapper = true
+    },
+
+    async loadFlowVariables(flowId) {
+      try {
+        const data = await api.flows.getVariables(flowId)
+        this.flowVariables = Array.isArray(data) ? data : []
+      } catch (error) {
+        console.error('加载流程变量失败:', error)
+        this.flowVariables = []
+      }
+    },
+
+    onVariablesUpdated(variables) {
+      this.flowVariables = variables
+      this.showMessage('流程变量已更新', 'success')
+    },
+
+    onParametersUpdated() {
+      this.showMessage('参数映射已更新', 'success')
+    },
+
+    onCanvasNodeClick(node) {
+      // 当画布上选中节点时，记录为参数配置的目标
+      const step = this.editingFlow.steps?.find(s => s.id === node.id)
+      if (step) {
+        this.selectedStepForParams = step
+      }
+    },
+
     async saveFlow() {
       if (!this.canEditFlow) {
         this.showMessage('当前角色无权限保存流程', 'error')
@@ -1884,6 +1983,24 @@ export default {
 .view-switcher button:hover:not(.active) {
   border-color: var(--app-primary);
   color: var(--app-primary);
+}
+
+/* Phase 3: 工具栏分隔符和参数按钮 */
+.toolbar-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--app-border);
+  margin: 0 4px;
+}
+
+.view-switcher .btn-sm {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.view-switcher .btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 时间线视图容器 */
