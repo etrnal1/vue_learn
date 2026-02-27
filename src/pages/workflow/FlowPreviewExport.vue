@@ -18,6 +18,9 @@
         <button class="btn btn-outline" :disabled="!selectedFlow || exporting" @click="downloadFlow('markdown')">
           下载概要
         </button>
+        <button class="btn btn-outline" :disabled="!selectedFlow || exporting" @click="downloadFlow('bpmn')">
+          📄 下载 BPMN
+        </button>
       </div>
     </header>
 
@@ -83,6 +86,7 @@
               <button class="btn btn-ghost" @click="openPreviewWindow">新窗口预览</button>
               <button class="btn btn-ghost" @click="downloadFlow('json')" :disabled="exporting">JSON</button>
               <button class="btn btn-ghost" @click="downloadFlow('markdown')" :disabled="exporting">概要</button>
+              <button class="btn btn-ghost" @click="downloadFlow('bpmn')" :disabled="exporting">BPMN</button>
             </div>
           </div>
           <div class="preview-steps">
@@ -412,6 +416,117 @@ export default {
         </html>
       `
     },
+    generateBpmnXml(flow) {
+      const processId = `Process_${flow.id}`
+      const processes = this.buildBpmnProcess(flow, processId)
+      const diagram = this.buildBpmnDiagram(flow, processId)
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="http://vue-learning-app/bpmn"
+             id="Definitions_${flow.id}">
+  <process id="${processId}" name="${this.escapeXml(flow.name)}" isExecutable="true">
+    ${processes}
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_${flow.id}">
+    <bpmndi:BPMNPlane id="BPMNPlane_${flow.id}" bpmnElement="${processId}">
+      ${diagram}
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>`
+    },
+
+    buildBpmnProcess(flow, processId) {
+      const steps = flow.steps || []
+      const elements = []
+
+      // 开始事件
+      elements.push(`<startEvent id="StartEvent_${flow.id}" name="开始">
+    <outgoing>Flow_start_to_${steps[0]?.id || 'end'}</outgoing>
+  </startEvent>`)
+
+      // 任务节点
+      steps.forEach((step, index) => {
+        const nodeType = step.conditional ? 'exclusiveGateway' : 'userTask'
+        const nextStep = steps[index + 1]
+        const prevFlow = index === 0
+          ? `Flow_start_to_${step.id}`
+          : `Flow_${steps[index - 1].id}_to_${step.id}`
+        const nextFlow = nextStep
+          ? `Flow_${step.id}_to_${nextStep.id}`
+          : `Flow_${step.id}_to_end`
+
+        elements.push(`<${nodeType} id="${step.id}" name="${this.escapeXml(step.name)}">
+      ${step.description ? `<documentation>${this.escapeXml(step.description)}</documentation>` : ''}
+      <incoming>${prevFlow}</incoming>
+      <outgoing>${nextFlow}</outgoing>
+      ${step.assignee ? `<performer>${this.escapeXml(step.assignee)}</performer>` : ''}
+    </${nodeType}>`)
+      })
+
+      // 结束事件
+      const lastStep = steps[steps.length - 1]
+      elements.push(`<endEvent id="EndEvent_${flow.id}" name="结束">
+    <incoming>Flow_${lastStep?.id || 'start'}_to_end</incoming>
+  </endEvent>`)
+
+      // 序列流
+      if (steps.length > 0) {
+        elements.push(`<sequenceFlow id="Flow_start_to_${steps[0].id}" sourceRef="StartEvent_${flow.id}" targetRef="${steps[0].id}" />`)
+
+        steps.forEach((step, index) => {
+          const nextStep = steps[index + 1]
+          const targetRef = nextStep ? nextStep.id : `EndEvent_${flow.id}`
+          const flowId = nextStep ? `Flow_${step.id}_to_${nextStep.id}` : `Flow_${step.id}_to_end`
+          elements.push(`<sequenceFlow id="${flowId}" sourceRef="${step.id}" targetRef="${targetRef}" />`)
+        })
+      }
+
+      return elements.join('\n    ')
+    },
+
+    buildBpmnDiagram(flow, processId) {
+      const steps = flow.steps || []
+      const shapes = []
+      let x = 100, y = 100
+      const stepWidth = 100, stepHeight = 80, spacing = 80
+
+      // 开始事件
+      shapes.push(`<bpmndi:BPMNShape id="Shape_StartEvent_${flow.id}" bpmnElement="StartEvent_${flow.id}">
+    <omgdc:Bounds x="${x}" y="${y}" width="36" height="36" />
+  </bpmndi:BPMNShape>`)
+
+      x += spacing
+
+      // 任务图形
+      steps.forEach((step) => {
+        shapes.push(`<bpmndi:BPMNShape id="Shape_${step.id}" bpmnElement="${step.id}">
+    <omgdc:Bounds x="${x}" y="${y}" width="${stepWidth}" height="${stepHeight}" />
+  </bpmndi:BPMNShape>`)
+        x += stepWidth + spacing
+      })
+
+      // 结束事件
+      shapes.push(`<bpmndi:BPMNShape id="Shape_EndEvent_${flow.id}" bpmnElement="EndEvent_${flow.id}">
+    <omgdc:Bounds x="${x}" y="${y}" width="36" height="36" />
+  </bpmndi:BPMNShape>`)
+
+      return shapes.join('\n      ')
+    },
+
+    escapeXml(str) {
+      if (!str) return ''
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+    },
+
     downloadFlow(format) {
       if (!this.selectedFlow) return
       this.exporting = true
@@ -427,6 +542,10 @@ export default {
           content = JSON.stringify(payload, null, 2)
           mime = 'application/json'
           extension = 'json'
+        } else if (format === 'bpmn') {
+          content = this.generateBpmnXml(payload)
+          mime = 'application/xml'
+          extension = 'bpmn'
         } else {
           const lines = [
             `# ${payload.name || '未命名流程'}`,
@@ -465,7 +584,8 @@ export default {
         link.click()
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
-        this.showMessage(format === 'json' ? 'JSON 已准备好下载' : '概要文档已准备好下载', 'success')
+        const msg = format === 'json' ? 'JSON 已准备好下载' : format === 'bpmn' ? 'BPMN 文件已准备好下载' : '概要文档已准备好下载'
+        this.showMessage(msg, 'success')
         recordAudit({
           action: 'download_flow',
           detail: `${format} · ${this.selectedFlow.name || ''}`,
