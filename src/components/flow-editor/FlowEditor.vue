@@ -9,6 +9,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('startEvent', $event)"
+            @touchstart="onNodeTouchStart('startEvent', $event)"
             title="开始事件"
           >
             ◆ 开始
@@ -17,6 +18,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('userTask', $event)"
+            @touchstart="onNodeTouchStart('userTask', $event)"
             title="用户任务"
           >
             ◻ 任务
@@ -25,6 +27,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('exclusiveGateway', $event)"
+            @touchstart="onNodeTouchStart('exclusiveGateway', $event)"
             title="排他网关 - 条件分支"
           >
             ◊ 排他分支
@@ -33,6 +36,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('parallelGateway', $event)"
+            @touchstart="onNodeTouchStart('parallelGateway', $event)"
             title="并行网关 - 多路并行执行"
           >
             ⬠ 并行网关
@@ -41,6 +45,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('inclusiveGateway', $event)"
+            @touchstart="onNodeTouchStart('inclusiveGateway', $event)"
             title="包容网关 - 多条件组合"
           >
             ◈ 包容网关
@@ -49,6 +54,7 @@
             class="palette-btn"
             draggable="true"
             @dragstart="onNodeDragStart('endEvent', $event)"
+            @touchstart="onNodeTouchStart('endEvent', $event)"
             title="结束事件"
           >
             ◆ 结束
@@ -282,7 +288,12 @@ export default {
       isDragOver: false,
       dragOverPos: null,
       dragStartPos: null,
-      dragImage: null
+      dragImage: null,
+      // 移动设备触摸相关状态
+      touchStartNodeType: null,
+      touchStartPos: null,
+      touchElement: null,
+      isMobile: false
     }
   },
   watch: {
@@ -295,6 +306,14 @@ export default {
   },
   mounted() {
     this.vueFlow = this.$refs.vueFlow
+    // 检测是否是移动设备
+    this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  },
+  unmounted() {
+    // 清理触摸事件监听
+    if (this.touchElement) {
+      this.touchElement.removeEventListener('touchend', this.onTouchEnd)
+    }
   },
   methods: {
     async loadFlow() {
@@ -476,6 +495,103 @@ export default {
         endEvent: '结束'
       }
       return labels[nodeType] || nodeType
+    },
+
+    // ========== 移动设备触摸支持 ==========
+
+    onNodeTouchStart(nodeType, event) {
+      if (this.isMobile) {
+        event.preventDefault()
+        this.touchStartNodeType = nodeType
+        this.touchStartPos = { x: event.touches[0].clientX, y: event.touches[0].clientY }
+
+        // 创建虚拟拖拽元素（视觉反馈）
+        const label = this.getNodeLabel(nodeType)
+        const touchElement = document.createElement('div')
+        touchElement.textContent = label
+        touchElement.style.cssText = `
+          padding: 10px 14px;
+          background: var(--app-primary);
+          color: white;
+          border-radius: 6px;
+          font-size: 13px;
+          position: fixed;
+          pointer-events: none;
+          z-index: 9999;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          transform: translate(-50%, -50%);
+        `
+
+        // 跟随手指移动
+        const onTouchMove = (moveEvent) => {
+          const touch = moveEvent.touches[0]
+          touchElement.style.left = touch.clientX + 'px'
+          touchElement.style.top = touch.clientY + 'px'
+
+          // 视觉反馈：检查是否在画布上
+          const canvas = this.$refs.vueFlowContainer
+          if (canvas) {
+            const rect = canvas.getBoundingClientRect()
+            const isOverCanvas = (
+              touch.clientX >= rect.left &&
+              touch.clientX <= rect.right &&
+              touch.clientY >= rect.top &&
+              touch.clientY <= rect.bottom
+            )
+            touchElement.style.background = isOverCanvas ? 'var(--app-primary)' : '#ef4444'
+          }
+        }
+
+        const onTouchEnd = (endEvent) => {
+          document.removeEventListener('touchmove', onTouchMove)
+          document.removeEventListener('touchend', onTouchEnd)
+
+          if (touchElement.parentNode) {
+            document.body.removeChild(touchElement)
+          }
+
+          // 判断放置位置
+          if (endEvent.changedTouches.length > 0) {
+            const touch = endEvent.changedTouches[0]
+            const canvas = this.$refs.vueFlowContainer
+
+            if (canvas) {
+              const rect = canvas.getBoundingClientRect()
+              const isOverCanvas = (
+                touch.clientX >= rect.left &&
+                touch.clientX <= rect.right &&
+                touch.clientY >= rect.top &&
+                touch.clientY <= rect.bottom
+              )
+
+              if (isOverCanvas) {
+                const x = touch.clientX - rect.left
+                const y = touch.clientY - rect.top
+
+                // 考虑缩放
+                const vueFlow = this.vueFlow
+                if (vueFlow && vueFlow.project) {
+                  try {
+                    const pos = vueFlow.project({ x, y })
+                    this.createNodeAtPosition(pos.x, pos.y)
+                  } catch (e) {
+                    this.createNodeAtPosition(x, y)
+                  }
+                } else {
+                  this.createNodeAtPosition(x, y)
+                }
+              }
+            }
+          }
+
+          this.touchStartNodeType = null
+          this.touchStartPos = null
+        }
+
+        document.body.appendChild(touchElement)
+        document.addEventListener('touchmove', onTouchMove, { passive: false })
+        document.addEventListener('touchend', onTouchEnd)
+      }
     },
 
     onNodesChange(changes) {
