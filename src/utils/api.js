@@ -267,6 +267,7 @@ export const api = {
   // Flows
   flows: {
     getAll: () => apiRequest('/flows'),
+    getMyPermissions: () => apiRequest('/flows/permissions/me'),
     getOne: (id) => apiRequest(`/flows/${id}`),
     create: (flow) => apiRequest('/flows', { method: 'POST', body: JSON.stringify(flow) }),
     update: (id, data) => apiRequest(`/flows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -274,7 +275,34 @@ export const api = {
     getReleases: () => apiRequest('/flows/releases'),
     createRelease: (flowId, payload) => apiRequest(`/flows/${flowId}/releases`, { method: 'POST', body: JSON.stringify(payload) }),
     rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' }),
+    getSharedModules: () => apiRequest('/flows/shared-modules'),
+    createSharedModule: (payload) => apiRequest('/flows/shared-modules', { method: 'POST', body: JSON.stringify(payload) }),
+    deleteSharedModule: (moduleId) => apiRequest(`/flows/shared-modules/${moduleId}`, { method: 'DELETE' }),
     exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) }),
+    getExports: (flowId, params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+          .reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {})
+      )
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return apiRequest(`/flows/${flowId}/exports${suffix}`)
+    },
+    getComments: (flowId) => apiRequest(`/flows/${flowId}/comments`),
+    addComment: (flowId, payload) => apiRequest(`/flows/${flowId}/comments`, { method: 'POST', body: JSON.stringify(payload) }),
+    updateComment: (flowId, commentId, payload) => apiRequest(`/flows/${flowId}/comments/${commentId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    deleteComment: (flowId, commentId) => apiRequest(`/flows/${flowId}/comments/${commentId}`, { method: 'DELETE' }),
+    getAudit: (flowId, params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+          .reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {})
+      )
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return apiRequest(`/flows/${flowId}/audit${suffix}`)
+    },
+    addAudit: (flowId, payload) => apiRequest(`/flows/${flowId}/audit`, { method: 'POST', body: JSON.stringify(payload) }),
+    getExecutionMetrics: (flowId) => apiRequest(`/flows/${flowId}/execution-metrics`),
     // 执行实例 API
     getAllExecutions: (params = {}) => {
       const query = new URLSearchParams(
