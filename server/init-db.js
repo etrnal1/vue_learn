@@ -258,21 +258,143 @@ async function initDatabase() {
     console.log('✅ 表 flows 已创建');
 
     // 9. 流程步骤表
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS flow_steps (
-        id VARCHAR(50) PRIMARY KEY,
-        flow_id VARCHAR(50) NOT NULL,
-        step_order INT NOT NULL,
-        name VARCHAR(200) NOT NULL,
-        description TEXT,
-        assignee VARCHAR(50),
-        duration INT,
-        conditional BOOLEAN DEFAULT FALSE,
-        INDEX idx_flow (flow_id),
-        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    console.log('✅ 表 flow_steps 已创建');
+	    await connection.query(`
+	      CREATE TABLE IF NOT EXISTS flow_steps (
+	        id VARCHAR(50) PRIMARY KEY,
+	        flow_id VARCHAR(50) NOT NULL,
+	        step_order INT NOT NULL,
+	        name VARCHAR(200) NOT NULL,
+	        description TEXT,
+	        assignee VARCHAR(50),
+	        duration VARCHAR(100),
+	        conditional BOOLEAN DEFAULT FALSE,
+	        relation_type VARCHAR(20) DEFAULT 'sequential',
+	        parent_step_id VARCHAR(50) NULL,
+	        module_key VARCHAR(100) NULL,
+	        position_x INT NULL,
+	        position_y INT NULL,
+	        INDEX idx_flow (flow_id),
+	        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+	      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+	    `);
+	    console.log('✅ 表 flow_steps 已创建');
+
+	    // 历史版本兼容：duration 早期为 INT，后来用于“预计耗时”展示（如：2小时/秒级），改为 VARCHAR(100)
+	    try {
+	      await connection.query(`
+	        ALTER TABLE flow_steps
+	        MODIFY COLUMN duration VARCHAR(100) NULL
+	      `);
+	      console.log('✅ 表 flow_steps duration 字段已升级为 VARCHAR(100)');
+	    } catch (err) {
+	      // 某些 MySQL 版本/权限下可能失败：不阻断启动
+	      console.warn('⚠️ flow_steps.duration 字段升级失败，可忽略或手动执行迁移', err?.code || err);
+	    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN tip TEXT
+        AFTER conditional
+      `);
+      console.log('✅ 表 flow_steps tip 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps tip 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN note TEXT
+        AFTER tip
+      `);
+      console.log('✅ 表 flow_steps note 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps note 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN position_x INT NULL
+        AFTER conditional
+      `);
+      console.log('✅ 表 flow_steps position_x 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps position_x 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN position_y INT NULL
+        AFTER position_x
+      `);
+      console.log('✅ 表 flow_steps position_y 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps position_y 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN relation_type VARCHAR(20) DEFAULT 'sequential'
+        AFTER conditional
+      `);
+      console.log('✅ 表 flow_steps relation_type 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps relation_type 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN parent_step_id VARCHAR(50) NULL
+        AFTER relation_type
+      `);
+      console.log('✅ 表 flow_steps parent_step_id 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps parent_step_id 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN module_key VARCHAR(100) NULL
+        AFTER parent_step_id
+      `);
+      console.log('✅ 表 flow_steps module_key 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps module_key 字段已存在');
+      } else {
+        throw err;
+      }
+    }
 
     // 11. 流程发布历史表
     await connection.query(`
@@ -289,6 +411,22 @@ async function initDatabase() {
     `);
     console.log('✅ 表 flow_releases 已创建');
 
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_shared_modules (
+        id VARCHAR(50) PRIMARY KEY,
+        module_key VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(200) NOT NULL,
+        description TEXT,
+        steps_snapshot JSON NOT NULL,
+        created_by VARCHAR(50),
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow_modules_key (module_key),
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_shared_modules 已创建');
+
     // 检查 payload 列是否存在，如果不存在则添加
     try {
       await connection.query(`
@@ -303,6 +441,68 @@ async function initDatabase() {
         throw err;
       }
     }
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_comments (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        step_id VARCHAR(50),
+        text TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'open',
+        mention_users JSON,
+        author_id VARCHAR(50),
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow_comments_flow (flow_id),
+        INDEX idx_flow_comments_step (step_id),
+        INDEX idx_flow_comments_status (status),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_comments 已创建');
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_audit_logs (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        actor_id VARCHAR(50),
+        actor_role VARCHAR(50),
+        result VARCHAR(20) NOT NULL DEFAULT 'success',
+        detail TEXT,
+        metadata JSON,
+        created_at BIGINT NOT NULL,
+        INDEX idx_flow_audit_flow (flow_id),
+        INDEX idx_flow_audit_action (action),
+        INDEX idx_flow_audit_created (created_at),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_audit_logs 已创建');
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_export_jobs (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        format VARCHAR(20) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'queued',
+        options JSON,
+        version_id VARCHAR(50),
+        download_url TEXT,
+        message VARCHAR(500),
+        created_by VARCHAR(50),
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow_exports_flow (flow_id),
+        INDEX idx_flow_exports_format (format),
+        INDEX idx_flow_exports_created (created_at),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_export_jobs 已创建');
 
     // 10. 聊天记录表
     await connection.query(`
@@ -417,7 +617,7 @@ async function initDatabase() {
     // 创建复合索引以优化查询性能
     try {
       await connection.query(`
-        CREATE INDEX IF NOT EXISTS idx_executions_status_created
+        CREATE INDEX idx_executions_status_created
         ON flow_executions(status, created_at DESC)
       `);
       console.log('✅ 复合索引 idx_executions_status_created 已创建');
@@ -431,7 +631,7 @@ async function initDatabase() {
 
     try {
       await connection.query(`
-        CREATE INDEX IF NOT EXISTS idx_executions_flow_status_created
+        CREATE INDEX idx_executions_flow_status_created
         ON flow_executions(flow_id, status, created_at DESC)
       `);
       console.log('✅ 复合索引 idx_executions_flow_status_created 已创建');
@@ -445,7 +645,7 @@ async function initDatabase() {
 
     try {
       await connection.query(`
-        CREATE INDEX IF NOT EXISTS idx_executions_initiator_created
+        CREATE INDEX idx_executions_initiator_created
         ON flow_executions(initiator_id, created_at DESC)
       `);
       console.log('✅ 复合索引 idx_executions_initiator_created 已创建');
@@ -459,7 +659,7 @@ async function initDatabase() {
 
     try {
       await connection.query(`
-        CREATE INDEX IF NOT EXISTS idx_steps_execution_status
+        CREATE INDEX idx_steps_execution_status
         ON flow_execution_steps(execution_id, status)
       `);
       console.log('✅ 复合索引 idx_steps_execution_status 已创建');
@@ -524,7 +724,75 @@ async function initDatabase() {
     `);
     console.log('✅ 表 user_settings 已创建');
 
-    // 15. 登录会话表
+    // 15. 流程连线表（支持拖拽编辑器）
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_connections (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        source_step_id VARCHAR(50) NOT NULL,
+        target_step_id VARCHAR(50) NOT NULL,
+        connection_type VARCHAR(20) DEFAULT 'sequence',
+        label VARCHAR(200),
+        condition_config JSON,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow (flow_id),
+        INDEX idx_source (source_step_id),
+        INDEX idx_target (target_step_id),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_step_id) REFERENCES flow_steps(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_step_id) REFERENCES flow_steps(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_connections 已创建');
+
+    // 扩展flow_steps表添加节点类型和尺寸字段
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN node_type VARCHAR(50) DEFAULT 'userTask'
+        AFTER conditional
+      `);
+      console.log('✅ 表 flow_steps node_type 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps node_type 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN node_width INT DEFAULT 120
+        AFTER position_y
+      `);
+      console.log('✅ 表 flow_steps node_width 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps node_width 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_steps
+        ADD COLUMN node_height INT DEFAULT 80
+        AFTER node_width
+      `);
+      console.log('✅ 表 flow_steps node_height 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_steps node_height 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    // 16. 登录会话表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS auth_sessions (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
