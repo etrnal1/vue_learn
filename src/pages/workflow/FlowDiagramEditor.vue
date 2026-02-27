@@ -7,7 +7,7 @@
           <h2>流程图编辑器</h2>
           <p class="subtitle">创建和编辑流程节点、连线与条件</p>
         </div>
-        <button class="btn btn-primary" @click="createNewFlow">
+        <button class="btn btn-primary" :disabled="!canEditFlow" @click="createNewFlow">
           + 新建流程
         </button>
       </header>
@@ -48,8 +48,8 @@
           </div>
 
           <div class="card-actions">
-            <button class="btn btn-small" @click="editFlow(flow)">编辑</button>
-            <button class="btn btn-small btn-danger" @click="deleteFlow(flow)">删除</button>
+            <button class="btn btn-small" :disabled="!canEditFlow" @click="editFlow(flow)">编辑</button>
+            <button class="btn btn-small btn-danger" :disabled="!canAdminFlow" @click="deleteFlow(flow)">删除</button>
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@
           ></textarea>
         </div>
         <div class="editor-actions">
-          <button class="btn btn-success" :disabled="!canSaveFlow" @click="saveFlow">
+          <button class="btn btn-success" :disabled="!canSaveFlow || !canEditFlow" @click="saveFlow">
             {{ saving ? '保存中...' : '保存' }}
           </button>
         </div>
@@ -90,16 +90,19 @@
             <h3>流程步骤</h3>
             <p class="steps-count">共 {{ editingFlow.steps?.length || 0 }} 个步骤</p>
           </div>
-          <button class="btn btn-small" @click="addStep">+ 添加步骤</button>
+          <button class="btn btn-small" :disabled="!canEditFlow" @click="addStep">+ 添加步骤</button>
         </div>
 
         <!-- 视图切换按钮 -->
         <div v-if="editingFlow.steps && editingFlow.steps.length > 0" class="view-switcher">
-          <button :class="{ active: view === 'list' }" @click="view = 'list'">
+          <button :class="{ active: view === 'list' }" @click="switchView('list')">
             📋 列表视图
           </button>
-          <button :class="{ active: view === 'timeline' }" @click="view = 'timeline'">
+          <button :class="{ active: view === 'timeline' }" @click="switchView('timeline')">
             📈 时间线视图
+          </button>
+          <button :class="{ active: view === 'canvas' }" @click="switchView('canvas')">
+            🧩 画布拖拽
           </button>
         </div>
 
@@ -108,12 +111,62 @@
         </div>
 
         <!-- 时间线视图 -->
-        <div v-else-if="view === 'timeline'" class="timeline-section">
+        <div
+          v-if="timelineMounted && editingFlow.steps && editingFlow.steps.length > 0"
+          v-show="view === 'timeline'"
+          class="timeline-section"
+        >
           <TimelineView :steps="editingFlow.steps" />
         </div>
 
+        <!-- 画布拖拽视图 -->
+        <div
+          v-if="canvasMounted && editingFlow.steps && editingFlow.steps.length > 0"
+          v-show="view === 'canvas'"
+          class="canvas-section"
+        >
+          <div class="canvas-toolbar">
+            <button
+              class="btn btn-small"
+              :class="{ active: canvasInteractionMode === 'node' }"
+              @click="canvasInteractionMode = 'node'"
+            >
+              节点拖拽
+            </button>
+            <button
+              class="btn btn-small"
+              :class="{ active: canvasInteractionMode === 'pan' }"
+              @click="canvasInteractionMode = 'pan'"
+            >
+              画布拖动
+            </button>
+          </div>
+          <div class="canvas-scroll">
+            <VueFlow
+              class="flow-canvas"
+              :nodes="canvasNodes"
+              :edges="canvasEdges"
+              :nodes-draggable="canvasInteractionMode === 'node'"
+              :pan-on-drag="canvasInteractionMode === 'pan'"
+              :nodes-connectable="false"
+              :zoom-on-pinch="true"
+              :zoom-on-scroll="canvasInteractionMode !== 'pan'"
+              :fit-view-on-init="true"
+              @nodes-change="onCanvasNodesChange"
+              @node-click="onCanvasNodeClick"
+            />
+          </div>
+          <p class="canvas-hint">
+            {{ canvasInteractionMode === 'pan' ? '当前为画布拖动：单指拖动画布，双指缩放。' : '当前为节点拖拽：拖拽节点可调整布局，布局会随流程保存。' }}
+          </p>
+        </div>
+
         <!-- 列表视图 -->
-        <div v-else class="steps-list-wrapper">
+        <div
+          v-if="editingFlow.steps && editingFlow.steps.length > 0"
+          v-show="view === 'list'"
+          class="steps-list-wrapper"
+        >
           <div class="steps-list">
             <div
               v-for="(step, index) in editingFlow.steps"
@@ -134,15 +187,31 @@
                 <div class="step-actions">
                   <button
                     class="btn-icon"
-                    :disabled="index === 0"
+                    @click.stop="insertStepAt(index)"
+                    :disabled="!canEditFlow"
+                    title="向上插入"
+                  >
+                    ⤴️
+                  </button>
+                  <button
+                    class="btn-icon"
+                    @click.stop="insertStepAt(index + 1)"
+                    :disabled="!canEditFlow"
+                    title="向下插入"
+                  >
+                    ⤵️
+                  </button>
+                  <button
+                    class="btn-icon"
                     @click.stop="moveStep(index, -1)"
+                    :disabled="!canEditFlow || index === 0"
                     title="上移"
                   >
                     ⬆️
                   </button>
                   <button
                     class="btn-icon"
-                    :disabled="index === editingFlow.steps.length - 1"
+                    :disabled="!canEditFlow || index === editingFlow.steps.length - 1"
                     @click.stop="moveStep(index, 1)"
                     title="下移"
                   >
@@ -150,6 +219,7 @@
                   </button>
                   <button
                     class="btn-icon btn-danger"
+                    :disabled="!canEditFlow"
                     @click.stop="removeStep(index)"
                     title="删除"
                   >
@@ -197,6 +267,35 @@
                       placeholder="例如：2h、30min"
                       @input="scheduleAutoSave"
                     />
+                  </div>
+                </div>
+
+                <div class="step-fields-row">
+                  <div class="step-field">
+                    <label class="step-label">
+                      <span class="label-text">流程关系</span>
+                      <span class="label-hint">顺序=主链路，平级=并行/同级，子流程=隶属某一步</span>
+                    </label>
+                    <select v-model="step.relationType" class="step-input-sm" @change="onRelationTypeChange(step)">
+                      <option value="sequential">顺序</option>
+                      <option value="parallel">平级</option>
+                      <option value="child">子流程</option>
+                    </select>
+                  </div>
+                  <div class="step-field" v-if="step.relationType === 'child'">
+                    <label class="step-label">
+                      <span class="label-text">上级步骤</span>
+                    </label>
+                    <select v-model="step.parentStepId" class="step-input-sm" @change="scheduleAutoSave">
+                      <option :value="null">请选择</option>
+                      <option
+                        v-for="parent in parentCandidatesFor(step.id)"
+                        :key="parent.id"
+                        :value="parent.id"
+                      >
+                        {{ parent.name || parent.id }}
+                      </option>
+                    </select>
                   </div>
                 </div>
 
@@ -262,10 +361,48 @@
                 <span v-if="step.assignee">👤 {{ step.assignee }}</span>
                 <span v-if="step.duration">⏱ {{ step.duration }}</span>
                 <span v-if="step.conditional">⚡ 条件触发</span>
+                <span>🔗 {{ relationTypeLabel(step.relationType || step.relation_type) }}</span>
+                <span v-if="step.parentStepId || step.parent_step_id">↳ 上级 {{ step.parentStepId || step.parent_step_id }}</span>
+                <span v-if="step.moduleKey || step.module_key">🧩 {{ step.moduleKey || step.module_key }}</span>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="versions-panel">
+        <div class="versions-header">
+          <div>
+            <h3>公共模块</h3>
+            <p class="subtitle">把高频步骤存为公共模块，在任意流程中一键复用。</p>
+          </div>
+          <div class="versions-actions">
+            <button class="btn btn-small" :disabled="!canEditFlow || editingStepIndex == null" @click="createSharedModuleFromCurrentStep">
+              当前步骤存为模块
+            </button>
+            <button class="btn btn-small" @click="loadSharedModules">
+              刷新模块
+            </button>
+          </div>
+        </div>
+        <div v-if="sharedModulesLoading" class="versions-loading">加载模块中...</div>
+        <div v-else-if="sharedModules.length === 0" class="versions-empty">暂无公共模块</div>
+        <ul v-else class="versions-list">
+          <li v-for="module in sharedModules" :key="module.id" class="versions-item">
+            <div>
+              <strong>{{ module.name }}</strong>
+              <p>{{ module.module_key }} · {{ formatDate(module.updated_at || module.updatedAt) }}</p>
+            </div>
+            <div class="versions-actions">
+              <button class="btn btn-small" :disabled="!canEditFlow" @click="insertSharedModule(module)">
+                插入流程
+              </button>
+              <button class="btn btn-small btn-danger" :disabled="!canEditFlow" @click="removeSharedModule(module)">
+                删除
+              </button>
+            </div>
+          </li>
+        </ul>
       </div>
 
       <div class="versions-panel trace-learning-panel">
@@ -301,13 +438,13 @@
             <p class="subtitle">展示已发布的快照，支持手动创建与回滚</p>
           </div>
           <div class="versions-actions">
-            <button class="btn btn-small" :disabled="creatingVersion" @click="createVersion">
-              {{ creatingVersion ? '创建中…' : '创建版本' }}
-            </button>
-            <button class="btn btn-small btn-danger" :disabled="rollingBack || !flowVersions.length" @click="rollbackVersion">
-              {{ rollingBack ? '回滚中…' : '回滚最新' }}
-            </button>
-          </div>
+              <button class="btn btn-small" :disabled="creatingVersion || !canPublishFlow" @click="createVersion">
+                {{ creatingVersion ? '创建中…' : '创建版本' }}
+              </button>
+              <button class="btn btn-small btn-danger" :disabled="rollingBack || !flowVersions.length || !canPublishFlow" @click="rollbackVersion">
+                {{ rollingBack ? '回滚中…' : '回滚最新' }}
+              </button>
+            </div>
         </div>
         <div v-if="versionsLoading" class="versions-loading">
           <span class="list-loading__icon">⏳</span>
@@ -385,7 +522,7 @@
             <datalist id="user-suggestions">
               <option v-for="user in availableUsers" :value="user" :key="user" />
             </datalist>
-            <button class="btn btn-small" @click="addComment">添加评论</button>
+            <button class="btn btn-small" :disabled="!canCommentFlow" @click="addComment">添加评论</button>
           </div>
           <div class="comment-list">
             <div v-if="!currentStepComments.length" class="comment-empty">当前步骤暂无评论</div>
@@ -396,9 +533,28 @@
             >
               <div class="comment-card__meta">
                 <span class="comment-author">{{ comment.author }}</span>
+                <span class="comment-status" :class="`comment-status--${comment.status || 'open'}`">
+                  {{ comment.status === 'resolved' ? '已解决' : '待处理' }}
+                </span>
                 <span class="comment-ts">{{ formatDate(comment.createdAt) }}</span>
               </div>
               <p v-html="highlightMentions(comment.text)" class="comment-body"></p>
+              <div class="comment-actions">
+                <button
+                  v-if="comment.status !== 'resolved'"
+                  class="btn btn-small"
+                  @click="updateCommentStatus(comment, 'resolved')"
+                >
+                  标记已解决
+                </button>
+                <button
+                  v-else
+                  class="btn btn-small"
+                  @click="updateCommentStatus(comment, 'open')"
+                >
+                  重新打开
+                </button>
+              </div>
             </article>
           </div>
         </div>
@@ -406,7 +562,7 @@
     </div>
 
     <!-- 消息提示 -->
-    <div v-if="message" class="message" :class="[message.type, { 'auto-save': message.text.includes('自动') }]">
+    <div v-if="message" class="message" :class="[message.type, { 'auto-save': message.auto }]">
       {{ message.text }}
     </div>
   </div>
@@ -417,10 +573,13 @@ import { api } from '../../utils/api.js'
 import { recordAudit } from '../../utils/auditLog.js'
 import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 import TimelineView from '../../components/workflow/TimelineView.vue'
+import { VueFlow, applyNodeChanges } from '@vue-flow/core'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
 
 export default {
   name: 'FlowDiagramEditor',
-  components: { TraceFlowDemo, TimelineView },
+  components: { TraceFlowDemo, TimelineView, VueFlow },
   data() {
     return {
       flows: [],
@@ -428,7 +587,10 @@ export default {
       editingStepIndex: null,
       loading: false,
       saving: false,
+      flowPermissions: null,
+      permissionsLoading: false,
       message: null,
+      messageTimer: null,
       autoSaveTimer: null,
       lastSavedFlow: null,
       isAutoSaving: false,
@@ -440,6 +602,7 @@ export default {
       creatingVersion: false,
       rollingBack: false,
       comments: [],
+      commentsLoading: false,
       commentDraft: {
         stepId: null,
         text: '',
@@ -448,7 +611,14 @@ export default {
       availableUsers: ['alice', 'bob', 'charlie'],
       showSwimlaneView: false,
       showTraceLearning: true,
-      view: 'list'  // 'list' | 'timeline'
+      timelineMounted: false,
+      canvasMounted: false,
+      canvasNodes: [],
+      canvasEdges: [],
+      canvasInteractionMode: 'node',
+      sharedModules: [],
+      sharedModulesLoading: false,
+      view: 'list'  // 'list' | 'timeline' | 'canvas'
     }
   },
   computed: {
@@ -462,6 +632,18 @@ export default {
         this.hasSteps &&
         !this.saving
       )
+    },
+    canEditFlow() {
+      return this.flowPermissions?.actions?.edit !== false
+    },
+    canPublishFlow() {
+      return this.flowPermissions?.actions?.publish !== false
+    },
+    canAdminFlow() {
+      return this.flowPermissions?.actions?.admin !== false
+    },
+    canCommentFlow() {
+      return this.flowPermissions?.actions?.comment !== false
     },
     currentCommentStepId() {
       if (this.commentDraft.stepId) return this.commentDraft.stepId
@@ -491,6 +673,44 @@ export default {
     }
   },
   methods: {
+    formatDate(value) {
+      if (!value) return '未知时间'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return '未知时间'
+      return date.toLocaleString()
+    },
+    normalizeComment(comment = {}) {
+      const mentionUsers = Array.isArray(comment.mentionUsers)
+        ? comment.mentionUsers
+        : Array.isArray(comment.mention_users)
+          ? comment.mention_users
+          : []
+      return {
+        id: comment.id || `comment_${Date.now()}`,
+        stepId: comment.stepId || comment.step_id || null,
+        text: comment.text || '',
+        mentionUsers,
+        status: comment.status || 'open',
+        author: comment.author || comment.authorName || comment.author_name || '当前用户',
+        createdAt: comment.createdAt || comment.created_at || Date.now(),
+        updatedAt: comment.updatedAt || comment.updated_at || Date.now()
+      }
+    },
+    async loadComments(flowId) {
+      if (!flowId) {
+        this.comments = []
+        return
+      }
+      this.commentsLoading = true
+      try {
+        const result = await api.flows.getComments(flowId)
+        this.comments = Array.isArray(result) ? result.map((item) => this.normalizeComment(item)) : []
+      } catch (error) {
+        this.showMessage(`加载评论失败: ${error?.message}`, 'error')
+      } finally {
+        this.commentsLoading = false
+      }
+    },
     createStep(seed = {}, index = 0) {
       const now = Date.now()
       return {
@@ -500,8 +720,17 @@ export default {
         assignee: seed.assignee || '',
         duration: seed.duration || '',
         conditional: !!seed.conditional,
+        relationType: seed.relationType || seed.relation_type || 'sequential',
+        parentStepId: seed.parentStepId || seed.parent_step_id || null,
+        moduleKey: seed.moduleKey || seed.module_key || '',
         tip: seed.tip || '',
-        note: seed.note || ''
+        note: seed.note || '',
+        positionX: Number.isFinite(Number(seed.positionX))
+          ? Number(seed.positionX)
+          : (Number.isFinite(Number(seed.position_x)) ? Number(seed.position_x) : null),
+        positionY: Number.isFinite(Number(seed.positionY))
+          ? Number(seed.positionY)
+          : (Number.isFinite(Number(seed.position_y)) ? Number(seed.position_y) : null)
       }
     },
     normalizeFlow(flow = {}) {
@@ -555,8 +784,13 @@ export default {
         duration: step.duration || '',
         order: index,
         conditional: !!step.conditional,
+        relationType: step.relationType || step.relation_type || 'sequential',
+        parentStepId: step.parentStepId || step.parent_step_id || null,
+        moduleKey: step.moduleKey || step.module_key || '',
         tip: step.tip || '',
-        note: step.note || ''
+        note: step.note || '',
+        positionX: Number.isFinite(Number(step.positionX)) ? Number(step.positionX) : null,
+        positionY: Number.isFinite(Number(step.positionY)) ? Number(step.positionY) : null
       }))
 
       return {
@@ -566,6 +800,191 @@ export default {
         icon: sourceFlow.icon || '🌀',
         steps
       }
+    },
+    relationTypeLabel(type) {
+      if (type === 'parallel') return '平级'
+      if (type === 'child') return '子流程'
+      return '顺序'
+    },
+    onRelationTypeChange(step) {
+      if (!step) return
+      if ((step.relationType || 'sequential') !== 'child') {
+        step.parentStepId = null
+      }
+      this.scheduleAutoSave()
+      this.syncCanvasFromSteps()
+    },
+    parentCandidatesFor(stepId) {
+      const steps = this.editingFlow?.steps || []
+      return steps.filter((step) => String(step.id) !== String(stepId))
+    },
+    async loadSharedModules() {
+      this.sharedModulesLoading = true
+      try {
+        const result = await api.flows.getSharedModules()
+        this.sharedModules = Array.isArray(result) ? result : []
+      } catch (error) {
+        this.sharedModules = []
+        this.showMessage(`加载公共模块失败: ${error?.message}`, 'error')
+      } finally {
+        this.sharedModulesLoading = false
+      }
+    },
+    async createSharedModuleFromCurrentStep() {
+      if (!this.canEditFlow) return
+      const idx = this.editingStepIndex
+      const step = (this.editingFlow?.steps || [])[idx]
+      if (!step) {
+        this.showMessage('请先选中一个步骤', 'error')
+        return
+      }
+      const name = window.prompt('模块名称：', `${step.name || '步骤'}模块`)
+      if (!name) return
+      const moduleKey = window.prompt('模块唯一标识（英文/数字/下划线）：', `mod_${Date.now()}`)
+      if (!moduleKey) return
+      try {
+        await api.flows.createSharedModule({
+          name: name.trim(),
+          moduleKey: moduleKey.trim(),
+          description: step.description || '',
+          steps: [{
+            name: step.name || '模块步骤',
+            description: step.description || '',
+            assignee: step.assignee || '',
+            duration: step.duration || '',
+            conditional: !!step.conditional,
+            relationType: step.relationType || 'sequential',
+            tip: step.tip || '',
+            note: step.note || ''
+          }]
+        })
+        this.showMessage('公共模块已创建', 'success')
+        await this.loadSharedModules()
+      } catch (error) {
+        this.showMessage(`创建公共模块失败: ${error?.message}`, 'error')
+      }
+    },
+    insertSharedModule(module) {
+      if (!this.canEditFlow || !module) return
+      const raw = module.steps_snapshot || module.stepsSnapshot
+      let templates = []
+      try {
+        templates = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : [])
+      } catch (error) {
+        templates = []
+      }
+      if (!Array.isArray(templates) || templates.length === 0) {
+        this.showMessage('模块没有可插入的步骤模板', 'error')
+        return
+      }
+      const insertIndex = this.editingStepIndex == null ? (this.editingFlow?.steps?.length || 0) : this.editingStepIndex + 1
+      const mapped = templates.map((tpl, i) => this.createStep({
+        ...tpl,
+        moduleKey: module.module_key || module.moduleKey || ''
+      }, i))
+      this.editingFlow.steps.splice(insertIndex, 0, ...mapped)
+      this.syncCanvasFromSteps()
+      this.scheduleAutoSave()
+      this.showMessage(`已插入公共模块：${module.name}`, 'success')
+    },
+    async removeSharedModule(module) {
+      if (!module?.id) return
+      if (!window.confirm(`确定删除公共模块「${module.name}」吗？`)) return
+      try {
+        await api.flows.deleteSharedModule(module.id)
+        this.showMessage('公共模块已删除', 'success')
+        await this.loadSharedModules()
+      } catch (error) {
+        this.showMessage(`删除公共模块失败: ${error?.message}`, 'error')
+      }
+    },
+    getStepCanvasPosition(step, index) {
+      const x = Number(step?.positionX)
+      const y = Number(step?.positionY)
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        return { x, y }
+      }
+      const col = index % 3
+      const row = Math.floor(index / 3)
+      return {
+        x: 80 + col * 280,
+        y: 80 + row * 150
+      }
+    },
+    syncCanvasFromSteps() {
+      const steps = this.editingFlow?.steps || []
+      const byId = new Map(steps.map((step) => [String(step.id), step]))
+      this.canvasNodes = steps.map((step, index) => {
+        const position = this.getStepCanvasPosition(step, index)
+        const relationType = step.relationType || step.relation_type || 'sequential'
+        return {
+          id: String(step.id),
+          position,
+          data: {
+            label: `${step.name || `步骤 ${index + 1}`}${relationType === 'child' ? ' · 子流程' : (relationType === 'parallel' ? ' · 平级' : '')}`
+          },
+          style: relationType === 'child'
+            ? { border: '1px solid #3b82f6', background: '#eff6ff', borderRadius: '10px', width: '210px' }
+            : step.conditional
+              ? { border: '1px solid #f59e0b', background: '#fffbeb', borderRadius: '10px', width: '210px' }
+              : { border: '1px solid #10b981', background: '#ecfdf5', borderRadius: '10px', width: '210px' }
+        }
+      })
+
+      this.canvasEdges = steps.map((step, index) => {
+        const relationType = step.relationType || step.relation_type || 'sequential'
+        const targetId = String(step.id)
+
+        if (relationType === 'child' && step.parentStepId && byId.has(String(step.parentStepId))) {
+          return {
+            id: `edge_parent_${step.parentStepId}_${targetId}`,
+            source: String(step.parentStepId),
+            target: targetId,
+            type: 'smoothstep',
+            label: '子流程',
+            style: { stroke: '#3b82f6', strokeDasharray: '4 3' }
+          }
+        }
+
+        if (index === 0) return null
+        const prev = steps[index - 1]
+        if (!prev) return null
+        return {
+          id: `edge_${prev.id}_${targetId}`,
+          source: String(prev.id),
+          target: targetId,
+          type: 'smoothstep',
+          label: relationType === 'parallel' ? '平级' : '',
+          animated: !!step.conditional
+        }
+      }).filter(Boolean)
+    },
+    onCanvasNodesChange(changes = []) {
+      this.canvasNodes = applyNodeChanges(changes, this.canvasNodes)
+
+      if (!Array.isArray(changes) || !this.editingFlow?.steps?.length) return
+      let hasPositionChange = false
+      const stepMap = new Map(this.editingFlow.steps.map((step) => [String(step.id), step]))
+      for (const change of changes) {
+        if (change?.type !== 'position' || !change?.position) continue
+        const step = stepMap.get(String(change.id))
+        if (!step) continue
+        step.positionX = Number(change.position.x)
+        step.positionY = Number(change.position.y)
+        hasPositionChange = true
+      }
+      if (hasPositionChange) {
+        this.scheduleAutoSave()
+      }
+    },
+    onCanvasNodeClick(payload) {
+      const node = payload?.node || payload
+      const nodeId = String(node?.id || '')
+      if (!nodeId || !this.editingFlow?.steps?.length) return
+      const idx = this.editingFlow.steps.findIndex((step) => String(step.id) === nodeId)
+      if (idx === -1) return
+      this.editingStepIndex = idx
+      this.commentDraft.stepId = this.editingFlow.steps[idx]?.id || null
     },
     async loadFlows() {
       this.loading = true
@@ -578,7 +997,22 @@ export default {
         this.loading = false
       }
     },
+    async loadFlowPermissions() {
+      this.permissionsLoading = true
+      try {
+        const result = await api.flows.getMyPermissions()
+        this.flowPermissions = result || null
+      } catch (error) {
+        this.flowPermissions = null
+      } finally {
+        this.permissionsLoading = false
+      }
+    },
     async createVersion() {
+      if (!this.canPublishFlow) {
+        this.showMessage('当前角色无权限创建版本', 'error')
+        return
+      }
       if (!this.editingFlow) return
       const note = window.prompt('请输入版本变更说明（可选）：', '')
       if (note === null) return
@@ -599,6 +1033,10 @@ export default {
       }
     },
     async rollbackVersion() {
+      if (!this.canPublishFlow) {
+        this.showMessage('当前角色无权限回滚版本', 'error')
+        return
+      }
       if (!this.editingFlow) return
       if (!window.confirm('确定回滚到最近发布版本？')) {
         return
@@ -645,37 +1083,92 @@ export default {
       this.commentDraft.stepId = stepId
     },
     addComment() {
+      if (!this.canCommentFlow) {
+        this.showMessage('当前角色无权限评论', 'error')
+        return
+      }
       const text = (this.commentDraft.text || '').trim()
       if (!text || !this.currentCommentStepId) {
         this.showMessage('请先选择步骤并输入评论内容', 'error')
         return
       }
-      const newComment = {
-        id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      const mention = this.commentDraft.mention?.trim() || ''
+      const mentionUsers = mention ? [mention] : []
+      const draft = {
         stepId: this.currentCommentStepId,
         text,
-        mention: this.commentDraft.mention?.trim() || '',
-        author: this.commentDraft.mention ? `@${this.commentDraft.mention}` : '当前用户',
-        createdAt: new Date().toISOString()
+        mentionUsers,
+        status: 'open'
       }
-      this.comments.push(newComment)
-      this.commentDraft.text = ''
-      this.commentDraft.mention = ''
-      this.showMessage('评论已添加', 'success')
-      recordAudit({
-        action: 'add_comment',
-        detail: newComment.text,
-        flowId: this.editingFlow?.id
-      })
+
+      const request = this.editingFlow?.id
+        ? api.flows.addComment(this.editingFlow.id, draft)
+        : Promise.resolve({
+            id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            ...draft,
+            author: mention ? `@${mention}` : '当前用户',
+            createdAt: new Date().toISOString()
+          })
+
+      request
+        .then((saved) => {
+          const normalized = this.normalizeComment(saved)
+          this.comments.unshift(normalized)
+          this.commentDraft.text = ''
+          this.commentDraft.mention = ''
+          this.showMessage('评论已添加', 'success')
+          recordAudit({
+            action: 'add_comment',
+            detail: normalized.text,
+            flowId: this.editingFlow?.id
+          })
+        })
+        .catch((error) => {
+          this.showMessage(`评论保存失败: ${error?.message}`, 'error')
+        })
+    },
+    async updateCommentStatus(comment, status) {
+      if (!comment?.id || !status) return
+      const nextStatus = status === 'resolved' ? 'resolved' : 'open'
+      try {
+        if (this.editingFlow?.id) {
+          const updated = await api.flows.updateComment(this.editingFlow.id, comment.id, { status: nextStatus })
+          const normalized = this.normalizeComment(updated)
+          const idx = this.comments.findIndex((item) => item.id === comment.id)
+          if (idx !== -1) this.comments.splice(idx, 1, normalized)
+        } else {
+          const idx = this.comments.findIndex((item) => item.id === comment.id)
+          if (idx !== -1) this.comments[idx].status = nextStatus
+        }
+        this.showMessage(nextStatus === 'resolved' ? '评论已标记为已解决' : '评论已重新打开', 'success')
+      } catch (error) {
+        this.showMessage(`更新评论状态失败: ${error?.message}`, 'error')
+      }
     },
     toggleSwimlaneView() {
       this.showSwimlaneView = !this.showSwimlaneView
+    },
+    switchView(nextView) {
+      if (nextView !== 'list' && nextView !== 'timeline' && nextView !== 'canvas') return
+      if (this.view === nextView) return
+      if (nextView === 'timeline') {
+        this.timelineMounted = true
+      }
+      if (nextView === 'canvas') {
+        this.canvasMounted = true
+        this.syncCanvasFromSteps()
+      }
+      this.view = nextView
     },
     highlightMentions(text) {
       if (!text) return text
       return text.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
     },
     createNewFlow() {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限新建流程', 'error')
+        return
+      }
       this.editingFlow = this.normalizeFlow({
         id: `flow_${Date.now()}`,
         name: '',
@@ -689,15 +1182,36 @@ export default {
       this.lastSavedFlow = null
       this.flowVersions = []
       this.versionError = ''
+      this.comments = []
+      this.view = 'list'
+      this.timelineMounted = false
+      this.canvasMounted = false
+      this.canvasNodes = []
+      this.canvasEdges = []
+      this.canvasInteractionMode = 'node'
     },
     editFlow(flow) {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限编辑流程', 'error')
+        return
+      }
       const normalized = this.normalizeFlow(JSON.parse(JSON.stringify(flow)))
       this.editingFlow = normalized
       this.lastSavedFlow = JSON.parse(JSON.stringify(normalized))
       this.editingStepIndex = null
+      this.view = 'list'
+      this.timelineMounted = false
+      this.canvasMounted = false
+      this.canvasInteractionMode = 'node'
+      this.syncCanvasFromSteps()
       this.loadVersions(flow.id)
+      this.loadComments(flow.id)
     },
     async saveFlow() {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限保存流程', 'error')
+        return
+      }
       if (!this.editingFlow.name.trim()) {
         this.showMessage('请输入流程名称', 'error')
         return
@@ -738,6 +1252,10 @@ export default {
       }
     },
     async deleteFlow(flow) {
+      if (!this.canAdminFlow) {
+        this.showMessage('当前角色无权限删除流程', 'error')
+        return
+      }
       if (!window.confirm(`确定删除流程 "${flow.name}" 吗？此操作不可撤销。`)) {
         return
       }
@@ -752,17 +1270,40 @@ export default {
       }
     },
     addStep() {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限修改步骤', 'error')
+        return
+      }
       if (!this.editingFlow.steps) {
         this.editingFlow.steps = []
       }
       const newStep = this.createStep({}, this.editingFlow.steps.length)
       this.editingFlow.steps.push(newStep)
+      this.syncCanvasFromSteps()
       this.scheduleAutoSave()
       this.$nextTick(() => {
         this.editingStepIndex = this.editingFlow.steps.length - 1
       })
     },
+    insertStepAt(targetIndex) {
+      if (!this.canEditFlow) return
+      if (!this.editingFlow?.steps) {
+        this.editingFlow.steps = []
+      }
+      const index = Math.max(0, Math.min(Number(targetIndex) || 0, this.editingFlow.steps.length))
+      const newStep = this.createStep({}, index)
+      this.editingFlow.steps.splice(index, 0, newStep)
+      this.syncCanvasFromSteps()
+      this.scheduleAutoSave()
+      this.$nextTick(() => {
+        this.editingStepIndex = index
+      })
+    },
     removeStep(index) {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限修改步骤', 'error')
+        return
+      }
       if (this.editingFlow.steps && this.editingFlow.steps.length > 0) {
         this.editingFlow.steps.splice(index, 1)
         if (this.editingStepIndex === index) {
@@ -770,10 +1311,15 @@ export default {
         } else if (this.editingStepIndex > index) {
           this.editingStepIndex -= 1
         }
+        this.syncCanvasFromSteps()
         this.scheduleAutoSave()
       }
     },
     moveStep(index, direction) {
+      if (!this.canEditFlow) {
+        this.showMessage('当前角色无权限调整顺序', 'error')
+        return
+      }
       if (!this.editingFlow.steps || this.editingFlow.steps.length < 2) return
       const newIndex = index + direction
 
@@ -785,6 +1331,7 @@ export default {
       const [moved] = stepsCopy.splice(index, 1)
       stepsCopy.splice(newIndex, 0, moved)
       this.editingFlow.steps = stepsCopy
+      this.syncCanvasFromSteps()
 
       if (this.editingStepIndex === index) {
         this.editingStepIndex = newIndex
@@ -843,25 +1390,39 @@ export default {
         // 更新最后保存的状态
         this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
 
-        // 显示自动保存提示（仅显示 2 秒）
-        this.message = { text: '✓ 已自动保存', type: 'success' }
-        setTimeout(() => {
-          if (this.message && this.message.text === '✓ 已自动保存') {
-            this.message = null
-          }
-        }, 2000)
+        // 显示自动保存提示（不覆盖手动操作反馈）
+        this.showAutoSaveMessage('✓ 已自动保存', 'success')
       } catch (error) {
         console.error('自动保存失败:', error)
-        this.message = { text: `自动保存失败: ${error?.message}`, type: 'error' }
+        this.showAutoSaveMessage(`自动保存失败: ${error?.message}`, 'error')
       } finally {
         this.isAutoSaving = false
       }
     },
-    showMessage(text, type = 'info') {
-      this.message = { text, type }
-      setTimeout(() => {
+    setMessage(text, type = 'info', options = {}) {
+      const {
+        auto = false,
+        duration = 3000
+      } = options
+
+      if (this.messageTimer) {
+        clearTimeout(this.messageTimer)
+        this.messageTimer = null
+      }
+
+      this.message = { text, type, auto }
+      this.messageTimer = setTimeout(() => {
         this.message = null
-      }, 3000)
+        this.messageTimer = null
+      }, duration)
+    },
+    showAutoSaveMessage(text, type = 'success') {
+      // 自动保存提示不覆盖用户手动操作反馈，避免“调换顺序提示”被抢占
+      if (this.message && !this.message.auto) return
+      this.setMessage(text, type, { auto: true, duration: 2000 })
+    },
+    showMessage(text, type = 'info') {
+      this.setMessage(text, type, { auto: false, duration: 3000 })
     }
   },
   watch: {
@@ -874,12 +1435,21 @@ export default {
     }
   },
   mounted() {
+    const touchCapable = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0)
+    if (touchCapable) {
+      this.canvasInteractionMode = 'pan'
+    }
+    this.loadFlowPermissions()
     this.loadFlows()
+    this.loadSharedModules()
   },
   beforeUnmount() {
     // 页面卸载前，清除自动保存计时器
     if (this.autoSaveTimer) {
       clearTimeout(this.autoSaveTimer)
+    }
+    if (this.messageTimer) {
+      clearTimeout(this.messageTimer)
     }
   }
 }
@@ -1158,19 +1728,17 @@ export default {
 .step-title {
   color: var(--app-text);
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
 }
 
 .step-desc {
   color: var(--app-text-muted);
   font-size: 0.9em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
   line-height: 1.3;
 }
 
@@ -1266,6 +1834,45 @@ export default {
   border-radius: 12px;
   background: var(--app-card);
   margin: 12px 0;
+}
+
+.canvas-section {
+  margin: 12px 0;
+}
+
+.canvas-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.canvas-toolbar .btn.active {
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  border-color: var(--app-primary);
+}
+
+.canvas-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.flow-canvas {
+  width: 100%;
+  min-width: 760px;
+  height: 460px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(59, 130, 246, 0.04));
+}
+
+.canvas-hint {
+  margin: 8px 2px 0;
+  color: var(--app-text-muted);
+  font-size: 0.85em;
 }
 
 /* 步骤列表容器 - 支持滚动 */
@@ -1706,7 +2313,9 @@ export default {
 
 .comment-card__meta {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 0.8em;
   color: var(--app-text-muted);
   margin-bottom: 4px;
@@ -1717,9 +2326,34 @@ export default {
   font-size: 0.95em;
 }
 
+.comment-ts {
+  margin-left: auto;
+}
+
 .comment-empty {
   color: var(--app-text-muted);
   font-size: 0.9em;
+}
+
+.comment-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75em;
+  font-weight: 600;
+}
+
+.comment-status--open {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.comment-status--resolved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.comment-actions {
+  margin-top: 8px;
 }
 
 .mention {
@@ -1843,6 +2477,37 @@ export default {
     padding: 12px;
   }
 
+  .view-switcher {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    padding-bottom: 10px;
+  }
+
+  .view-switcher button {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  .btn,
+  .btn-icon,
+  .btn-back {
+    min-height: 40px;
+  }
+
+  .flow-canvas {
+    min-width: 680px;
+    height: 56vh;
+    min-height: 340px;
+    max-height: 520px;
+  }
+
+  .canvas-toolbar .btn {
+    min-height: 40px;
+  }
+
   .message {
     bottom: 12px;
     right: 12px;
@@ -1865,6 +2530,11 @@ export default {
 
   .btn {
     flex: 1;
+  }
+
+  .view-switcher button {
+    min-height: 38px;
+    padding: 8px 12px;
   }
 
   .card-header {
@@ -1891,6 +2561,15 @@ export default {
 
   .preview-item {
     gap: 8px;
+  }
+
+  .flow-canvas {
+    min-width: 620px;
+    min-height: 320px;
+  }
+
+  .canvas-toolbar {
+    gap: 6px;
   }
 }
 </style>

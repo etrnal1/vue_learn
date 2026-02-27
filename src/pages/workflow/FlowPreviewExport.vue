@@ -9,6 +9,9 @@
         </p>
       </div>
       <div class="header-actions">
+        <button class="btn btn-secondary" :disabled="!selectedFlow" @click="startQuickEdit">
+          快速编辑
+        </button>
         <button class="btn btn-primary" :disabled="!selectedFlow" @click="openPreviewWindow">
           在新窗口预览
         </button>
@@ -83,10 +86,39 @@
               <p class="preview-card__desc">{{ selectedFlow.description || '暂无流程描述' }}</p>
             </div>
             <div class="preview-card__actions">
+              <button class="btn btn-ghost" @click="startQuickEdit">快速编辑</button>
               <button class="btn btn-ghost" @click="openPreviewWindow">新窗口预览</button>
               <button class="btn btn-ghost" @click="downloadFlow('json')" :disabled="exporting">JSON</button>
               <button class="btn btn-ghost" @click="downloadFlow('markdown')" :disabled="exporting">概要</button>
               <button class="btn btn-ghost" @click="downloadFlow('bpmn')" :disabled="exporting">BPMN</button>
+            </div>
+          </div>
+          <div v-if="quickEditing" class="quick-edit-panel">
+            <div class="quick-edit-row">
+              <label>流程名称</label>
+              <input v-model="quickEditDraft.name" type="text" />
+            </div>
+            <div class="quick-edit-row">
+              <label>流程描述</label>
+              <textarea v-model="quickEditDraft.description" rows="2"></textarea>
+            </div>
+            <div class="quick-edit-steps">
+              <h4>步骤快速编辑</h4>
+              <div v-for="(step, idx) in quickEditDraft.steps" :key="step.id || idx" class="quick-edit-step">
+                <input v-model="step.name" type="text" :placeholder="`步骤 ${idx + 1} 名称`" />
+                <input v-model="step.duration" type="text" placeholder="耗时" />
+                <select v-model="step.relationType">
+                  <option value="sequential">顺序</option>
+                  <option value="parallel">平级</option>
+                  <option value="child">子流程</option>
+                </select>
+              </div>
+            </div>
+            <div class="quick-edit-actions">
+              <button class="btn btn-primary" :disabled="quickSaving" @click="saveQuickEdit">
+                {{ quickSaving ? '保存中...' : '保存修改' }}
+              </button>
+              <button class="btn btn-ghost" :disabled="quickSaving" @click="cancelQuickEdit">取消</button>
             </div>
           </div>
           <div class="preview-steps">
@@ -109,6 +141,9 @@
                 <div class="preview-step-row__meta">
                   <span v-if="step.assignee">👤 {{ step.assignee }}</span>
                   <span v-if="step.duration">⏱ {{ step.duration }}</span>
+                  <span>🔗 {{ relationTypeLabel(step.relationType || step.relation_type) }}</span>
+                  <span v-if="step.parentStepId || step.parent_step_id">↳ 上级 {{ step.parentStepId || step.parent_step_id }}</span>
+                  <span v-if="step.moduleKey || step.module_key">🧩 {{ step.moduleKey || step.module_key }}</span>
                 </div>
               </div>
             </div>
@@ -170,12 +205,60 @@
               添加水印/印章
             </label>
             <div class="export-buttons">
-              <button class="btn btn-primary" :disabled="!selectedFlow || exporting" @click="requestExport('pdf')">
+              <button class="btn btn-primary" :disabled="!selectedFlow || exporting || !canExportFlow" @click="requestExport('pdf')">
                 导出 PDF
               </button>
-              <button class="btn btn-secondary" :disabled="!selectedFlow || exporting" @click="requestExport('word')">
+              <button class="btn btn-secondary" :disabled="!selectedFlow || exporting || !canExportFlow" @click="requestExport('word')">
                 导出 Word
               </button>
+            </div>
+          </div>
+          <div class="meta-panel__metrics">
+            <h4>执行指标</h4>
+            <div v-if="metricsLoading" class="metrics-loading">加载中...</div>
+            <div v-else class="metrics-grid">
+              <div class="metric-item">
+                <span class="metric-label">总执行</span>
+                <strong>{{ executionMetrics.totalExecutions }}</strong>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">已完成</span>
+                <strong>{{ executionMetrics.completedExecutions }}</strong>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">执行中</span>
+                <strong>{{ executionMetrics.runningExecutions }}</strong>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">失败/取消</span>
+                <strong>{{ executionMetrics.failedExecutions }}</strong>
+              </div>
+            </div>
+            <p class="metrics-footnote">
+              平均耗时：{{ formatMetricDuration(executionMetrics.avgDurationMs) }}
+            </p>
+          </div>
+          <div class="meta-panel__exports">
+            <div class="exports-header">
+              <h4>导出任务</h4>
+              <button class="btn btn-small btn-ghost" :disabled="exportsLoading || !selectedFlow" @click="refreshExportJobs">
+                刷新
+              </button>
+            </div>
+            <ul v-if="exportJobs.length" class="exports-list">
+              <li v-for="job in exportJobs" :key="job.id" class="exports-item">
+                <div class="exports-item__top">
+                  <strong>{{ String(job.format || 'unknown').toUpperCase() }}</strong>
+                  <span class="exports-status" :class="`exports-status--${job.status || 'queued'}`">
+                    {{ exportStatusLabel(job.status) }}
+                  </span>
+                </div>
+                <p class="exports-message">{{ job.message || '已提交导出任务' }}</p>
+                <p class="exports-time">{{ formatDate(job.createdAt || job.created_at) }}</p>
+              </li>
+            </ul>
+            <div v-else class="exports-empty">
+              {{ exportsLoading ? '加载中...' : '暂无导出任务' }}
             </div>
           </div>
         <div class="meta-panel__log">
@@ -183,12 +266,12 @@
           <ul>
             <li
               v-for="entry in auditEntries"
-              :key="`${entry.timestamp}-${entry.action}`"
+              :key="entry.id || `${entry.createdAt || entry.timestamp}-${entry.action}`"
               class="audit-entry"
             >
               <span class="log-action">{{ entry.action }}</span>
               <span class="log-detail">{{ entry.detail || '无附加信息' }}</span>
-              <span class="log-ts">{{ formatDate(entry.timestamp) }}</span>
+              <span class="log-ts">{{ formatDate(entry.createdAt || entry.timestamp) }}</span>
             </li>
             <li v-if="!auditEntries.length" v-for="entry in activityLog" :key="entry">{{ entry }}</li>
           </ul>
@@ -217,10 +300,24 @@ export default {
       searchQuery: '',
       filterStatus: 'all',
       exporting: false,
+      flowPermissions: null,
+      metricsLoading: false,
+      exportsLoading: false,
+      quickEditing: false,
+      quickSaving: false,
+      quickEditDraft: null,
       message: null,
       messageTimer: null,
       downloadFormats: ['json', 'markdown'],
       auditEntries: [],
+      exportJobs: [],
+      executionMetrics: {
+        totalExecutions: 0,
+        completedExecutions: 0,
+        runningExecutions: 0,
+        failedExecutions: 0,
+        avgDurationMs: null
+      },
       exportOptions: {
         includeComments: true,
         includeVersionInfo: true,
@@ -250,6 +347,9 @@ export default {
     previewSteps() {
       return this.selectedFlow?.steps || []
     },
+    canExportFlow() {
+      return this.flowPermissions?.actions?.export !== false
+    },
     activityLog() {
       if (!this.selectedFlow) return []
       const flow = this.selectedFlow
@@ -261,6 +361,73 @@ export default {
     }
   },
   methods: {
+    relationTypeLabel(type) {
+      if (type === 'parallel') return '平级'
+      if (type === 'child') return '子流程'
+      return '顺序'
+    },
+    startQuickEdit() {
+      if (!this.selectedFlow) return
+      this.quickEditDraft = JSON.parse(JSON.stringify({
+        id: this.selectedFlow.id,
+        name: this.selectedFlow.name || '',
+        description: this.selectedFlow.description || '',
+        icon: this.selectedFlow.icon || '🌀',
+        steps: (this.selectedFlow.steps || []).map((step, index) => ({
+          id: step.id || `step_${index + 1}`,
+          name: step.name || '',
+          description: step.description || '',
+          assignee: step.assignee || '',
+          duration: step.duration || '',
+          conditional: !!step.conditional,
+          relationType: step.relationType || step.relation_type || 'sequential',
+          parentStepId: step.parentStepId || step.parent_step_id || null,
+          moduleKey: step.moduleKey || step.module_key || '',
+          tip: step.tip || '',
+          note: step.note || '',
+          positionX: Number.isFinite(Number(step.positionX))
+            ? Number(step.positionX)
+            : (Number.isFinite(Number(step.position_x)) ? Number(step.position_x) : null),
+          positionY: Number.isFinite(Number(step.positionY))
+            ? Number(step.positionY)
+            : (Number.isFinite(Number(step.position_y)) ? Number(step.position_y) : null)
+        }))
+      }))
+      this.quickEditing = true
+    },
+    cancelQuickEdit() {
+      this.quickEditing = false
+      this.quickEditDraft = null
+    },
+    async saveQuickEdit() {
+      if (!this.quickEditDraft?.id) return
+      this.quickSaving = true
+      try {
+        const payload = {
+          id: this.quickEditDraft.id,
+          name: (this.quickEditDraft.name || '').trim(),
+          description: this.quickEditDraft.description || '',
+          icon: this.quickEditDraft.icon || '🌀',
+          steps: (this.quickEditDraft.steps || []).map((step, index) => ({
+            ...step,
+            order: index
+          }))
+        }
+        await api.flows.update(payload.id, payload)
+        this.showMessage('流程已更新', 'success')
+        this.quickEditing = false
+        this.quickEditDraft = null
+        await this.loadFlows()
+        if (this.selectedFlow?.id) {
+          const matched = this.flows.find((f) => String(f.id) === String(this.selectedFlow.id))
+          if (matched) this.selectedFlow = matched
+        }
+      } catch (error) {
+        this.showMessage(`保存失败: ${error?.message}`, 'error')
+      } finally {
+        this.quickSaving = false
+      }
+    },
     async loadFlows() {
       this.loading = true
       try {
@@ -276,10 +443,35 @@ export default {
       }
       this.refreshAuditLog()
     },
+    async loadFlowPermissions() {
+      try {
+        const result = await api.flows.getMyPermissions()
+        this.flowPermissions = result || null
+      } catch (error) {
+        this.flowPermissions = null
+      }
+    },
     selectFlow(flow) {
       this.selectedFlow = flow || null
+      this.quickEditing = false
+      this.quickEditDraft = null
+      this.refreshAuditLog()
+      this.refreshFlowInsights()
     },
-    refreshAuditLog() {
+    async refreshAuditLog() {
+      if (!this.selectedFlow?.id) {
+        this.auditEntries = readAuditLog().slice(-8).reverse()
+        return
+      }
+      try {
+        const serverEntries = await api.flows.getAudit(this.selectedFlow.id, { limit: 20 })
+        if (Array.isArray(serverEntries) && serverEntries.length) {
+          this.auditEntries = serverEntries
+          return
+        }
+      } catch (error) {
+        console.warn('加载服务端审计日志失败，使用本地日志兜底:', error)
+      }
       this.auditEntries = readAuditLog().slice(-8).reverse()
     },
     getFlowStatus(flow) {
@@ -294,6 +486,14 @@ export default {
       if (status === 'draft') return '草稿'
       return status
     },
+    exportStatusLabel(status) {
+      const normalized = String(status || '').toLowerCase()
+      if (normalized === 'completed') return '已完成'
+      if (normalized === 'failed') return '失败'
+      if (normalized === 'processing' || normalized === 'running') return '处理中'
+      if (normalized === 'queued' || !normalized) return '排队中'
+      return normalized
+    },
     formatLabel(format) {
       return format === 'json' ? 'JSON 数据' : '概要 Markdown'
     },
@@ -302,6 +502,67 @@ export default {
       const date = new Date(value)
       if (Number.isNaN(date.getTime())) return '未知'
       return date.toLocaleString()
+    },
+    formatMetricDuration(ms) {
+      const value = Number(ms)
+      if (!Number.isFinite(value) || value < 0) return '—'
+      if (value < 1000) return `${Math.round(value)}ms`
+      const seconds = value / 1000
+      if (seconds < 60) return `${seconds.toFixed(1)}s`
+      const minutes = Math.floor(seconds / 60)
+      const remainSeconds = Math.round(seconds % 60)
+      return `${minutes}m ${remainSeconds}s`
+    },
+    async refreshFlowInsights() {
+      await Promise.all([this.refreshExecutionMetrics(), this.refreshExportJobs()])
+    },
+    async refreshExecutionMetrics() {
+      if (!this.selectedFlow?.id) {
+        this.executionMetrics = {
+          totalExecutions: 0,
+          completedExecutions: 0,
+          runningExecutions: 0,
+          failedExecutions: 0,
+          avgDurationMs: null
+        }
+        return
+      }
+      this.metricsLoading = true
+      try {
+        const result = await api.flows.getExecutionMetrics(this.selectedFlow.id)
+        this.executionMetrics = {
+          totalExecutions: Number(result?.totalExecutions || 0),
+          completedExecutions: Number(result?.completedExecutions || 0),
+          runningExecutions: Number(result?.runningExecutions || 0),
+          failedExecutions: Number(result?.failedExecutions || 0),
+          avgDurationMs: result?.avgDurationMs == null ? null : Number(result.avgDurationMs)
+        }
+      } catch (error) {
+        this.executionMetrics = {
+          totalExecutions: 0,
+          completedExecutions: 0,
+          runningExecutions: 0,
+          failedExecutions: 0,
+          avgDurationMs: null
+        }
+      } finally {
+        this.metricsLoading = false
+      }
+    },
+    async refreshExportJobs() {
+      if (!this.selectedFlow?.id) {
+        this.exportJobs = []
+        return
+      }
+      this.exportsLoading = true
+      try {
+        const result = await api.flows.getExports(this.selectedFlow.id, { limit: 10 })
+        this.exportJobs = Array.isArray(result) ? result : []
+      } catch (error) {
+        this.exportJobs = []
+      } finally {
+        this.exportsLoading = false
+      }
     },
     openPreviewWindow() {
       if (!this.selectedFlow) return
@@ -319,6 +580,10 @@ export default {
         detail: this.selectedFlow.name,
         flowId: this.selectedFlow.id
       })
+      api.flows.addAudit(this.selectedFlow.id, {
+        action: 'preview_in_window',
+        detail: this.selectedFlow.name
+      }).catch(() => {})
       this.refreshAuditLog()
     },
     buildPreviewHtml(flow) {
@@ -591,6 +856,10 @@ export default {
           detail: `${format} · ${this.selectedFlow.name || ''}`,
           flowId: this.selectedFlow.id
         })
+        api.flows.addAudit(this.selectedFlow.id, {
+          action: 'download_flow',
+          detail: `${format} · ${this.selectedFlow.name || ''}`
+        }).catch(() => {})
         this.refreshAuditLog()
       } catch (error) {
         console.error('导出失败:', error)
@@ -601,6 +870,10 @@ export default {
     },
     async requestExport(format) {
       if (!this.selectedFlow) return
+      if (!this.canExportFlow) {
+        this.showMessage('当前角色无权限申请导出', 'error')
+        return
+      }
       this.exporting = true
       try {
         const payload = {
@@ -623,7 +896,13 @@ export default {
           detail: `${format} · includeComments=${payload.options.includeComments}`,
           flowId: this.selectedFlow.id
         })
+        api.flows.addAudit(this.selectedFlow.id, {
+          action: `export_${format}`,
+          detail: `${format} · includeComments=${payload.options.includeComments}`,
+          metadata: payload.options
+        }).catch(() => {})
         this.refreshAuditLog()
+        this.refreshExportJobs()
       } catch (error) {
         console.error('导出失败:', error)
         this.showMessage(`导出失败: ${error?.message}`, 'error')
@@ -656,6 +935,7 @@ export default {
     }
   },
   mounted() {
+    this.loadFlowPermissions()
     this.loadFlows()
   },
   beforeUnmount() {
@@ -865,6 +1145,62 @@ export default {
   margin-left: 8px;
 }
 
+.quick-edit-panel {
+  margin-bottom: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--app-card-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quick-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quick-edit-row label {
+  font-size: 0.85em;
+  color: var(--app-text-muted);
+}
+
+.quick-edit-row input,
+.quick-edit-row textarea,
+.quick-edit-step input,
+.quick-edit-step select {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-family: inherit;
+}
+
+.quick-edit-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-edit-steps h4 {
+  margin: 0;
+}
+
+.quick-edit-step {
+  display: grid;
+  grid-template-columns: 1fr 120px 120px;
+  gap: 8px;
+}
+
+.quick-edit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .btn-ghost {
   border: 1px solid var(--app-border);
   background: transparent;
@@ -1017,6 +1353,130 @@ export default {
   margin-top: 6px;
 }
 
+.meta-panel__metrics {
+  margin-top: 16px;
+  border-top: 1px solid var(--app-border);
+  padding-top: 12px;
+}
+
+.metrics-loading {
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-item {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--app-card-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-label {
+  font-size: 0.78em;
+  color: var(--app-text-muted);
+}
+
+.metrics-footnote {
+  margin: 10px 0 0;
+  font-size: 0.86em;
+  color: var(--app-text-muted);
+}
+
+.meta-panel__exports {
+  margin-top: 16px;
+  border-top: 1px solid var(--app-border);
+  padding-top: 12px;
+}
+
+.exports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.exports-header h4 {
+  margin: 0;
+}
+
+.exports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exports-item {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--app-card-elevated);
+}
+
+.exports-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.exports-message {
+  margin: 6px 0 2px;
+  color: var(--app-text-muted);
+  font-size: 0.85em;
+}
+
+.exports-time {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 0.78em;
+}
+
+.exports-status {
+  font-size: 0.75em;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.exports-status--completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.exports-status--failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.exports-status--processing,
+.exports-status--running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.exports-status--queued {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.exports-empty {
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+}
+
 .btn-secondary {
   border: 1px solid var(--app-border);
   background: var(--app-card-elevated);
@@ -1094,6 +1554,10 @@ export default {
   .preview-side,
   .preview-list-column {
     width: 100%;
+  }
+
+  .quick-edit-step {
+    grid-template-columns: 1fr;
   }
 }
 </style>

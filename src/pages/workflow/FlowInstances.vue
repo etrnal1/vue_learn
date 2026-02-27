@@ -164,7 +164,7 @@
 </template>
 
 <script>
-import api from '../../utils/api.js'
+import { api } from '../../utils/api.js'
 import ItsmModal from '../../components/itsm/ItsmModal.vue'
 
 export default {
