@@ -74,7 +74,7 @@
         <button class="action-btn" @click="saveFlow" :disabled="!hasChanges || readonly">
           💾 保存
         </button>
-        <button class="action-btn" @click="deleteSelected" :disabled="!selectedNode || readonly">
+        <button class="action-btn" @click="deleteSelected" :disabled="(!selectedNode && !selectedEdge) || readonly">
           🗑 删除
         </button>
         <button class="action-btn" @click="zoomFit">
@@ -92,15 +92,29 @@
       @dragleave="onDragLeave"
       @drop="onDrop"
     >
+      <FlowThreeBackground :nodes="nodes" :edges="edges" />
+      <div class="relation-legend">
+        <span><i class="chip seq"></i>顺序集</span>
+        <span><i class="chip parallel"></i>平级集</span>
+        <span><i class="chip child"></i>子集</span>
+      </div>
       <VueFlow
         ref="vueFlow"
         :nodes="nodes"
         :edges="edges"
         :default-viewport="defaultViewport"
+        :nodes-draggable="!readonly"
+        :nodes-connectable="!readonly"
+        :elements-selectable="true"
+        :pan-on-drag="true"
+        :zoom-on-pinch="true"
+        :zoom-on-scroll="true"
+        :prevent-scrolling="false"
         @nodes-change="onNodesChange"
         @edges-change="onEdgesChange"
         @connect="onConnect"
         @node-click="onNodeClick"
+        @edge-click="onEdgeClick"
         @pane-click="onPaneClick"
       >
         <Background pattern-color="#aaa" :gap="16" />
@@ -243,6 +257,7 @@ import ParallelGatewayNode from './nodes/ParallelGatewayNode.vue'
 import InclusiveGatewayNode from './nodes/InclusiveGatewayNode.vue'
 import EndNode from './nodes/EndNode.vue'
 import ConditionEditorDialog from './dialogs/ConditionEditorDialog.vue'
+import FlowThreeBackground from './FlowThreeBackground.vue'
 import { api } from '../../utils/api.js'
 
 // 简单的 UUID 生成函数
@@ -269,7 +284,8 @@ export default {
     ParallelGatewayNode,
     InclusiveGatewayNode,
     EndNode,
-    ConditionEditorDialog
+    ConditionEditorDialog,
+    FlowThreeBackground
   },
   props: {
     flowId: {
@@ -289,7 +305,7 @@ export default {
       default: false
     }
   },
-  emits: ['update:modelValue', 'save', 'node-select'],
+  emits: ['update:modelValue', 'save', 'node-select', 'layout-change'],
   data() {
     return {
       flow: null,
@@ -313,15 +329,17 @@ export default {
       touchStartNodeType: null,
       touchStartPos: null,
       touchElement: null,
-      isMobile: false
+      isMobile: false,
+      isNodeDragging: false
     }
   },
   watch: {
     modelValue: {
       immediate: true,
-      deep: true,
       handler(value) {
         if (!value || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) return
+        // 拖拽中忽略外部回写，避免节点被强制重置位置导致“拖不动”
+        if (this.isNodeDragging) return
         this.nodes = JSON.parse(JSON.stringify(value.nodes))
         this.edges = JSON.parse(JSON.stringify(value.edges))
       }
@@ -520,6 +538,8 @@ export default {
 
       // 自动选中新节点
       this.selectedNode = newNode
+      this.emitModelValue()
+      this.emitLayoutChange()
     },
 
     getNodeLabel(nodeType) {
@@ -634,12 +654,23 @@ export default {
     onNodesChange(changes) {
       if (this.readonly) return
       this.nodes = applyNodeChanges(changes, this.nodes)
+      let hasFinalChange = false
       changes.forEach(change => {
         if (change.type === 'position' && change.position) {
           this.hasChanges = true
+          this.isNodeDragging = Boolean(change.dragging)
+          if (change.dragging === false) {
+            hasFinalChange = true
+            this.isNodeDragging = false
+          }
+        } else if (change.type !== 'select') {
+          hasFinalChange = true
         }
       })
-      this.emitModelValue()
+      if (hasFinalChange) {
+        this.emitModelValue()
+        this.emitLayoutChange()
+      }
     },
 
     onEdgesChange(changes) {
@@ -647,6 +678,7 @@ export default {
       this.edges = applyEdgeChanges(changes, this.edges)
       this.hasChanges = true
       this.emitModelValue()
+      this.emitLayoutChange()
     },
 
     onConnect(connection) {
@@ -663,12 +695,17 @@ export default {
       this.edges.push(edge)
       this.hasChanges = true
       this.emitModelValue()
+      this.emitLayoutChange()
     },
 
     onNodeClick(event) {
       this.selectedNode = event.node
       this.selectedEdge = null
       this.$emit('node-select', event.node)
+    },
+    onEdgeClick(event) {
+      this.selectedEdge = event.edge
+      this.selectedNode = null
     },
 
     onPaneClick() {
@@ -680,12 +717,14 @@ export default {
       if (this.readonly) return
       this.hasChanges = true
       this.emitModelValue()
+      this.emitLayoutChange()
     },
 
     onEdgePropertyChange() {
       if (this.readonly) return
       this.hasChanges = true
       this.emitModelValue()
+      this.emitLayoutChange()
     },
 
     deleteSelected() {
@@ -698,6 +737,15 @@ export default {
         this.selectedNode = null
         this.hasChanges = true
         this.emitModelValue()
+        this.emitLayoutChange()
+        return
+      }
+      if (this.selectedEdge) {
+        this.edges = this.edges.filter(e => e.id !== this.selectedEdge.id)
+        this.selectedEdge = null
+        this.hasChanges = true
+        this.emitModelValue()
+        this.emitLayoutChange()
       }
     },
 
@@ -770,6 +818,12 @@ export default {
         edges: JSON.parse(JSON.stringify(this.edges))
       })
     },
+    emitLayoutChange() {
+      this.$emit('layout-change', {
+        nodes: JSON.parse(JSON.stringify(this.nodes)),
+        edges: JSON.parse(JSON.stringify(this.edges))
+      })
+    },
 
     showSaveStatus(message, type) {
       this.saveStatus = { message, type }
@@ -785,14 +839,16 @@ export default {
 .flow-editor {
   display: flex;
   height: 100vh;
-  background: var(--app-bg);
+  background: linear-gradient(160deg, #f8fbff 0%, #f0f9ff 48%, #eefaf5 100%);
   color: var(--app-text);
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .flow-editor__toolbar {
-  width: 200px;
-  background: var(--app-card);
-  border-right: 1px solid var(--app-border);
+  width: 230px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 68%, #f0f9ff 100%);
+  border-right: 1px solid #dbe7f7;
   padding: 16px;
   overflow-y: auto;
   display: flex;
@@ -804,14 +860,16 @@ export default {
   margin: 0 0 12px 0;
   font-size: 0.9rem;
   text-transform: uppercase;
-  color: #666;
+  color: #5d6f8a;
   font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .flow-title {
   margin: 0 0 8px 0;
-  font-size: 1rem;
+  font-size: 1.06rem;
   font-weight: 700;
+  color: #14385b;
 }
 
 .node-palette {
@@ -822,14 +880,14 @@ export default {
 
 .palette-btn {
   padding: 8px 12px;
-  background: var(--app-primary);
+  background: linear-gradient(130deg, #0ea5e9, #2563eb);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: grab;
   font-size: 0.9rem;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.24);
   user-select: none;
 }
 
@@ -852,16 +910,18 @@ export default {
 .action-btn {
   width: 100%;
   padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #d4e1f4;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: background 0.2s;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: var(--app-hover);
+  background: #f0f8ff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 14px rgba(30, 64, 175, 0.12);
 }
 
 .action-btn:disabled {
@@ -872,8 +932,9 @@ export default {
 .flow-editor__canvas {
   flex: 1;
   position: relative;
-  background: white;
+  background: radial-gradient(circle at 18% 10%, #ffffff 0%, #f0f7ff 44%, #ecfeff 100%);
   transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .flow-editor__canvas.is-drag-over {
@@ -910,13 +971,77 @@ export default {
 .flow-editor__canvas :deep(.vue-flow) {
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+.relation-legend {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(6px);
+  border: 1px solid #d8e6f7;
+  font-size: 11px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.relation-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chip.seq { background: #22c55e; }
+.chip.parallel { background: #0ea5e9; }
+.chip.child { background: #6366f1; }
+
+.flow-editor__canvas :deep(.vue-flow__pane),
+.flow-editor__canvas :deep(.vue-flow__node) {
+  touch-action: none;
+}
+
+.flow-editor__canvas :deep(.vue-flow__background-pattern) {
+  opacity: 0.35;
+}
+
+.flow-editor__canvas :deep(.vue-flow__edge-path) {
+  stroke-width: 2.2px;
+  stroke: #2563eb;
+  filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.35));
+}
+
+.flow-editor__canvas :deep(.vue-flow__controls) {
+  border: 1px solid #d5e4f7;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+}
+
+.flow-editor__canvas :deep(.vue-flow__controls-button) {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: #d9e7fb;
 }
 
 .flow-editor__properties,
 .flow-editor__edge-properties {
   width: 300px;
-  background: var(--app-card);
-  border-left: 1px solid var(--app-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-left: 1px solid #dbe7f7;
   display: flex;
   flex-direction: column;
   max-height: 100vh;
@@ -925,7 +1050,7 @@ export default {
 
 .properties-header {
   padding: 16px;
-  border-bottom: 1px solid var(--app-border);
+  border-bottom: 1px solid #dce8f8;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -966,8 +1091,8 @@ export default {
 .app-input,
 .app-textarea {
   padding: 8px 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
+  border: 1px solid #d1dff3;
+  border-radius: 10px;
   font-size: 0.9rem;
   font-family: inherit;
 }
