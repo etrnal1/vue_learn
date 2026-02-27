@@ -3,8 +3,30 @@
     <div class="page-header">
       <div>
         <h2>流程执行实例</h2>
-        <p class="subtitle">查看和管理流程执行历史、步骤记录和执行日志</p>
+        <p class="subtitle">查看和管理流程执行历史、步骤记录和执行日志（共 {{ totalCount }} 条记录）</p>
       </div>
+    </div>
+
+    <!-- 筛选面板 -->
+    <div class="filter-panel">
+      <select v-model="filters.status" @change="onFilterChange" class="filter-select">
+        <option value="">所有状态</option>
+        <option value="pending">待执行</option>
+        <option value="running">执行中</option>
+        <option value="completed">已完成</option>
+        <option value="failed">失败</option>
+        <option value="cancelled">已取消</option>
+      </select>
+
+      <select v-model="sortBy" @change="onFilterChange" class="filter-select">
+        <option value="created_at">按创建时间</option>
+        <option value="status">按状态</option>
+        <option value="updated_at">按更新时间</option>
+      </select>
+
+      <button class="btn-toggle-sort" @click="onSortChange(sortBy)" :title="sortOrder">
+        {{ sortOrder === 'DESC' ? '↓' : '↑' }}
+      </button>
     </div>
 
     <!-- 加载/空状态 -->
@@ -17,8 +39,20 @@
       <p>暂无执行记录</p>
     </div>
 
+    <!-- 分页控件 -->
+    <div v-if="!loading && executions.length > 0" class="pagination-header">
+      <select v-model.number="pageSize" @change="onPageSizeChange" class="page-size-select">
+        <option v-for="size in pageSizes" :key="size" :value="size">
+          每页 {{ size }} 条
+        </option>
+      </select>
+      <span class="page-info">
+        第 {{ currentPage }} 页 / 共 {{ totalPages }} 页（共 {{ totalCount }} 条）
+      </span>
+    </div>
+
     <!-- 执行列表 -->
-    <div v-else class="executions-grid">
+    <div v-else-if="!loading && executions.length > 0" class="executions-grid">
       <div v-for="exec in executions" :key="exec.id" class="exec-card">
         <div class="exec-card__header">
           <h3>{{ exec.executionNo }}</h3>
@@ -45,6 +79,31 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- 分页导航 -->
+    <div v-if="!loading && executions.length > 0" class="pagination-nav">
+      <button class="btn-nav" :disabled="currentPage === 1" @click="onPageChange(1)">
+        ⏮ 首页
+      </button>
+      <button class="btn-nav" :disabled="currentPage === 1" @click="onPageChange(currentPage - 1)">
+        ◀ 上一页
+      </button>
+
+      <div class="page-numbers">
+        <button v-for="page in visiblePages" :key="page"
+                class="page-number" :class="{ active: page === currentPage }"
+                @click="onPageChange(page)">
+          {{ page }}
+        </button>
+      </div>
+
+      <button class="btn-nav" :disabled="!hasMore" @click="onPageChange(currentPage + 1)">
+        下一页 ▶
+      </button>
+      <button class="btn-nav" :disabled="!hasMore" @click="onPageChange(totalPages)">
+        末页 ⏭
+      </button>
     </div>
 
     <!-- 详情模态框 -->
@@ -113,12 +172,69 @@ export default {
   components: { ItsmModal },
   data() {
     return {
+      // 分页数据
       executions: [],
+      currentPage: 1,
+      pageSize: 20,
+      totalCount: 0,
+      pageSizes: [10, 20, 50],
+
+      // 排序
+      sortBy: 'created_at',
+      sortOrder: 'DESC',
+
+      // 筛选
+      filters: {
+        status: '',
+        flowId: ''
+      },
+
+      // UI状态
       selectedExecution: null,
       loading: false,
       showDetailsModal: false,
       message: null,
       messageTimer: null
+    }
+  },
+
+  computed: {
+    totalPages() {
+      return Math.ceil(this.totalCount / this.pageSize)
+    },
+    hasMore() {
+      return this.currentPage < this.totalPages
+    },
+    visiblePages() {
+      const totalPages = this.totalPages
+      const current = this.currentPage
+      const delta = 2
+      const left = current - delta
+      const right = current + delta + 1
+
+      const range = []
+      const rangeWithDots = []
+      let l
+
+      for (let i = 1; i <= totalPages; i++) {
+        if ((i >= left && i < right) || i === 1 || i === totalPages) {
+          range.push(i)
+        }
+      }
+
+      range.forEach((i) => {
+        if (l) {
+          if (i - l === 2) {
+            rangeWithDots.push(l + 1)
+          } else if (i - l !== 1) {
+            rangeWithDots.push('...')
+          }
+        }
+        rangeWithDots.push(i)
+        l = i
+      })
+
+      return rangeWithDots.filter((x) => x !== '...' && typeof x === 'number')
     }
   },
   mounted() {
@@ -133,13 +249,29 @@ export default {
     async loadExecutions() {
       this.loading = true
       try {
-        // 这个 API 需要后端支持全局查询所有执行实例
-        // 暂时使用空数组，等待后端实现
-        this.executions = []
-        this.showMessage('执行实例列表功能已准备就绪，后端 API 已部署', 'success')
+        const params = {
+          page: this.currentPage,
+          limit: this.pageSize,
+          sortBy: this.sortBy,
+          order: this.sortOrder
+        }
+
+        // 仅添加有值的筛选器
+        if (this.filters.status) {
+          params.status = this.filters.status
+        }
+        if (this.filters.flowId) {
+          params.flowId = this.filters.flowId
+        }
+
+        const response = await api.flows.getAllExecutions(params)
+        this.executions = response.data || []
+        this.totalCount = response.total || 0
       } catch (error) {
         console.error('加载失败:', error)
         this.showMessage('加载失败，请检查网络连接', 'error')
+        this.executions = []
+        this.totalCount = 0
       } finally {
         this.loading = false
       }
@@ -197,6 +329,34 @@ export default {
       this.messageTimer = setTimeout(() => {
         this.message = null
       }, 3000)
+    },
+
+    // 分页和排序
+    onPageChange(newPage) {
+      this.currentPage = Math.max(1, Math.min(newPage, this.totalPages))
+      this.loadExecutions()
+    },
+
+    onPageSizeChange(newSize) {
+      this.pageSize = newSize
+      this.currentPage = 1
+      this.loadExecutions()
+    },
+
+    onSortChange(newSortBy) {
+      if (this.sortBy === newSortBy) {
+        this.sortOrder = this.sortOrder === 'ASC' ? 'DESC' : 'ASC'
+      } else {
+        this.sortBy = newSortBy
+        this.sortOrder = 'DESC'
+      }
+      this.currentPage = 1
+      this.loadExecutions()
+    },
+
+    onFilterChange() {
+      this.currentPage = 1
+      this.loadExecutions()
     }
   }
 }
@@ -454,6 +614,132 @@ dd {
   }
 }
 
+/* 筛选面板 */
+.filter-panel {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--app-card-elevated);
+  border-radius: 8px;
+  align-items: center;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-toggle-sort {
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-weight: bold;
+  cursor: pointer;
+  min-width: 40px;
+}
+
+/* 分页头部 */
+.pagination-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--app-card-elevated);
+  border-radius: 8px;
+}
+
+.page-size-select {
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-card);
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.page-info {
+  font-size: 0.9rem;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+
+/* 分页导航 */
+.pagination-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--app-card-elevated);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-nav {
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.btn-nav:hover:not(:disabled) {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+  background: var(--app-card-elevated);
+}
+
+.btn-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 4px;
+}
+
+.page-number {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-number:hover {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
+.page-number.active {
+  background: var(--app-primary);
+  color: white;
+  border-color: var(--app-primary);
+}
+
 @media (max-width: 768px) {
   .executions-grid {
     grid-template-columns: 1fr;
@@ -465,6 +751,20 @@ dd {
 
   dt {
     margin-bottom: 4px;
+  }
+
+  .filter-panel {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pagination-nav {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .btn-nav {
+    width: 100%;
   }
 }
 </style>
