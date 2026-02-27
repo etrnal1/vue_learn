@@ -8,7 +8,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('startEvent')"
+            @dragstart="onNodeDragStart('startEvent', $event)"
             title="开始事件"
           >
             ◆ 开始
@@ -16,7 +16,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('userTask')"
+            @dragstart="onNodeDragStart('userTask', $event)"
             title="用户任务"
           >
             ◻ 任务
@@ -24,7 +24,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('exclusiveGateway')"
+            @dragstart="onNodeDragStart('exclusiveGateway', $event)"
             title="排他网关 - 条件分支"
           >
             ◊ 排他分支
@@ -32,7 +32,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('parallelGateway')"
+            @dragstart="onNodeDragStart('parallelGateway', $event)"
             title="并行网关 - 多路并行执行"
           >
             ⬠ 并行网关
@@ -40,7 +40,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('inclusiveGateway')"
+            @dragstart="onNodeDragStart('inclusiveGateway', $event)"
             title="包容网关 - 多条件组合"
           >
             ◈ 包容网关
@@ -48,7 +48,7 @@
           <button
             class="palette-btn"
             draggable="true"
-            @dragstart="onNodeDragStart('endEvent')"
+            @dragstart="onNodeDragStart('endEvent', $event)"
             title="结束事件"
           >
             ◆ 结束
@@ -71,7 +71,14 @@
     </div>
 
     <!-- 画布区域 -->
-    <div class="flow-editor__canvas" @dragover="onDragOver" @drop="onDrop">
+    <div
+      ref="vueFlowContainer"
+      class="flow-editor__canvas"
+      :class="{ 'is-drag-over': isDragOver }"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <VueFlow
         ref="vueFlow"
         :nodes="nodes"
@@ -270,7 +277,12 @@ export default {
       draggedNodeType: null,
       defaultViewport: { zoom: 1, x: 0, y: 0 },
       nodeIdCounter: 0,
-      showConditionEditor: false
+      showConditionEditor: false,
+      // 拖拽相关状态
+      isDragOver: false,
+      dragOverPos: null,
+      dragStartPos: null,
+      dragImage: null
     }
   },
   watch: {
@@ -343,35 +355,115 @@ export default {
       this.nodeIdCounter = steps.length
     },
 
-    onNodeDragStart(nodeType) {
+    onNodeDragStart(nodeType, event) {
       this.draggedNodeType = nodeType
+      this.dragStartPos = { x: event.clientX, y: event.clientY }
+
+      // 创建自定义拖拽图像
+      if (event.dataTransfer) {
+        const label = this.getNodeLabel(nodeType)
+        const dragImg = document.createElement('div')
+        dragImg.textContent = label
+        dragImg.style.cssText = `
+          padding: 8px 12px;
+          background: var(--app-primary);
+          color: white;
+          border-radius: 6px;
+          font-size: 12px;
+          position: absolute;
+          left: -9999px;
+          pointer-events: none;
+        `
+        document.body.appendChild(dragImg)
+        event.dataTransfer.setDragImage(dragImg, 0, 0)
+        event.dataTransfer.effectAllowed = 'copy'
+
+        setTimeout(() => document.body.removeChild(dragImg), 0)
+      }
     },
 
     onDragOver(event) {
+      if (!this.draggedNodeType) return
+
       event.preventDefault()
-      event.dataTransfer.dropEffect = 'move'
+      event.dataTransfer.dropEffect = 'copy'
+
+      // 视觉反馈：高亮画布
+      this.isDragOver = true
+      this.dragOverPos = { x: event.clientX, y: event.clientY }
+    },
+
+    onDragLeave(event) {
+      // 防止子元素的 dragLeave 触发
+      if (event.target === event.currentTarget) {
+        this.isDragOver = false
+        this.dragOverPos = null
+      }
     },
 
     onDrop(event) {
       if (!this.draggedNodeType) return
 
       event.preventDefault()
+      this.isDragOver = false
+      this.dragOverPos = null
 
-      const { x, y } = event
+      // 获取画布相对位置
+      const canvas = this.$refs.vueFlowContainer
+      if (!canvas) {
+        // 如果没有获取到容器，使用屏幕坐标
+        this.createNodeAtPosition(event.clientX, event.clientY)
+      } else {
+        const rect = canvas.getBoundingClientRect()
+        const x = event.clientX - rect.left
+        const y = event.clientY - rect.top
+
+        // 考虑缩放和平移
+        const vueFlow = this.vueFlow
+        if (vueFlow && vueFlow.project) {
+          try {
+            const pos = vueFlow.project({ x, y })
+            this.createNodeAtPosition(pos.x, pos.y)
+          } catch (e) {
+            // 如果 project 方法失败，使用原始位置
+            this.createNodeAtPosition(x, y)
+          }
+        } else {
+          this.createNodeAtPosition(x, y)
+        }
+      }
+
+      this.draggedNodeType = null
+    },
+
+    createNodeAtPosition(x, y) {
+      // 考虑节点大小进行居中
+      const nodeWidth = 120
+      const nodeHeight = 60
+
       const newNode = {
         id: `node_${uuidv4()}`,
         type: this.draggedNodeType,
-        position: { x: x - 60, y: y - 40 },
+        position: {
+          x: x - nodeWidth / 2,
+          y: y - nodeHeight / 2
+        },
         data: {
           label: this.getNodeLabel(this.draggedNodeType),
           description: '',
-          assignee: ''
-        }
+          assignee: '',
+          duration: '',
+          conditional: false
+        },
+        draggable: true,
+        selectable: true
       }
 
       this.nodes.push(newNode)
       this.hasChanges = true
-      this.draggedNodeType = null
+
+      // 自动选中新节点
+      this.selectedNode = newNode
     },
 
     getNodeLabel(nodeType) {
@@ -543,11 +635,20 @@ export default {
   border-radius: 6px;
   cursor: grab;
   font-size: 0.9rem;
-  transition: opacity 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  user-select: none;
 }
 
 .palette-btn:hover:not(:disabled) {
-  opacity: 0.8;
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.palette-btn:active:not(:disabled) {
+  cursor: grabbing;
+  transform: translateY(0);
 }
 
 .palette-btn:disabled {
@@ -579,6 +680,38 @@ export default {
   flex: 1;
   position: relative;
   background: white;
+  transition: all 0.2s ease;
+}
+
+.flow-editor__canvas.is-drag-over {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 2px dashed var(--app-primary);
+}
+
+.flow-editor__canvas.is-drag-over::before {
+  content: '拖拽节点到这里';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 12px 24px;
+  background: var(--app-primary);
+  color: white;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 100;
+  animation: float 0.5s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-8px);
+  }
 }
 
 .flow-editor__canvas :deep(.vue-flow) {
