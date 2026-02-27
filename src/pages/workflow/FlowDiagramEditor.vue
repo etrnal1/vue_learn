@@ -104,6 +104,9 @@
           <button :class="{ active: view === 'canvas' }" @click="switchView('canvas')">
             🧩 画布拖拽
           </button>
+          <button :class="{ active: view === 'relation' }" @click="switchView('relation')">
+            🕸 关系视图
+          </button>
 
           <!-- Phase 3: 参数传递系统按钮 -->
           <div class="toolbar-divider"></div>
@@ -128,6 +131,14 @@
           <TimelineView :steps="editingFlow.steps" />
         </div>
 
+        <div
+          v-if="editingFlow.steps && editingFlow.steps.length > 0"
+          v-show="view === 'relation'"
+          class="relation-section"
+        >
+          <RelationView :steps="editingFlow.steps" />
+        </div>
+
         <!-- 画布拖拽视图 -->
         <div
           v-if="canvasMounted"
@@ -135,12 +146,14 @@
           class="canvas-section"
         >
           <FlowEditor
+            ref="flowEditorRef"
             v-if="editingFlow"
             v-model="flowDiagram"
             :title="editingFlow.name"
             :readonly="!canEditFlow"
             @save="onFlowDiagramSave"
             @node-select="onCanvasNodeClick"
+            @layout-change="onCanvasLayoutChange"
           />
         </div>
 
@@ -360,7 +373,10 @@
             <p class="subtitle">把高频步骤存为公共模块，在任意流程中一键复用。</p>
           </div>
           <div class="versions-actions">
-            <button class="btn btn-small" :disabled="!canEditFlow || editingStepIndex == null" @click="createSharedModuleFromCurrentStep">
+            <button class="btn btn-small" :disabled="!canEditFlow" @click="openSharedModuleForm('create')">
+              新建模块
+            </button>
+            <button class="btn btn-small" :disabled="!canEditFlow || editingStepIndex == null" @click="openSharedModuleForm('create', null, 'selected-step')">
               当前步骤存为模块
             </button>
             <button class="btn btn-small" @click="loadSharedModules">
@@ -379,6 +395,9 @@
             <div class="versions-actions">
               <button class="btn btn-small" :disabled="!canEditFlow" @click="insertSharedModule(module)">
                 插入流程
+              </button>
+              <button class="btn btn-small" :disabled="!canEditFlow" @click="editSharedModule(module)">
+                编辑
               </button>
               <button class="btn btn-small btn-danger" :disabled="!canEditFlow" @click="removeSharedModule(module)">
                 删除
@@ -575,6 +594,46 @@
       />
     </ItsmModal>
 
+    <ItsmModal
+      v-if="showSharedModuleForm"
+      :title="sharedModuleFormMode === 'edit' ? '编辑公共模块' : '新建公共模块'"
+      size="large"
+      @close="closeSharedModuleForm"
+    >
+      <div class="module-form">
+        <div class="module-form-row">
+          <label>模块名称</label>
+          <input v-model.trim="sharedModuleForm.name" class="step-input" placeholder="例如：风控审批模块" />
+        </div>
+        <div class="module-form-row">
+          <label>模块标识（moduleKey）</label>
+          <input v-model.trim="sharedModuleForm.moduleKey" class="step-input" placeholder="例如：risk_approval_v1" />
+        </div>
+        <div class="module-form-row">
+          <label>描述（可选）</label>
+          <textarea v-model="sharedModuleForm.description" class="step-textarea" rows="2" placeholder="描述此模块适用场景"></textarea>
+        </div>
+        <div class="module-form-row">
+          <label>模板来源</label>
+          <select v-model="sharedModuleForm.sourceType" class="step-input-sm">
+            <option value="empty">单步骤空模板</option>
+            <option value="selected-step" :disabled="editingStepIndex == null">当前选中步骤</option>
+            <option value="flow-all" :disabled="!editingFlow?.steps?.length">当前流程全部步骤</option>
+            <option v-if="sharedModuleFormMode === 'edit'" value="keep-existing">保留模块原模板</option>
+          </select>
+        </div>
+        <p class="module-form-hint">
+          将按所选来源生成模块步骤模板；后续可继续编辑模块并覆盖模板。
+        </p>
+        <div class="module-form-actions">
+          <button class="btn btn-small" @click="closeSharedModuleForm">取消</button>
+          <button class="btn btn-small btn-success" :disabled="sharedModuleSubmitting" @click="submitSharedModuleForm">
+            {{ sharedModuleSubmitting ? '提交中…' : (sharedModuleFormMode === 'edit' ? '保存修改' : '创建模块') }}
+          </button>
+        </div>
+      </div>
+    </ItsmModal>
+
     <!-- 消息提示 -->
     <div v-if="message" class="message" :class="[message.type, { 'auto-save': message.auto }]">
       {{ message.text }}
@@ -587,6 +646,7 @@ import { api } from '../../utils/api.js'
 import { recordAudit } from '../../utils/auditLog.js'
 import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 import TimelineView from '../../components/workflow/TimelineView.vue'
+import RelationView from '../../components/workflow/RelationView.vue'
 import { VueFlow, applyNodeChanges } from '@vue-flow/core'
 import FlowEditor from '../../components/flow-editor/FlowEditor.vue'
 import ItsmModal from '../../components/itsm/ItsmModal.vue'
@@ -597,7 +657,7 @@ import '@vue-flow/core/dist/theme-default.css'
 
 export default {
   name: 'FlowDiagramEditor',
-  components: { TraceFlowDemo, TimelineView, VueFlow, FlowEditor, ItsmModal, VariableDefinitionDialog, ParameterMappingDialog },
+  components: { TraceFlowDemo, TimelineView, RelationView, VueFlow, FlowEditor, ItsmModal, VariableDefinitionDialog, ParameterMappingDialog },
   data() {
     return {
       flows: [],
@@ -614,7 +674,7 @@ export default {
       lastSavedFlow: null,
       isAutoSaving: false,
       autoSaveEnabled: true,
-      autoSaveInterval: 10000,  // 每 10 秒自动保存一次
+      autoSaveInterval: 3000,  // 每 3 秒自动保存一次
       flowVersions: [],
       versionsLoading: false,
       versionError: '',
@@ -637,6 +697,16 @@ export default {
       canvasInteractionMode: 'node',
       sharedModules: [],
       sharedModulesLoading: false,
+      showSharedModuleForm: false,
+      sharedModuleFormMode: 'create',
+      sharedModuleSubmitting: false,
+      sharedModuleForm: {
+        id: '',
+        name: '',
+        moduleKey: '',
+        description: '',
+        sourceType: 'empty'
+      },
       view: 'list',  // 'list' | 'timeline' | 'canvas'
       flowDiagram: { nodes: [], edges: [] },
       // Phase 3: 参数传递与数据映射
@@ -745,7 +815,7 @@ export default {
       const now = Date.now()
       return {
         id: seed.id || `step_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
-        name: seed.name || seed.title || '',
+        name: this.normalizeCanvasNodeName(seed.name || seed.title || '', ''),
         description: seed.description || '',
         assignee: seed.assignee || '',
         duration: seed.duration || '',
@@ -808,7 +878,7 @@ export default {
       const seed = Math.random().toString(36).substr(2, 6)
       const steps = (Array.isArray(sourceFlow.steps) ? sourceFlow.steps : []).map((step, index) => ({
         id: step.id || `step_${now}_${index}_${seed}`,
-        name: step.name || '',
+        name: this.normalizeCanvasNodeName(step.name || '', ''),
         description: step.description || '',
         assignee: step.assignee || '',
         duration: step.duration || '',
@@ -855,54 +925,143 @@ export default {
         this.sharedModules = Array.isArray(result) ? result : []
       } catch (error) {
         this.sharedModules = []
-        this.showMessage(`加载公共模块失败: ${error?.message}`, 'error')
+        // 兼容旧后端：公共模块接口未上线时不阻断编辑流程
+        const msg = String(error?.message || '')
+        if (!/404|not found|流程不存在|未登录|401/i.test(msg)) {
+          this.showMessage(`加载公共模块失败: ${error?.message}`, 'error')
+        } else {
+          console.warn('公共模块接口暂不可用，已降级为无模块模式')
+        }
       } finally {
         this.sharedModulesLoading = false
       }
     },
-    async createSharedModuleFromCurrentStep() {
-      if (!this.canEditFlow) return
+    parseModuleTemplates(module) {
+      const raw = module?.steps_snapshot || module?.stepsSnapshot
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : [])
+        return Array.isArray(parsed) ? parsed : []
+      } catch (_error) {
+        return []
+      }
+    },
+    defaultModuleTemplateStep() {
+      return {
+        name: '模块步骤',
+        description: '',
+        assignee: '',
+        duration: '',
+        conditional: false,
+        relationType: 'sequential',
+        parentStepId: null,
+        tip: '',
+        note: ''
+      }
+    },
+    getSelectedStepAsModuleSteps() {
       const idx = this.editingStepIndex
       const step = (this.editingFlow?.steps || [])[idx]
-      if (!step) {
-        this.showMessage('请先选中一个步骤', 'error')
+      if (!step) return []
+      return [{
+        name: step.name || '模块步骤',
+        description: step.description || '',
+        assignee: step.assignee || '',
+        duration: step.duration || '',
+        conditional: !!step.conditional,
+        relationType: step.relationType || step.relation_type || 'sequential',
+        parentStepId: step.parentStepId || step.parent_step_id || null,
+        tip: step.tip || '',
+        note: step.note || ''
+      }]
+    },
+    getCurrentFlowAsModuleSteps() {
+      return (this.editingFlow?.steps || []).map((step) => ({
+        name: step.name || '模块步骤',
+        description: step.description || '',
+        assignee: step.assignee || '',
+        duration: step.duration || '',
+        conditional: !!step.conditional,
+        relationType: step.relationType || step.relation_type || 'sequential',
+        parentStepId: step.parentStepId || step.parent_step_id || null,
+        tip: step.tip || '',
+        note: step.note || ''
+      }))
+    },
+    openSharedModuleForm(mode = 'create', module = null, preferredSource = '') {
+      if (!this.canEditFlow) return
+      const sourceType = preferredSource || (mode === 'edit' ? 'keep-existing' : 'empty')
+      this.sharedModuleFormMode = mode === 'edit' ? 'edit' : 'create'
+      this.sharedModuleForm = {
+        id: module?.id || '',
+        name: module?.name || '',
+        moduleKey: module?.module_key || module?.moduleKey || '',
+        description: module?.description || '',
+        sourceType
+      }
+      if (sourceType === 'selected-step' && this.editingStepIndex == null) {
+        this.sharedModuleForm.sourceType = 'empty'
+      }
+      this.showSharedModuleForm = true
+    },
+    closeSharedModuleForm() {
+      this.showSharedModuleForm = false
+      this.sharedModuleSubmitting = false
+    },
+    resolveSharedModuleStepsBySource(sourceType, moduleForEdit = null) {
+      if (sourceType === 'selected-step') {
+        return this.getSelectedStepAsModuleSteps()
+      }
+      if (sourceType === 'flow-all') {
+        return this.getCurrentFlowAsModuleSteps()
+      }
+      if (sourceType === 'keep-existing') {
+        return this.parseModuleTemplates(moduleForEdit)
+      }
+      return [this.defaultModuleTemplateStep()]
+    },
+    async submitSharedModuleForm() {
+      if (this.sharedModuleSubmitting) return
+      const mode = this.sharedModuleFormMode
+      const draft = this.sharedModuleForm || {}
+      const name = String(draft.name || '').trim()
+      const moduleKey = String(draft.moduleKey || '').trim()
+      const description = String(draft.description || '').trim()
+      if (!name || !moduleKey) {
+        this.showMessage('模块名称和标识必填', 'error')
         return
       }
-      const name = window.prompt('模块名称：', `${step.name || '步骤'}模块`)
-      if (!name) return
-      const moduleKey = window.prompt('模块唯一标识（英文/数字/下划线）：', `mod_${Date.now()}`)
-      if (!moduleKey) return
+      const editingModule = mode === 'edit'
+        ? this.sharedModules.find((m) => String(m.id) === String(draft.id))
+        : null
+      const steps = this.resolveSharedModuleStepsBySource(draft.sourceType, editingModule)
+      if (!Array.isArray(steps) || steps.length === 0) {
+        this.showMessage('模板步骤为空，请更换模板来源', 'error')
+        return
+      }
+      this.sharedModuleSubmitting = true
       try {
-        await api.flows.createSharedModule({
-          name: name.trim(),
-          moduleKey: moduleKey.trim(),
-          description: step.description || '',
-          steps: [{
-            name: step.name || '模块步骤',
-            description: step.description || '',
-            assignee: step.assignee || '',
-            duration: step.duration || '',
-            conditional: !!step.conditional,
-            relationType: step.relationType || 'sequential',
-            tip: step.tip || '',
-            note: step.note || ''
-          }]
-        })
-        this.showMessage('公共模块已创建', 'success')
+        if (mode === 'edit' && draft.id) {
+          await api.flows.updateSharedModule(draft.id, { name, moduleKey, description, steps })
+          this.showMessage('公共模块已更新', 'success')
+        } else {
+          await api.flows.createSharedModule({ name, moduleKey, description, steps })
+          this.showMessage('公共模块已创建', 'success')
+        }
+        this.closeSharedModuleForm()
         await this.loadSharedModules()
       } catch (error) {
-        this.showMessage(`创建公共模块失败: ${error?.message}`, 'error')
+        this.showMessage(`${mode === 'edit' ? '更新' : '创建'}公共模块失败: ${error?.message}`, 'error')
+      } finally {
+        this.sharedModuleSubmitting = false
       }
+    },
+    async editSharedModule(module) {
+      if (!module?.id) return
+      this.openSharedModuleForm('edit', module, 'keep-existing')
     },
     insertSharedModule(module) {
       if (!this.canEditFlow || !module) return
-      const raw = module.steps_snapshot || module.stepsSnapshot
-      let templates = []
-      try {
-        templates = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : [])
-      } catch (error) {
-        templates = []
-      }
+      let templates = this.parseModuleTemplates(module)
       if (!Array.isArray(templates) || templates.length === 0) {
         this.showMessage('模块没有可插入的步骤模板', 'error')
         return
@@ -973,8 +1132,8 @@ export default {
         y: baseY
       }
     },
-    syncCanvasFromSteps() {
-      const steps = this.editingFlow?.steps || []
+    syncCanvasFromSteps(flow = this.editingFlow) {
+      const steps = flow?.steps || []
       const byId = new Map(steps.map((step) => [String(step.id), step]))
       const seqIndexMap = new Map()
       const parallelIndexMap = new Map()
@@ -1003,7 +1162,7 @@ export default {
           id: String(step.id),
           position,
           data: {
-            label: `${index + 1}. ${step.name || `步骤 ${index + 1}`}${relationType === 'child' ? ' · 子流程' : (relationType === 'parallel' ? ' · 平级' : '')}`,
+            label: step.name || `步骤 ${index + 1}`,
             description: step.description || '',
             assignee: step.assignee || '',
             duration: step.duration || '',
@@ -1076,6 +1235,65 @@ export default {
         this.scheduleAutoSave()
       }
     },
+    onCanvasLayoutChange(diagram = {}) {
+      if (!this.editingFlow?.steps?.length) return
+      const nodes = Array.isArray(diagram.nodes) ? diagram.nodes : []
+      const edges = Array.isArray(diagram.edges) ? diagram.edges : []
+      if (nodes.length === 0) return
+
+      const nodeMap = new Map(nodes.map((n) => [String(n.id), n]))
+      const incomingEdgeMap = new Map()
+      edges.forEach((edge) => {
+        if (!edge?.target) return
+        if (!incomingEdgeMap.has(String(edge.target))) {
+          incomingEdgeMap.set(String(edge.target), edge)
+        }
+      })
+
+      let changed = false
+      this.editingFlow.steps.forEach((step) => {
+        const node = nodeMap.get(String(step.id))
+        if (node?.position) {
+          const nx = Number(node.position.x)
+          const ny = Number(node.position.y)
+          if (Number.isFinite(nx) && Number.isFinite(ny)) {
+            if (step.positionX !== nx || step.positionY !== ny) {
+              step.positionX = nx
+              step.positionY = ny
+              changed = true
+            }
+          }
+        }
+
+        const incoming = incomingEdgeMap.get(String(step.id))
+        if (!incoming) return
+        const edgeLabel = String(incoming?.label || '').trim()
+        const nextRelationType = edgeLabel.includes('子')
+          ? 'child'
+          : (edgeLabel.includes('平') ? 'parallel' : (step.relationType || 'sequential'))
+        const nextParentId = nextRelationType === 'child' ? (incoming.source || null) : null
+        if ((step.relationType || 'sequential') !== nextRelationType) {
+          step.relationType = nextRelationType
+          changed = true
+        }
+        if ((step.parentStepId || null) !== nextParentId) {
+          step.parentStepId = nextParentId
+          changed = true
+        }
+      })
+
+      if (changed) {
+        this.scheduleAutoSave()
+      }
+    },
+    normalizeCanvasNodeName(value, fallback = '未命名节点') {
+      const raw = String(value || '').trim()
+      if (!raw) return fallback
+      return raw
+        .replace(/^\d+(?:\.\d+)*\s*[.\-、]?\s*/, '')
+        .replace(/\s*[·|-]\s*(子流程|平级)$/g, '')
+        .trim() || fallback
+    },
     async onFlowDiagramSave(elements) {
       if (!this.editingFlow || !this.canEditFlow) return
 
@@ -1105,7 +1323,10 @@ export default {
             : null
           return {
             id: node.id,
-            name: node.data.label || node.data.name || original.name || '未命名节点',
+            name: this.normalizeCanvasNodeName(
+              node.data.label || node.data.name || original.name,
+              '未命名节点'
+            ),
             description: node.data.description || original.description || '',
             assignee: node.data.assignee || original.assignee || '',
             duration: node.data.duration || original.duration || '',
@@ -1149,8 +1370,8 @@ export default {
         this.flowDiagram = { nodes: [], edges: [] }
         return
       }
-      this.editingFlow = this.normalizeFlow(flow)
-      this.syncCanvasFromSteps()
+      const normalized = this.normalizeFlow(flow)
+      this.syncCanvasFromSteps(normalized)
     },
     async loadFlows() {
       this.loading = true
@@ -1329,8 +1550,20 @@ export default {
     toggleSwimlaneView() {
       this.showSwimlaneView = !this.showSwimlaneView
     },
+    requestCanvasFit(retry = 0) {
+      if (this.view !== 'canvas') return
+      this.$nextTick(() => {
+        this.$refs.flowEditorRef?.zoomFit?.()
+      })
+      if (retry < 2) {
+        setTimeout(() => {
+          this.$refs.flowEditorRef?.zoomFit?.()
+          this.requestCanvasFit(retry + 1)
+        }, 140)
+      }
+    },
     switchView(nextView) {
-      if (nextView !== 'list' && nextView !== 'timeline' && nextView !== 'canvas') return
+      if (nextView !== 'list' && nextView !== 'timeline' && nextView !== 'canvas' && nextView !== 'relation') return
       if (this.view === nextView) return
       if (nextView === 'timeline') {
         this.timelineMounted = true
@@ -1338,6 +1571,7 @@ export default {
       if (nextView === 'canvas') {
         this.canvasMounted = true
         this.syncCanvasFromSteps()
+        this.requestCanvasFit()
       }
       this.view = nextView
     },
@@ -1386,6 +1620,7 @@ export default {
         this.canvasMounted = false
         this.canvasInteractionMode = 'node'
         this.syncCanvasFromSteps()
+        this.requestCanvasFit()
       } catch (error) {
         console.error('进入编辑态失败:', error)
         this.showMessage(`进入编辑失败: ${error?.message || '未知错误'}`, 'error')
@@ -1395,7 +1630,8 @@ export default {
       Promise.allSettled([
         this.loadVersions(flow.id),
         this.loadComments(flow.id),
-        this.loadFlowVariables(flow.id)
+        this.loadFlowVariables(flow.id),
+        this.loadSharedModules()
       ]).then((results) => {
         const failed = results.filter((item) => item.status === 'rejected')
         if (failed.length > 0) {
@@ -1692,7 +1928,7 @@ export default {
     }
     this.loadFlowPermissions()
     this.loadFlows()
-    this.loadSharedModules()
+    // 公共模块在进入编辑态时懒加载，避免旧后端接口缺失影响列表页操作
   },
   beforeUnmount() {
     // 页面卸载前，清除自动保存计时器
@@ -2099,6 +2335,14 @@ export default {
 /* 时间线视图容器 */
 .timeline-section {
   padding: 20px 0;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card);
+  margin: 12px 0;
+}
+
+.relation-section {
+  padding: 16px;
   border: 1px solid var(--app-border);
   border-radius: 12px;
   background: var(--app-card);
@@ -2604,6 +2848,35 @@ export default {
   font-size: 0.9em;
 }
 
+.module-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.module-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.module-form-row label {
+  font-size: 0.88em;
+  color: var(--app-text-muted);
+}
+
+.module-form-hint {
+  margin: 0;
+  font-size: 0.82em;
+  color: var(--app-text-muted);
+}
+
+.module-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .comment-status {
   padding: 2px 8px;
   border-radius: 999px;
@@ -2655,6 +2928,161 @@ export default {
   opacity: 0.9;
   font-size: 0.85em;
   padding: 8px 12px;
+}
+
+/* Visual refresh */
+.flow-editor {
+  --flow-accent: #0ea5e9;
+  --flow-accent-soft: rgba(14, 165, 233, 0.14);
+  --flow-emerald: #10b981;
+  --flow-bg: linear-gradient(160deg, #f8fbff 0%, #f4f7ff 44%, #f0fdfa 100%);
+  font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+  background: var(--flow-bg);
+  border-radius: 18px;
+}
+
+.editor-header h2 {
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  color: #5f6f87;
+}
+
+.btn {
+  border-radius: 10px;
+  border-color: #d1ddf0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.09);
+}
+
+.btn-primary {
+  background: linear-gradient(120deg, #0ea5e9, #2563eb);
+  border-color: transparent;
+}
+
+.btn-success {
+  background: linear-gradient(120deg, #10b981, #059669);
+  border-color: transparent;
+}
+
+.flow-card-item,
+.steps-editor,
+.steps-preview,
+.versions-panel,
+.collaboration-panel {
+  border-color: #dbe5f5;
+  border-radius: 16px;
+  box-shadow: 0 10px 26px rgba(30, 41, 59, 0.08);
+}
+
+.flow-card-item {
+  background: linear-gradient(155deg, #ffffff 0%, #f8fbff 58%, #eef6ff 100%);
+}
+
+.flow-card-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(14, 48, 105, 0.12);
+}
+
+.badge {
+  background: linear-gradient(120deg, #0284c7, #2563eb);
+  border-radius: 999px;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.3);
+}
+
+.steps-preview-list {
+  background: linear-gradient(145deg, #f6fbff, #f0f9ff);
+  border-left: 3px solid var(--flow-accent);
+}
+
+.steps-header,
+.view-switcher {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(to bottom, rgba(248, 251, 255, 0.95), rgba(248, 251, 255, 0.88));
+  backdrop-filter: blur(6px);
+}
+
+.view-switcher button {
+  border-radius: 999px;
+  border-color: #cfdef3;
+  background: linear-gradient(180deg, #fff, #f7fbff);
+  color: #274060;
+}
+
+.view-switcher button.active {
+  background: linear-gradient(120deg, #0891b2, #1d4ed8);
+  box-shadow: 0 8px 18px rgba(29, 78, 216, 0.24);
+}
+
+.step-item {
+  border-color: #d9e6f7;
+  border-radius: 14px;
+  background: linear-gradient(150deg, #ffffff 0%, #f8fbff 60%, #f0f7ff 100%);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+}
+
+.step-item:hover {
+  border-color: #93c5fd;
+}
+
+.step-item.editing-step {
+  border-color: #0284c7;
+  background: linear-gradient(145deg, #f0faff, #eaf4ff);
+  box-shadow: 0 12px 26px rgba(14, 116, 144, 0.2);
+}
+
+.step-number,
+.preview-index,
+.step-num {
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
+}
+
+.step-input,
+.step-textarea,
+.step-input-sm,
+.comment-form textarea,
+.comment-form input,
+.comment-form select,
+.flow-name-input,
+.flow-desc-input {
+  border-color: #cfdcee;
+  background: #ffffff;
+  border-radius: 10px;
+}
+
+.step-input:focus,
+.step-textarea:focus,
+.step-input-sm:focus,
+.flow-name-input:focus,
+.flow-desc-input:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px var(--flow-accent-soft);
+  outline: none;
+}
+
+.steps-info {
+  background: linear-gradient(140deg, rgba(14, 165, 233, 0.08), rgba(16, 185, 129, 0.09));
+  border-color: rgba(14, 165, 233, 0.24);
+}
+
+.comment-card,
+.versions-item,
+.swimlane,
+.swimlane-step {
+  border-color: #d7e6fa;
+  background: linear-gradient(160deg, #ffffff, #f5faff);
+}
+
+.message {
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
 }
 
 /* 移动端适配 */

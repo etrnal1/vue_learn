@@ -277,6 +277,7 @@ export const api = {
     rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' }),
     getSharedModules: () => apiRequest('/flows/shared-modules'),
     createSharedModule: (payload) => apiRequest('/flows/shared-modules', { method: 'POST', body: JSON.stringify(payload) }),
+    updateSharedModule: (moduleId, payload) => apiRequest(`/flows/shared-modules/${moduleId}`, { method: 'PUT', body: JSON.stringify(payload) }),
     deleteSharedModule: (moduleId) => apiRequest(`/flows/shared-modules/${moduleId}`, { method: 'DELETE' }),
     exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) }),
     getExports: (flowId, params = {}) => {
