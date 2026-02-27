@@ -233,37 +233,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/flows/:id - 获取单个流程（含步骤）- 无需认证版本
-router.get('/:id', async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const [flows] = await pool.query(`
-      SELECT
-        f.*,
-        u.name as author_name
-      FROM flows f
-      LEFT JOIN users u ON f.author_id = u.id
-      WHERE f.id = ?
-    `, [id]);
-
-    if (flows.length === 0) {
-      return res.status(404).json({ error: '流程不存在' });
-    }
-
-    const [steps] = await pool.query(
-      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
-      [id]
-    );
-
-    const flow = { ...flows[0], steps };
-    res.json(flow);
-  } catch (error) {
-    console.error('获取流程详情失败:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 function validateFlowPayload(payload) {
   if (!payload || !Array.isArray(payload.steps) || payload.steps.length === 0) {
     return { valid: false, message: '请确保流程至少包含一个步骤' };
@@ -356,6 +325,44 @@ async function ensureFlowExtensions() {
         updated_at BIGINT NOT NULL,
         INDEX idx_flow_modules_key (module_key),
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS flow_variables (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        type ENUM('string', 'number', 'boolean', 'array', 'object', 'any') DEFAULT 'string',
+        default_value JSON,
+        description TEXT,
+        required BOOLEAN DEFAULT FALSE,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow (flow_id),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS flow_step_parameters (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        step_id VARCHAR(50) NOT NULL,
+        param_type ENUM('input', 'output') DEFAULT 'input',
+        param_name VARCHAR(100) NOT NULL,
+        source_type ENUM('constant', 'variable', 'expression', 'previous_step') DEFAULT 'constant',
+        source_value TEXT,
+        mapping_to VARCHAR(100),
+        description TEXT,
+        step_order INT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_step (step_id),
+        INDEX idx_flow (flow_id),
+        INDEX idx_param_type (param_type),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES flow_steps(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
@@ -621,6 +628,60 @@ router.post('/shared-modules', flowWriteProtect, async (req, res) => {
       return res.status(409).json({ error: 'moduleKey 已存在，请更换后再试' });
     }
     console.error('创建公共模块失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/flows/shared-modules/:moduleId - 更新公共模块
+router.put('/shared-modules/:moduleId', flowWriteProtect, async (req, res) => {
+  const { moduleId } = req.params;
+  const {
+    moduleKey = '',
+    name = '',
+    description = '',
+    steps = []
+  } = req.body || {};
+
+  const key = String(moduleKey || '').trim();
+  const moduleName = String(name || '').trim();
+  if (!key || !moduleName) {
+    return res.status(400).json({ error: 'moduleKey 和 name 必填' });
+  }
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return res.status(400).json({ error: 'steps 至少包含一个步骤模板' });
+  }
+
+  try {
+    const now = Date.now();
+    const snapshot = steps.map((step = {}, index) => ({
+      id: step.id || `tpl_${index + 1}`,
+      name: step.name || `模板步骤 ${index + 1}`,
+      description: step.description || '',
+      assignee: step.assignee || '',
+      duration: step.duration || '',
+      conditional: !!step.conditional,
+      relationType: step.relationType || step.relation_type || 'sequential',
+      parentStepId: step.parentStepId || step.parent_step_id || null,
+      tip: step.tip || '',
+      note: step.note || ''
+    }));
+
+    const [result] = await pool.query(
+      `UPDATE flow_shared_modules
+       SET module_key = ?, name = ?, description = ?, steps_snapshot = ?, updated_at = ?
+       WHERE id = ?`,
+      [key, moduleName, description || null, JSON.stringify(snapshot), now, moduleId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: '公共模块不存在' });
+    }
+    const [rows] = await pool.query('SELECT * FROM flow_shared_modules WHERE id = ?', [moduleId]);
+    res.json(rows[0]);
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'moduleKey 已存在，请更换后再试' });
+    }
+    console.error('更新公共模块失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
