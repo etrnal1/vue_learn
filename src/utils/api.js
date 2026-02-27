@@ -276,6 +276,14 @@ export const api = {
     rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' }),
     exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) }),
     // 执行实例 API
+    getAllExecutions: (params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+          .reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {})
+      )
+      return apiRequest(`/flows/executions/query/all?${query.toString()}`)
+    },
     getExecutions: (flowId) => apiRequest(`/flows/${flowId}/executions`),
     getExecution: (executionId) => apiRequest(`/flows/executions/${executionId}`),
     createExecution: (flowId, data) => apiRequest(`/flows/${flowId}/executions`, { method: 'POST', body: JSON.stringify(data) }),
