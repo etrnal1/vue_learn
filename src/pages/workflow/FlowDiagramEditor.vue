@@ -48,7 +48,7 @@
           </div>
 
           <div class="card-actions">
-            <button class="btn btn-small" :disabled="!canEditFlow" @click="editFlow(flow)">编辑</button>
+            <button class="btn btn-small" @click="editFlow(flow)">编辑</button>
             <button class="btn btn-small btn-danger" :disabled="!canAdminFlow" @click="deleteFlow(flow)">删除</button>
           </div>
         </div>
@@ -605,6 +605,7 @@ export default {
       editingStepIndex: null,
       loading: false,
       saving: false,
+      flowRbacEnabled: String(import.meta.env.VITE_FLOW_RBAC_ENABLED || 'false').toLowerCase() === 'true',
       flowPermissions: null,
       permissionsLoading: false,
       message: null,
@@ -659,15 +660,19 @@ export default {
       )
     },
     canEditFlow() {
+      if (!this.flowRbacEnabled) return true
       return this.flowPermissions?.actions?.edit !== false
     },
     canPublishFlow() {
+      if (!this.flowRbacEnabled) return true
       return this.flowPermissions?.actions?.publish !== false
     },
     canAdminFlow() {
+      if (!this.flowRbacEnabled) return true
       return this.flowPermissions?.actions?.admin !== false
     },
     canCommentFlow() {
+      if (!this.flowRbacEnabled) return true
       return this.flowPermissions?.actions?.comment !== false
     },
     currentCommentStepId() {
@@ -923,31 +928,88 @@ export default {
         this.showMessage(`删除公共模块失败: ${error?.message}`, 'error')
       }
     },
-    getStepCanvasPosition(step, index) {
+    getStepCanvasPosition(step, index, context = {}) {
       const x = Number(step?.positionX)
       const y = Number(step?.positionY)
       if (Number.isFinite(x) && Number.isFinite(y)) {
         return { x, y }
       }
-      const col = index % 3
-      const row = Math.floor(index / 3)
+      const relationType = step?.relationType || step?.relation_type || 'sequential'
+      const {
+        steps = [],
+        positionById = new Map(),
+        seqIndexMap = new Map(),
+        parallelIndexMap = new Map(),
+        baseX = 120,
+        baseY = 120,
+        seqSpacing = 260,
+        parallelSpacingY = 130,
+        childSpacingY = 180
+      } = context
+
+      if (relationType === 'child' && step?.parentStepId && positionById.has(String(step.parentStepId))) {
+        const parent = positionById.get(String(step.parentStepId))
+        return {
+          x: parent.x + 60,
+          y: parent.y + childSpacingY
+        }
+      }
+
+      if (relationType === 'parallel') {
+        const prev = steps[index - 1]
+        const prevPos = positionById.get(String(prev?.id || ''))
+        const parallelOrder = parallelIndexMap.get(String(step.id)) || 0
+        if (prevPos) {
+          return {
+            x: prevPos.x + seqSpacing,
+            y: baseY + (parallelOrder + 1) * parallelSpacingY
+          }
+        }
+      }
+
+      const seqOrder = seqIndexMap.get(String(step.id)) ?? index
       return {
-        x: 80 + col * 280,
-        y: 80 + row * 150
+        x: baseX + seqOrder * seqSpacing,
+        y: baseY
       }
     },
     syncCanvasFromSteps() {
       const steps = this.editingFlow?.steps || []
       const byId = new Map(steps.map((step) => [String(step.id), step]))
+      const seqIndexMap = new Map()
+      const parallelIndexMap = new Map()
+      let seqOrder = 0
+      let parallelOrder = 0
+      steps.forEach((step) => {
+        const relationType = step.relationType || step.relation_type || 'sequential'
+        if (relationType === 'parallel') {
+          parallelIndexMap.set(String(step.id), parallelOrder++)
+        } else {
+          seqIndexMap.set(String(step.id), seqOrder++)
+        }
+      })
+      const positionById = new Map()
+
       this.canvasNodes = steps.map((step, index) => {
-        const position = this.getStepCanvasPosition(step, index)
+        const position = this.getStepCanvasPosition(step, index, {
+          steps,
+          positionById,
+          seqIndexMap,
+          parallelIndexMap
+        })
+        positionById.set(String(step.id), position)
         const relationType = step.relationType || step.relation_type || 'sequential'
         return {
           id: String(step.id),
           position,
           data: {
-            label: `${step.name || `步骤 ${index + 1}`}${relationType === 'child' ? ' · 子流程' : (relationType === 'parallel' ? ' · 平级' : '')}`
+            label: `${index + 1}. ${step.name || `步骤 ${index + 1}`}${relationType === 'child' ? ' · 子流程' : (relationType === 'parallel' ? ' · 平级' : '')}`,
+            description: step.description || '',
+            assignee: step.assignee || '',
+            duration: step.duration || '',
+            relationType
           },
+          type: step.nodeType || (step.conditional ? 'exclusiveGateway' : 'userTask'),
           style: relationType === 'child'
             ? { border: '1px solid #3b82f6', background: '#eff6ff', borderRadius: '10px', width: '210px' }
             : step.conditional
@@ -967,22 +1029,34 @@ export default {
             target: targetId,
             type: 'smoothstep',
             label: '子流程',
-            style: { stroke: '#3b82f6', strokeDasharray: '4 3' }
+            animated: true,
+            markerEnd: 'arrowclosed',
+            style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '6 3' }
           }
         }
 
         if (index === 0) return null
         const prev = steps[index - 1]
         if (!prev) return null
+        const isParallel = relationType === 'parallel'
         return {
           id: `edge_${prev.id}_${targetId}`,
           source: String(prev.id),
           target: targetId,
           type: 'smoothstep',
-          label: relationType === 'parallel' ? '平级' : '',
-          animated: !!step.conditional
+          label: isParallel ? '平级' : '主流程',
+          animated: true,
+          markerEnd: 'arrowclosed',
+          style: isParallel
+            ? { stroke: '#0ea5e9', strokeWidth: 2, strokeDasharray: '5 3' }
+            : { stroke: step.conditional ? '#f59e0b' : '#10b981', strokeWidth: 2, strokeDasharray: step.conditional ? '6 3' : undefined }
         }
       }).filter(Boolean)
+
+      this.flowDiagram = {
+        nodes: JSON.parse(JSON.stringify(this.canvasNodes)),
+        edges: JSON.parse(JSON.stringify(this.canvasEdges))
+      }
     },
     onCanvasNodesChange(changes = []) {
       this.canvasNodes = applyNodeChanges(changes, this.canvasNodes)
@@ -1002,15 +1076,6 @@ export default {
         this.scheduleAutoSave()
       }
     },
-    onCanvasNodeClick(payload) {
-      const node = payload?.node || payload
-      const nodeId = String(node?.id || '')
-      if (!nodeId || !this.editingFlow?.steps?.length) return
-      const idx = this.editingFlow.steps.findIndex((step) => String(step.id) === nodeId)
-      if (idx === -1) return
-      this.editingStepIndex = idx
-      this.commentDraft.stepId = this.editingFlow.steps[idx]?.id || null
-    },
     async onFlowDiagramSave(elements) {
       if (!this.editingFlow || !this.canEditFlow) return
 
@@ -1018,20 +1083,41 @@ export default {
         this.saving = true
         const nodes = elements.filter(el => el.type !== 'edge')
         const edges = elements.filter(el => el.type === 'edge')
+        const stepMap = new Map((this.editingFlow.steps || []).map((step) => [String(step.id), step]))
+        const incomingEdgeMap = new Map()
+        edges.forEach((edge) => {
+          if (!edge?.target) return
+          if (!incomingEdgeMap.has(String(edge.target))) {
+            incomingEdgeMap.set(String(edge.target), edge)
+          }
+        })
 
         // 更新步骤信息
-        const updatedSteps = nodes.map(node => ({
-          id: node.id,
-          name: node.data.label || node.data.name || '未命名节点',
-          description: node.data.description || '',
-          assignee: node.data.assignee || '',
-          duration: node.data.duration || '',
-          position_x: Math.round(node.position.x),
-          position_y: Math.round(node.position.y),
-          node_type: node.type || 'userTask',
-          node_width: 120,
-          node_height: 80
-        }))
+        const updatedSteps = nodes.map((node, index) => {
+          const original = stepMap.get(String(node.id)) || {}
+          const incoming = incomingEdgeMap.get(String(node.id))
+          const edgeLabel = String(incoming?.label || '').trim()
+          const relationType = edgeLabel.includes('子')
+            ? 'child'
+            : (edgeLabel.includes('平') ? 'parallel' : (original.relationType || original.relation_type || 'sequential'))
+          const parentStepId = relationType === 'child'
+            ? (incoming?.source || original.parentStepId || original.parent_step_id || null)
+            : null
+          return {
+            id: node.id,
+            name: node.data.label || node.data.name || original.name || '未命名节点',
+            description: node.data.description || original.description || '',
+            assignee: node.data.assignee || original.assignee || '',
+            duration: node.data.duration || original.duration || '',
+            conditional: original.conditional || node.type === 'exclusiveGateway',
+            relationType,
+            parentStepId,
+            moduleKey: original.moduleKey || original.module_key || '',
+            positionX: Math.round(node.position.x),
+            positionY: Math.round(node.position.y),
+            order: index
+          }
+        })
 
         // 准备连线数据
         const connections = edges.map(edge => ({
@@ -1046,8 +1132,11 @@ export default {
           connections: connections
         })
 
+        this.editingFlow.steps = updatedSteps.map((step, index) => this.createStep(step, index))
+        this.syncCanvasFromSteps()
+
         this.showMessage('流程图保存成功', 'success')
-        await this.scheduleAutoSave() // 触发自动保存逻辑
+        this.scheduleAutoSave()
       } catch (error) {
         console.error('保存流程图失败:', error)
         this.showMessage(`保存失败: ${error.message}`, 'error')
@@ -1060,37 +1149,8 @@ export default {
         this.flowDiagram = { nodes: [], edges: [] }
         return
       }
-
-      // 转换步骤为节点
-      const nodes = flow.steps.map(step => ({
-        id: step.id,
-        type: step.node_type || 'userTask',
-        position: {
-          x: step.position_x || 100,
-          y: step.position_y || 100
-        },
-        data: {
-          label: step.name || '未命名节点',
-          description: step.description || '',
-          assignee: step.assignee || '',
-          duration: step.duration || ''
-        }
-      }))
-
-      // 简单连线（按步骤顺序）
-      const edges = []
-      for (let i = 0; i < flow.steps.length - 1; i++) {
-        const current = flow.steps[i]
-        const next = flow.steps[i + 1]
-        edges.push({
-          id: `edge_${current.id}_${next.id}`,
-          source: current.id,
-          target: next.id,
-          type: 'default'
-        })
-      }
-
-      this.flowDiagram = { nodes, edges }
+      this.editingFlow = this.normalizeFlow(flow)
+      this.syncCanvasFromSteps()
     },
     async loadFlows() {
       this.loading = true
@@ -1104,6 +1164,21 @@ export default {
       }
     },
     async loadFlowPermissions() {
+      if (!this.flowRbacEnabled) {
+        this.flowPermissions = {
+          rbacEnabled: false,
+          actions: {
+            read: true,
+            comment: true,
+            edit: true,
+            publish: true,
+            rollback: true,
+            export: true,
+            admin: true
+          }
+        }
+        return
+      }
       this.permissionsLoading = true
       try {
         const result = await api.flows.getMyPermissions()
@@ -1297,22 +1372,36 @@ export default {
       this.canvasInteractionMode = 'node'
     },
     editFlow(flow) {
-      if (!this.canEditFlow) {
-        this.showMessage('当前角色无权限编辑流程', 'error')
+      if (!flow) {
+        this.showMessage('流程数据异常，无法进入编辑', 'error')
         return
       }
-      const normalized = this.normalizeFlow(JSON.parse(JSON.stringify(flow)))
-      this.editingFlow = normalized
-      this.lastSavedFlow = JSON.parse(JSON.stringify(normalized))
-      this.editingStepIndex = null
-      this.view = 'list'
-      this.timelineMounted = false
-      this.canvasMounted = false
-      this.canvasInteractionMode = 'node'
-      this.syncCanvasFromSteps()
-      this.loadVersions(flow.id)
-      this.loadComments(flow.id)
-      this.loadFlowVariables(flow.id)
+      try {
+        const normalized = this.normalizeFlow(JSON.parse(JSON.stringify(flow)))
+        this.editingFlow = normalized
+        this.lastSavedFlow = JSON.parse(JSON.stringify(normalized))
+        this.editingStepIndex = null
+        this.view = 'list'
+        this.timelineMounted = false
+        this.canvasMounted = false
+        this.canvasInteractionMode = 'node'
+        this.syncCanvasFromSteps()
+      } catch (error) {
+        console.error('进入编辑态失败:', error)
+        this.showMessage(`进入编辑失败: ${error?.message || '未知错误'}`, 'error')
+        return
+      }
+
+      Promise.allSettled([
+        this.loadVersions(flow.id),
+        this.loadComments(flow.id),
+        this.loadFlowVariables(flow.id)
+      ]).then((results) => {
+        const failed = results.filter((item) => item.status === 'rejected')
+        if (failed.length > 0) {
+          console.warn('编辑态扩展数据加载部分失败:', failed)
+        }
+      })
     },
 
     // Phase 3: 参数传递与数据映射相关方法
@@ -1356,11 +1445,15 @@ export default {
     },
 
     onCanvasNodeClick(node) {
-      // 当画布上选中节点时，记录为参数配置的目标
-      const step = this.editingFlow.steps?.find(s => s.id === node.id)
-      if (step) {
-        this.selectedStepForParams = step
-      }
+      const payload = node?.node ? node.node : node
+      const nodeId = String(payload?.id || '')
+      if (!nodeId || !this.editingFlow?.steps?.length) return
+      const step = this.editingFlow.steps.find(s => String(s.id) === nodeId)
+      if (!step) return
+      const idx = this.editingFlow.steps.findIndex(s => String(s.id) === nodeId)
+      this.editingStepIndex = idx
+      this.commentDraft.stepId = step.id
+      this.selectedStepForParams = step
     },
 
     async saveFlow() {

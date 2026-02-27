@@ -3,10 +3,12 @@
     <!-- 工具栏 -->
     <div class="flow-editor__toolbar">
       <div class="toolbar-section">
+        <h2 class="flow-title">{{ title || '流程画布' }}</h2>
         <h3>节点工具</h3>
         <div class="node-palette">
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('startEvent', $event)"
             @touchstart="onNodeTouchStart('startEvent', $event)"
@@ -16,6 +18,7 @@
           </button>
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('userTask', $event)"
             @touchstart="onNodeTouchStart('userTask', $event)"
@@ -25,6 +28,7 @@
           </button>
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('exclusiveGateway', $event)"
             @touchstart="onNodeTouchStart('exclusiveGateway', $event)"
@@ -34,6 +38,7 @@
           </button>
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('parallelGateway', $event)"
             @touchstart="onNodeTouchStart('parallelGateway', $event)"
@@ -43,6 +48,7 @@
           </button>
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('inclusiveGateway', $event)"
             @touchstart="onNodeTouchStart('inclusiveGateway', $event)"
@@ -52,6 +58,7 @@
           </button>
           <button
             class="palette-btn"
+            :disabled="readonly"
             draggable="true"
             @dragstart="onNodeDragStart('endEvent', $event)"
             @touchstart="onNodeTouchStart('endEvent', $event)"
@@ -64,10 +71,10 @@
 
       <div class="toolbar-section">
         <h3>操作</h3>
-        <button class="action-btn" @click="saveFlow" :disabled="!hasChanges">
+        <button class="action-btn" @click="saveFlow" :disabled="!hasChanges || readonly">
           💾 保存
         </button>
-        <button class="action-btn" @click="deleteSelected" :disabled="!selectedNode">
+        <button class="action-btn" @click="deleteSelected" :disabled="!selectedNode || readonly">
           🗑 删除
         </button>
         <button class="action-btn" @click="zoomFit">
@@ -225,7 +232,7 @@
 </template>
 
 <script>
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { VueFlow, applyNodeChanges, applyEdgeChanges } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -267,9 +274,22 @@ export default {
   props: {
     flowId: {
       type: String,
-      required: true
+      default: ''
+    },
+    modelValue: {
+      type: Object,
+      default: () => ({ nodes: [], edges: [] })
+    },
+    title: {
+      type: String,
+      default: ''
+    },
+    readonly: {
+      type: Boolean,
+      default: false
     }
   },
+  emits: ['update:modelValue', 'save', 'node-select'],
   data() {
     return {
       flow: null,
@@ -297,10 +317,19 @@ export default {
     }
   },
   watch: {
+    modelValue: {
+      immediate: true,
+      deep: true,
+      handler(value) {
+        if (!value || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) return
+        this.nodes = JSON.parse(JSON.stringify(value.nodes))
+        this.edges = JSON.parse(JSON.stringify(value.edges))
+      }
+    },
     flowId: {
       immediate: true,
       handler() {
-        this.loadFlow()
+        if (this.flowId) this.loadFlow()
       }
     }
   },
@@ -317,6 +346,7 @@ export default {
   },
   methods: {
     async loadFlow() {
+      if (!this.flowId) return
       this.loading = true
       try {
         this.flow = await api.flows.getOne(this.flowId)
@@ -366,7 +396,14 @@ export default {
             id: `edge_${step.id}_${nextStep.id}`,
             source: step.id,
             target: nextStep.id,
-            label: step.conditional ? '条件' : ''
+            label: step.conditional ? '条件' : '主流程',
+            animated: true,
+            markerEnd: 'arrowclosed',
+            style: {
+              stroke: step.conditional ? '#f59e0b' : '#10b981',
+              strokeWidth: 2,
+              strokeDasharray: step.conditional ? '6 3' : undefined
+            }
           })
         }
       })
@@ -595,30 +632,43 @@ export default {
     },
 
     onNodesChange(changes) {
+      if (this.readonly) return
+      this.nodes = applyNodeChanges(changes, this.nodes)
       changes.forEach(change => {
         if (change.type === 'position' && change.position) {
           this.hasChanges = true
         }
       })
+      this.emitModelValue()
     },
 
     onEdgesChange(changes) {
+      if (this.readonly) return
+      this.edges = applyEdgeChanges(changes, this.edges)
       this.hasChanges = true
+      this.emitModelValue()
     },
 
     onConnect(connection) {
+      if (this.readonly) return
       const edge = {
         id: `edge_${connection.source}_${connection.target}`,
         source: connection.source,
-        target: connection.target
+        target: connection.target,
+        label: '主流程',
+        animated: true,
+        markerEnd: 'arrowclosed',
+        style: { stroke: '#10b981', strokeWidth: 2 }
       }
       this.edges.push(edge)
       this.hasChanges = true
+      this.emitModelValue()
     },
 
     onNodeClick(event) {
       this.selectedNode = event.node
       this.selectedEdge = null
+      this.$emit('node-select', event.node)
     },
 
     onPaneClick() {
@@ -627,14 +677,19 @@ export default {
     },
 
     onNodePropertyChange() {
+      if (this.readonly) return
       this.hasChanges = true
+      this.emitModelValue()
     },
 
     onEdgePropertyChange() {
+      if (this.readonly) return
       this.hasChanges = true
+      this.emitModelValue()
     },
 
     deleteSelected() {
+      if (this.readonly) return
       if (this.selectedNode) {
         this.nodes = this.nodes.filter(n => n.id !== this.selectedNode.id)
         this.edges = this.edges.filter(e =>
@@ -642,6 +697,7 @@ export default {
         )
         this.selectedNode = null
         this.hasChanges = true
+        this.emitModelValue()
       }
     },
 
@@ -650,6 +706,13 @@ export default {
 
       this.loading = true
       try {
+        if (!this.flowId) {
+          const elements = [...this.nodes, ...this.edges.map((edge) => ({ ...edge, type: 'edge' }))]
+          this.$emit('save', elements)
+          this.hasChanges = false
+          this.showSaveStatus('布局已应用', 'success')
+          return
+        }
         // 准备更新数据
         const updateData = {
           steps: this.nodes.map(node => ({
@@ -693,11 +756,19 @@ export default {
     },
 
     onConditionSave(condition) {
+      if (this.readonly) return
       if (this.selectedNode) {
         this.selectedNode.data.condition = condition
         this.hasChanges = true
+        this.emitModelValue()
       }
       this.showConditionEditor = false
+    },
+    emitModelValue() {
+      this.$emit('update:modelValue', {
+        nodes: JSON.parse(JSON.stringify(this.nodes)),
+        edges: JSON.parse(JSON.stringify(this.edges))
+      })
     },
 
     showSaveStatus(message, type) {
@@ -735,6 +806,12 @@ export default {
   text-transform: uppercase;
   color: #666;
   font-weight: 600;
+}
+
+.flow-title {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .node-palette {

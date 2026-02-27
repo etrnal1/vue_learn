@@ -300,6 +300,7 @@ export default {
       searchQuery: '',
       filterStatus: 'all',
       exporting: false,
+      flowRbacEnabled: String(import.meta.env.VITE_FLOW_RBAC_ENABLED || 'false').toLowerCase() === 'true',
       flowPermissions: null,
       metricsLoading: false,
       exportsLoading: false,
@@ -348,6 +349,7 @@ export default {
       return this.selectedFlow?.steps || []
     },
     canExportFlow() {
+      if (!this.flowRbacEnabled) return true
       return this.flowPermissions?.actions?.export !== false
     },
     activityLog() {
@@ -444,6 +446,21 @@ export default {
       this.refreshAuditLog()
     },
     async loadFlowPermissions() {
+      if (!this.flowRbacEnabled) {
+        this.flowPermissions = {
+          rbacEnabled: false,
+          actions: {
+            read: true,
+            comment: true,
+            edit: true,
+            publish: true,
+            rollback: true,
+            export: true,
+            admin: true
+          }
+        }
+        return
+      }
       try {
         const result = await api.flows.getMyPermissions()
         this.flowPermissions = result || null
