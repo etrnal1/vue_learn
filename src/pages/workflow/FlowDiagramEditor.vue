@@ -962,6 +962,87 @@ export default {
       this.editingStepIndex = idx
       this.commentDraft.stepId = this.editingFlow.steps[idx]?.id || null
     },
+    async onFlowDiagramSave(elements) {
+      if (!this.editingFlow || !this.canEditFlow) return
+
+      try {
+        this.saving = true
+        const nodes = elements.filter(el => el.type !== 'edge')
+        const edges = elements.filter(el => el.type === 'edge')
+
+        // 更新步骤信息
+        const updatedSteps = nodes.map(node => ({
+          id: node.id,
+          name: node.data.label || node.data.name || '未命名节点',
+          description: node.data.description || '',
+          assignee: node.data.assignee || '',
+          duration: node.data.duration || '',
+          position_x: Math.round(node.position.x),
+          position_y: Math.round(node.position.y),
+          node_type: node.type || 'userTask',
+          node_width: 120,
+          node_height: 80
+        }))
+
+        // 准备连线数据
+        const connections = edges.map(edge => ({
+          source_step_id: edge.source,
+          target_step_id: edge.target,
+          label: edge.label || ''
+        }))
+
+        // 调用API保存
+        await api.flows.update(this.editingFlow.id, {
+          steps: updatedSteps,
+          connections: connections
+        })
+
+        this.showMessage('流程图保存成功', 'success')
+        await this.scheduleAutoSave() // 触发自动保存逻辑
+      } catch (error) {
+        console.error('保存流程图失败:', error)
+        this.showMessage(`保存失败: ${error.message}`, 'error')
+      } finally {
+        this.saving = false
+      }
+    },
+    initializeFlowDiagram(flow) {
+      if (!flow || !flow.steps) {
+        this.flowDiagram = { nodes: [], edges: [] }
+        return
+      }
+
+      // 转换步骤为节点
+      const nodes = flow.steps.map(step => ({
+        id: step.id,
+        type: step.node_type || 'userTask',
+        position: {
+          x: step.position_x || 100,
+          y: step.position_y || 100
+        },
+        data: {
+          label: step.name || '未命名节点',
+          description: step.description || '',
+          assignee: step.assignee || '',
+          duration: step.duration || ''
+        }
+      }))
+
+      // 简单连线（按步骤顺序）
+      const edges = []
+      for (let i = 0; i < flow.steps.length - 1; i++) {
+        const current = flow.steps[i]
+        const next = flow.steps[i + 1]
+        edges.push({
+          id: `edge_${current.id}_${next.id}`,
+          source: current.id,
+          target: next.id,
+          type: 'default'
+        })
+      }
+
+      this.flowDiagram = { nodes, edges }
+    },
     async loadFlows() {
       this.loading = true
       try {
@@ -1405,8 +1486,10 @@ export default {
     editingFlow(newFlow) {
       if (newFlow?.steps?.length) {
         this.commentDraft.stepId = this.commentDraft.stepId || newFlow.steps[0].id
+        this.initializeFlowDiagram(newFlow)
       } else {
         this.commentDraft.stepId = null
+        this.flowDiagram = { nodes: [], edges: [] }
       }
     }
   },
