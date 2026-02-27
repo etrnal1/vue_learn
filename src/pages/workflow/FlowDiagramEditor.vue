@@ -93,10 +93,26 @@
           <button class="btn btn-small" @click="addStep">+ 添加步骤</button>
         </div>
 
+        <!-- 视图切换按钮 -->
+        <div v-if="editingFlow.steps && editingFlow.steps.length > 0" class="view-switcher">
+          <button :class="{ active: view === 'list' }" @click="view = 'list'">
+            📋 列表视图
+          </button>
+          <button :class="{ active: view === 'timeline' }" @click="view = 'timeline'">
+            📈 时间线视图
+          </button>
+        </div>
+
         <div v-if="!editingFlow.steps || editingFlow.steps.length === 0" class="no-steps">
           <p>暂无步骤，点击上面的按钮添加</p>
         </div>
 
+        <!-- 时间线视图 -->
+        <div v-else-if="view === 'timeline'" class="timeline-section">
+          <TimelineView :steps="editingFlow.steps" />
+        </div>
+
+        <!-- 列表视图 -->
         <div v-else class="steps-list-wrapper">
           <div class="steps-list">
             <div
@@ -400,10 +416,11 @@
 import { api } from '../../utils/api.js'
 import { recordAudit } from '../../utils/auditLog.js'
 import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
+import TimelineView from '../../components/workflow/TimelineView.vue'
 
 export default {
   name: 'FlowDiagramEditor',
-  components: { TraceFlowDemo },
+  components: { TraceFlowDemo, TimelineView },
   data() {
     return {
       flows: [],
@@ -430,7 +447,8 @@ export default {
       },
       availableUsers: ['alice', 'bob', 'charlie'],
       showSwimlaneView: false,
-      showTraceLearning: true
+      showTraceLearning: true,
+      view: 'list'  // 'list' | 'timeline'
     }
   },
   computed: {
@@ -1208,6 +1226,46 @@ export default {
   border: 1px dashed var(--app-border);
   border-radius: 8px;
   background: var(--app-card-elevated);
+}
+
+/* 视图切换器 */
+.view-switcher {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.view-switcher button {
+  padding: 8px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-switcher button.active {
+  background: var(--app-primary);
+  color: white;
+  border-color: var(--app-primary);
+}
+
+.view-switcher button:hover:not(.active) {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
+/* 时间线视图容器 */
+.timeline-section {
+  padding: 20px 0;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card);
+  margin: 12px 0;
 }
 
 /* 步骤列表容器 - 支持滚动 */
