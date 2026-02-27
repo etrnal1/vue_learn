@@ -212,7 +212,10 @@
 </template>
 
 <script>
-import { VueFlow, Background, Controls, MiniMap, useVueFlow } from '@vue-flow/core'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { Background } from '@vue-flow/background'
+import { Controls } from '@vue-flow/controls'
+import { MiniMap } from '@vue-flow/minimap'
 import StartNode from './nodes/StartNode.vue'
 import UserTaskNode from './nodes/UserTaskNode.vue'
 import ExclusiveGatewayNode from './nodes/ExclusiveGatewayNode.vue'
@@ -221,7 +224,17 @@ import InclusiveGatewayNode from './nodes/InclusiveGatewayNode.vue'
 import EndNode from './nodes/EndNode.vue'
 import ConditionEditorDialog from './dialogs/ConditionEditorDialog.vue'
 import { api } from '../../utils/api.js'
-import { v4 as uuidv4 } from 'uuid'
+
+// 简单的 UUID 生成函数
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+const uuidv4 = generateUUID
 
 export default {
   name: 'FlowEditor',
@@ -568,10 +581,10 @@ export default {
   background: white;
 }
 
-.flow-editor__canvas :deep(.vue-flow {
+.flow-editor__canvas :deep(.vue-flow) {
   width: 100%;
   height: 100%;
-})
+}
 
 .flow-editor__properties,
 .flow-editor__edge-properties {
