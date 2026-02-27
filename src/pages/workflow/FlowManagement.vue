@@ -14,10 +14,50 @@
           placeholder="搜索流程名称或描述"
           :disabled="loadingFlows"
         />
+        <button class="btn" :disabled="loadingFlows" @click="toggleAdvancedSearch">
+          🔍 高级搜索
+        </button>
         <button class="btn" :disabled="loadingFlows" @click="loadFlows">
           {{ loadingFlows ? '刷新中...' : '刷新流程列表' }}
         </button>
         <span v-if="historyLoading" class="history-loading">发布历史同步中…</span>
+      </div>
+
+      <!-- 高级搜索面板 -->
+      <div v-if="showAdvancedSearch" class="advanced-search-panel">
+        <div class="filter-group">
+          <label>按状态筛选</label>
+          <select v-model="filters.status" class="filter-select">
+            <option value="">全部状态</option>
+            <option value="draft">草稿</option>
+            <option value="published">已发布</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>按负责人筛选</label>
+          <input
+            v-model="filters.assignee"
+            type="text"
+            placeholder="输入负责人名称"
+            class="filter-input"
+          />
+        </div>
+
+        <div class="filter-group">
+          <label>按标签筛选</label>
+          <input
+            v-model="filters.tag"
+            type="text"
+            placeholder="输入标签"
+            class="filter-input"
+          />
+        </div>
+
+        <div class="filter-actions">
+          <button class="btn btn--primary" @click="showAdvancedSearch = false">完成搜索</button>
+          <button class="btn btn--ghost" @click="clearFilters">清除所有筛选</button>
+        </div>
       </div>
     </header>
 
@@ -178,26 +218,58 @@ export default {
       actionBusy: null,
       successMessage: '',
       successTimer: null,
-      swapFromIndex: null
+      swapFromIndex: null,
+      showAdvancedSearch: false,
+      filters: {
+        status: '',
+        assignee: '',
+        tag: ''
+      }
     }
   },
   computed: {
     filteredFlows() {
       const normalizedQuery = (this.searchQuery || '').trim().toLowerCase()
-      const flows = [...this.flows]
+      let flows = [...this.flows]
+
+      // 排序
       flows.sort((a, b) => {
         const at = a.updatedAt ?? a.updated_at ?? 0
         const bt = b.updatedAt ?? b.updated_at ?? 0
         return bt - at
       })
-      if (!normalizedQuery) {
-        return flows
+
+      // 文本搜索
+      if (normalizedQuery) {
+        flows = flows.filter((flow) => {
+          const name = (flow.name || '').toLowerCase()
+          const description = (flow.description || '').toLowerCase()
+          return name.includes(normalizedQuery) || description.includes(normalizedQuery)
+        })
       }
-      return flows.filter((flow) => {
-        const name = (flow.name || '').toLowerCase()
-        const description = (flow.description || '').toLowerCase()
-        return name.includes(normalizedQuery) || description.includes(normalizedQuery)
-      })
+
+      // 状态筛选
+      if (this.filters.status) {
+        flows = flows.filter((flow) => flow.status === this.filters.status)
+      }
+
+      // 负责人筛选
+      if (this.filters.assignee) {
+        const assignee = this.filters.assignee.toLowerCase()
+        flows = flows.filter((flow) =>
+          flow.steps?.some((s) => s.assignee?.toLowerCase().includes(assignee))
+        )
+      }
+
+      // 标签筛选
+      if (this.filters.tag) {
+        const tag = this.filters.tag.toLowerCase()
+        flows = flows.filter((flow) =>
+          flow.tags?.some((t) => t.toLowerCase().includes(tag))
+        )
+      }
+
+      return flows
     },
     selectedDiff() {
       if (!this.selectedFlow) return []
@@ -500,6 +572,14 @@ export default {
       window.location.href = `/workflow/editor/${flow.id}`
     }
   },
+  toggleAdvancedSearch() {
+    this.showAdvancedSearch = !this.showAdvancedSearch
+  },
+  clearFilters() {
+    this.filters = { status: '', assignee: '', tag: '' }
+    this.searchQuery = ''
+    this.showAdvancedSearch = false
+  },
   mounted() {
     this.loadFlows()
     this.loadReleaseHistory()
@@ -546,6 +626,60 @@ export default {
   display: flex;
   gap: 10px;
   align-items: center;
+  width: 100%;
+}
+
+/* 高级搜索面板 */
+.advanced-search-panel {
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--app-text);
+}
+
+.filter-select,
+.filter-input {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--app-card);
+  color: var(--app-text);
+  font-size: 0.9rem;
+}
+
+.filter-select:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.filter-actions .btn {
+  padding: 8px 16px;
+  font-size: 0.9rem;
 }
 
 .search-input {
