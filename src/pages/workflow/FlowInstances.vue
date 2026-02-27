@@ -183,6 +183,7 @@
 
 <script>
 import { api } from '../../utils/api.js'
+import { getWebSocketClient } from '../../utils/websocket.js'
 import ItsmModal from '../../components/itsm/ItsmModal.vue'
 
 export default {
@@ -206,6 +207,10 @@ export default {
         status: '',
         flowId: ''
       },
+
+      // WebSocket 相关（新增）
+      wsClient: null,
+      subscribedExecutions: new Set(),
 
       // UI状态
       selectedExecution: null,
@@ -260,8 +265,24 @@ export default {
   },
   mounted() {
     this.loadExecutions()
+
+    // 初始化 WebSocket（新增）
+    this.initWebSocket()
   },
   beforeUnmount() {
+    // 清理 WebSocket 监听器（新增）
+    if (this.wsClient) {
+      this.wsClient.off('execution:started', this.onExecutionStarted)
+      this.wsClient.off('execution:step:completed', this.onStepCompleted)
+      this.wsClient.off('execution:completed', this.onExecutionCompleted)
+      this.wsClient.off('execution:progress', this.onProgressUpdated)
+
+      // 取消所有订阅
+      this.subscribedExecutions.forEach(execId => {
+        this.wsClient.unsubscribe(execId)
+      })
+    }
+
     if (this.messageTimer) {
       clearTimeout(this.messageTimer)
     }
@@ -303,6 +324,9 @@ export default {
         const data = await api.flows.getExecution(executionId)
         this.selectedExecution = data
         this.showDetailsModal = true
+
+        // 订阅此执行实例（新增）
+        this.subscribeExecution(executionId)
       } catch (error) {
         console.error('加载详情失败:', error)
         this.showMessage('加载详情失败', 'error')
@@ -312,6 +336,10 @@ export default {
     async startExecution(executionId) {
       try {
         await api.flows.startExecution(executionId)
+
+        // 订阅此执行实例的实时更新（新增）
+        this.subscribeExecution(executionId)
+
         await this.loadExecutions()
         this.showMessage('执行已启动', 'success')
       } catch (error) {
@@ -395,6 +423,132 @@ export default {
       } catch (e) {
         return String(data)
       }
+    },
+
+    /**
+     * 初始化 WebSocket（新增）
+     */
+    initWebSocket() {
+      this.wsClient = getWebSocketClient()
+
+      // 监听执行启动
+      this.wsClient.on('execution:started', this.onExecutionStarted)
+
+      // 监听步骤完成
+      this.wsClient.on('execution:step:completed', this.onStepCompleted)
+
+      // 监听执行完成
+      this.wsClient.on('execution:completed', this.onExecutionCompleted)
+
+      // 监听进度更新
+      this.wsClient.on('execution:progress', this.onProgressUpdated)
+
+      console.log('[FlowInstances] WebSocket 已初始化')
+    },
+
+    /**
+     * 订阅执行实例（新增）
+     */
+    subscribeExecution(executionId) {
+      if (!this.subscribedExecutions.has(executionId)) {
+        this.wsClient.subscribe(executionId)
+        this.subscribedExecutions.add(executionId)
+        console.log('[FlowInstances] 订阅执行:', executionId)
+      }
+    },
+
+    /**
+     * WebSocket 事件处理器：执行启动（新增）
+     */
+    onExecutionStarted({ executionId, payload }) {
+      console.log('[WebSocket] 执行启动:', executionId, payload)
+
+      // 更新列表中的执行状态
+      const exec = this.executions.find(e => e.id === executionId)
+      if (exec) {
+        exec.status = 'running'
+        exec.startedAt = payload.startedAt
+        exec.started_at = payload.startedAt
+      }
+
+      // 如果正在查看详情，刷新数据
+      if (this.selectedExecution && this.selectedExecution.id === executionId) {
+        this.viewDetails(executionId)
+      }
+
+      this.showMessage(`执行 ${executionId} 已启动`, 'info')
+    },
+
+    /**
+     * WebSocket 事件处理器：步骤完成（新增）
+     */
+    onStepCompleted({ executionId, payload }) {
+      console.log('[WebSocket] 步骤完成:', executionId, payload)
+
+      // 如果正在查看详情，更新步骤状态
+      if (this.selectedExecution && this.selectedExecution.id === executionId) {
+        const step = this.selectedExecution.steps?.find(s => s.id === payload.stepId)
+        if (step) {
+          step.status = payload.status
+          step.duration = payload.duration
+          step.completedAt = payload.completedAt
+          step.completed_at = payload.completedAt
+        }
+      }
+    },
+
+    /**
+     * WebSocket 事件处理器：执行完成（新增）
+     */
+    onExecutionCompleted({ executionId, payload }) {
+      console.log('[WebSocket] 执行完成:', executionId, payload)
+
+      // 更新列表
+      const exec = this.executions.find(e => e.id === executionId)
+      if (exec) {
+        exec.status = 'completed'
+        exec.completedAt = payload.completedAt
+        exec.completed_at = payload.completedAt
+      }
+
+      // 如果正在查看详情，刷新
+      if (this.selectedExecution && this.selectedExecution.id === executionId) {
+        this.selectedExecution.status = 'completed'
+        this.selectedExecution.completedAt = payload.completedAt
+        this.selectedExecution.completed_at = payload.completedAt
+      }
+
+      this.showMessage(`执行 ${executionId} 已完成`, 'success')
+    },
+
+    /**
+     * WebSocket 事件处理器：进度更新（新增）
+     */
+    onProgressUpdated({ executionId, payload }) {
+      console.log('[WebSocket] 进度更新:', executionId, payload)
+
+      // 更新执行进度（如果有UI展示）
+      const exec = this.executions.find(e => e.id === executionId)
+      if (exec) {
+        exec.progress = payload.progress
+        exec.currentStep = payload.currentStep
+        exec.totalSteps = payload.totalSteps
+      }
+    },
+
+    /**
+     * 显示消息提示（新增）
+     */
+    showMessage(text, type = 'info') {
+      this.message = { text, type }
+
+      if (this.messageTimer) {
+        clearTimeout(this.messageTimer)
+      }
+
+      this.messageTimer = setTimeout(() => {
+        this.message = null
+      }, 3000)
     }
   }
 }
