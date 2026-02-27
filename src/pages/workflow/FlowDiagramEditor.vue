@@ -101,9 +101,11 @@
           <div class="steps-list">
             <div
               v-for="(step, index) in editingFlow.steps"
-              :key="step.id || index"
+              :key="step.id"
               class="step-item"
               :class="{ 'editing-step': editingStepIndex === index }"
+              :data-step-id="step.id || ''"
+              @click="editingStepIndex = index"
             >
               <div class="step-header-row">
                 <div class="step-number">{{ index + 1 }}</div>
@@ -117,7 +119,7 @@
                   <button
                     class="btn-icon"
                     :disabled="index === 0"
-                    @click="moveStep(index, -1)"
+                    @click.stop="moveStep(index, -1)"
                     title="上移"
                   >
                     ⬆️
@@ -125,14 +127,14 @@
                   <button
                     class="btn-icon"
                     :disabled="index === editingFlow.steps.length - 1"
-                    @click="moveStep(index, 1)"
+                    @click.stop="moveStep(index, 1)"
                     title="下移"
                   >
                     ⬇️
                   </button>
                   <button
                     class="btn-icon btn-danger"
-                    @click="removeStep(index)"
+                    @click.stop="removeStep(index)"
                     title="删除"
                   >
                     🗑️
@@ -231,7 +233,7 @@
         <div class="preview-list">
           <div
             v-for="(step, index) in editingFlow.steps || []"
-            :key="step.id || index"
+            :key="step.id"
             class="preview-item"
           >
             <div class="preview-index">{{ index + 1 }}</div>
@@ -248,6 +250,32 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="versions-panel trace-learning-panel">
+        <div class="versions-header">
+          <div>
+            <h3>交易模拟 · 链路学习</h3>
+            <p class="subtitle">一笔交易可包含多条链路；支持从当前流程步骤一键生成，再逐条补全 spans。</p>
+          </div>
+          <div class="versions-actions">
+            <button class="btn btn-small" :disabled="!editingFlow?.steps?.length" @click="generateTradeFromFlow">
+              从流程生成交易
+            </button>
+            <button class="btn btn-small" @click="showTraceLearning = !showTraceLearning">
+              {{ showTraceLearning ? '收起' : '展开' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="showTraceLearning" class="trace-learning-body">
+          <TraceFlowDemo
+            ref="traceDemo"
+            :flow-context="editingFlow"
+            :selected-step-id="selectedStepIdForTrace"
+            @select-step="onTraceSelectStep"
+          />
+        </div>
+        <div v-else class="versions-empty">展开后可查看/编辑交易与链路。</div>
       </div>
 
       <div class="versions-panel">
@@ -285,6 +313,80 @@
           </li>
         </ul>
       </div>
+
+      <div class="collaboration-panel">
+        <div class="collaboration-header">
+          <div>
+            <h3>协作 & 条件泳道</h3>
+            <p class="subtitle">针对当前流程收集评论与条件路径概览，可 @ 用户提醒并在泳道视图中查看分支。</p>
+          </div>
+          <button class="btn btn-small" @click="toggleSwimlaneView">
+            {{ showSwimlaneView ? '隐藏泳道视图' : '显示泳道视图' }}
+          </button>
+        </div>
+        <div v-if="showSwimlaneView" class="swimlane-container">
+          <div v-for="lane in swimlaneLanes" :key="lane.id" class="swimlane">
+            <p class="swimlane-label">{{ lane.label }}</p>
+            <div class="swimlane-steps">
+              <label v-for="step in lane.steps" :key="step.id" class="swimlane-step">
+                <input type="radio" :value="step.id" v-model="commentDraft.stepId" />
+                <div>
+                  <strong>{{ step.name || '未命名步骤' }}</strong>
+                  <p class="swimlane-step__meta">
+                    <span v-if="step.assignee">👤 {{ step.assignee }}</span>
+                    <span v-if="step.duration">⏱ {{ step.duration }}</span>
+                    <span v-if="step.conditional">⚡ 条件</span>
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="comment-section">
+          <div class="comment-form">
+            <label>评论目标步骤</label>
+            <div class="comment-step-select">
+              <select v-model="commentDraft.stepId">
+                <option v-for="step in editingFlow?.steps || []" :key="step.id" :value="step.id">
+                  {{ step.name || `步骤 ${editingFlow.steps.indexOf(step) + 1}` }}
+                </option>
+              </select>
+            </div>
+            <label>内容</label>
+            <textarea
+              v-model="commentDraft.text"
+              rows="3"
+              placeholder="输入评论/反馈。可使用 @用户名 快速提醒。"
+              @input="commentDraft.text = commentDraft.text.slice(0, 512)"
+            ></textarea>
+            <label>提醒人（可选）</label>
+            <input
+              list="user-suggestions"
+              v-model="commentDraft.mention"
+              placeholder="例如 alice、bob"
+            />
+            <datalist id="user-suggestions">
+              <option v-for="user in availableUsers" :value="user" :key="user" />
+            </datalist>
+            <button class="btn btn-small" @click="addComment">添加评论</button>
+          </div>
+          <div class="comment-list">
+            <div v-if="!currentStepComments.length" class="comment-empty">当前步骤暂无评论</div>
+            <article
+              v-for="comment in currentStepComments"
+              :key="comment.id"
+              class="comment-card"
+            >
+              <div class="comment-card__meta">
+                <span class="comment-author">{{ comment.author }}</span>
+                <span class="comment-ts">{{ formatDate(comment.createdAt) }}</span>
+              </div>
+              <p v-html="highlightMentions(comment.text)" class="comment-body"></p>
+            </article>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 消息提示 -->
@@ -297,9 +399,11 @@
 <script>
 import { api } from '../../utils/api.js'
 import { recordAudit } from '../../utils/auditLog.js'
+import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 
 export default {
   name: 'FlowDiagramEditor',
+  components: { TraceFlowDemo },
   data() {
     return {
       flows: [],
@@ -317,7 +421,16 @@ export default {
       versionsLoading: false,
       versionError: '',
       creatingVersion: false,
-      rollingBack: false
+      rollingBack: false,
+      comments: [],
+      commentDraft: {
+        stepId: null,
+        text: '',
+        mention: ''
+      },
+      availableUsers: ['alice', 'bob', 'charlie'],
+      showSwimlaneView: false,
+      showTraceLearning: true
     }
   },
   computed: {
@@ -331,9 +444,86 @@ export default {
         this.hasSteps &&
         !this.saving
       )
+    },
+    currentCommentStepId() {
+      if (this.commentDraft.stepId) return this.commentDraft.stepId
+      return this.editingFlow?.steps?.[0]?.id || null
+    },
+    currentStepComments() {
+      if (!this.currentCommentStepId) return []
+      return this.comments.filter(comment => comment.stepId === this.currentCommentStepId)
+    },
+    swimlaneLanes() {
+      const steps = this.editingFlow?.steps || []
+      const lanes = [
+        { id: 'primary', label: '默认路径', steps: [] },
+        { id: 'conditional', label: '条件分支', steps: [] }
+      ]
+      steps.forEach((step) => {
+        const target = step.conditional ? lanes[1] : lanes[0]
+        target.steps.push(step)
+      })
+      return lanes
+    },
+    selectedStepIdForTrace() {
+      const idx = this.editingStepIndex
+      const steps = this.editingFlow?.steps || []
+      if (idx == null || idx < 0 || idx >= steps.length) return null
+      return steps[idx]?.id || null
     }
   },
   methods: {
+    createStep(seed = {}, index = 0) {
+      const now = Date.now()
+      return {
+        id: seed.id || `step_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        name: seed.name || seed.title || '',
+        description: seed.description || '',
+        assignee: seed.assignee || '',
+        duration: seed.duration || '',
+        conditional: !!seed.conditional,
+        tip: seed.tip || '',
+        note: seed.note || ''
+      }
+    },
+    normalizeFlow(flow = {}) {
+      const steps = (Array.isArray(flow.steps) ? flow.steps : []).map((step, index) =>
+        this.createStep(step, index)
+      )
+      return {
+        ...flow,
+        steps
+      }
+    },
+    generateTradeFromFlow() {
+      const flow = this.editingFlow
+      if (!flow) return
+      this.showTraceLearning = true
+      this.$nextTick(() => {
+        try {
+          this.$refs.traceDemo?.createTradeFromFlow?.(flow)
+        } catch (error) {
+          console.error('生成交易失败:', error)
+          this.showMessage('生成交易失败，请查看控制台', 'error')
+        }
+      })
+    },
+    onTraceSelectStep(payload) {
+      const stepId = payload?.stepId
+      if (!stepId || !this.editingFlow?.steps?.length) return
+      const idx = this.editingFlow.steps.findIndex((s) => String(s.id) === String(stepId))
+      if (idx === -1) return
+      this.editingStepIndex = idx
+      this.commentDraft.stepId = stepId
+      this.$nextTick(() => {
+        const stepIdText = String(stepId)
+        const nodeList = this.$el?.querySelectorAll?.('.step-item') || []
+        const el = Array.from(nodeList).find((node) => node?.getAttribute?.('data-step-id') === stepIdText)
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        }
+      })
+    },
     buildFlowPayload(sourceFlow = this.editingFlow, options = {}) {
       if (!sourceFlow) return null
       const { fallbackName = '未命名流程' } = options
@@ -363,7 +553,7 @@ export default {
       this.loading = true
       try {
         const result = await api.flows.getAll()
-        this.flows = Array.isArray(result) ? result : []
+        this.flows = Array.isArray(result) ? result.map(flow => this.normalizeFlow(flow)) : []
       } catch (error) {
         this.showMessage(`加载流程失败: ${error?.message}`, 'error')
       } finally {
@@ -433,8 +623,42 @@ export default {
         this.versionsLoading = false
       }
     },
+    selectStepForComment(stepId) {
+      this.commentDraft.stepId = stepId
+    },
+    addComment() {
+      const text = (this.commentDraft.text || '').trim()
+      if (!text || !this.currentCommentStepId) {
+        this.showMessage('请先选择步骤并输入评论内容', 'error')
+        return
+      }
+      const newComment = {
+        id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        stepId: this.currentCommentStepId,
+        text,
+        mention: this.commentDraft.mention?.trim() || '',
+        author: this.commentDraft.mention ? `@${this.commentDraft.mention}` : '当前用户',
+        createdAt: new Date().toISOString()
+      }
+      this.comments.push(newComment)
+      this.commentDraft.text = ''
+      this.commentDraft.mention = ''
+      this.showMessage('评论已添加', 'success')
+      recordAudit({
+        action: 'add_comment',
+        detail: newComment.text,
+        flowId: this.editingFlow?.id
+      })
+    },
+    toggleSwimlaneView() {
+      this.showSwimlaneView = !this.showSwimlaneView
+    },
+    highlightMentions(text) {
+      if (!text) return text
+      return text.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
+    },
     createNewFlow() {
-      this.editingFlow = {
+      this.editingFlow = this.normalizeFlow({
         id: `flow_${Date.now()}`,
         name: '',
         description: '',
@@ -442,15 +666,16 @@ export default {
         steps: [],
         created_at: Date.now(),
         updated_at: Date.now()
-      }
+      })
       this.editingStepIndex = null
       this.lastSavedFlow = null
       this.flowVersions = []
       this.versionError = ''
     },
     editFlow(flow) {
-      this.editingFlow = JSON.parse(JSON.stringify(flow))
-      this.lastSavedFlow = JSON.parse(JSON.stringify(flow))
+      const normalized = this.normalizeFlow(JSON.parse(JSON.stringify(flow)))
+      this.editingFlow = normalized
+      this.lastSavedFlow = JSON.parse(JSON.stringify(normalized))
       this.editingStepIndex = null
       this.loadVersions(flow.id)
     },
@@ -512,16 +737,7 @@ export default {
       if (!this.editingFlow.steps) {
         this.editingFlow.steps = []
       }
-      const newStep = {
-        id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: '',
-        description: '',
-        assignee: '',
-        duration: '',
-        conditional: false,
-        tip: '',
-        note: ''
-      }
+      const newStep = this.createStep({}, this.editingFlow.steps.length)
       this.editingFlow.steps.push(newStep)
       this.scheduleAutoSave()
       this.$nextTick(() => {
@@ -533,6 +749,8 @@ export default {
         this.editingFlow.steps.splice(index, 1)
         if (this.editingStepIndex === index) {
           this.editingStepIndex = null
+        } else if (this.editingStepIndex > index) {
+          this.editingStepIndex -= 1
         }
         this.scheduleAutoSave()
       }
@@ -626,6 +844,15 @@ export default {
       setTimeout(() => {
         this.message = null
       }, 3000)
+    }
+  },
+  watch: {
+    editingFlow(newFlow) {
+      if (newFlow?.steps?.length) {
+        this.commentDraft.stepId = this.commentDraft.stepId || newFlow.steps[0].id
+      } else {
+        this.commentDraft.stepId = null
+      }
     }
   },
   mounted() {
@@ -1299,6 +1526,147 @@ export default {
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(16, 185, 129, 0.12);
+}
+
+.collaboration-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.collaboration-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.swimlane-container {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.swimlane {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--app-card-elevated);
+}
+
+.swimlane-label {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.swimlane-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.swimlane-step {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px dashed var(--app-border);
+  align-items: center;
+  cursor: pointer;
+}
+
+.swimlane-step input {
+  accent-color: var(--app-primary);
+}
+
+.swimlane-step strong {
+  margin: 0;
+  font-size: 0.9em;
+  display: block;
+}
+
+.swimlane-step__meta {
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  display: flex;
+  gap: 6px;
+}
+
+.comment-section {
+  border-top: 1px solid var(--app-border);
+  padding-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-form label {
+  font-size: 0.85em;
+  color: var(--app-text-muted);
+}
+
+.comment-form textarea,
+.comment-form input,
+.comment-form select {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+  font-family: inherit;
+}
+
+.comment-step-select {
+  width: 100%;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+}
+
+.comment-card__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  margin-bottom: 4px;
+}
+
+.comment-body {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.comment-empty {
+  color: var(--app-text-muted);
+  font-size: 0.9em;
+}
+
+.mention {
+  font-weight: 600;
+  color: var(--app-primary);
 }
 
 /* 消息提示 */

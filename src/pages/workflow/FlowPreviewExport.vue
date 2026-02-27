@@ -147,6 +147,33 @@
               一键导出概要
             </button>
           </div>
+          <div class="export-config">
+            <p class="meta-panel__title">导出配置</p>
+            <label class="export-option">
+              <input type="checkbox" v-model="exportOptions.includeComments" />
+              包含注释内容
+            </label>
+            <label class="export-option">
+              <input type="checkbox" v-model="exportOptions.includeVersionInfo" />
+              附带版本信息
+            </label>
+            <label class="export-option">
+              <input type="checkbox" v-model="exportOptions.includeAudit" />
+              展示审计记录
+            </label>
+            <label class="export-option">
+              <input type="checkbox" v-model="exportOptions.watermark" />
+              添加水印/印章
+            </label>
+            <div class="export-buttons">
+              <button class="btn btn-primary" :disabled="!selectedFlow || exporting" @click="requestExport('pdf')">
+                导出 PDF
+              </button>
+              <button class="btn btn-secondary" :disabled="!selectedFlow || exporting" @click="requestExport('word')">
+                导出 Word
+              </button>
+            </div>
+          </div>
         <div class="meta-panel__log">
           <h4>操作记录</h4>
           <ul>
@@ -190,6 +217,12 @@ export default {
       messageTimer: null,
       downloadFormats: ['json', 'markdown'],
       auditEntries: [],
+      exportOptions: {
+        includeComments: true,
+        includeVersionInfo: true,
+        includeAudit: true,
+        watermark: false
+      },
       statusChoices: [
         { id: 'all', label: '全部' },
         { id: 'published', label: '已发布' },
@@ -223,7 +256,7 @@ export default {
       ]
     }
   },
-    methods: {
+  methods: {
     async loadFlows() {
       this.loading = true
       try {
@@ -445,6 +478,47 @@ export default {
       } finally {
         this.exporting = false
       }
+    },
+    async requestExport(format) {
+      if (!this.selectedFlow) return
+      this.exporting = true
+      try {
+        const payload = {
+          format,
+          options: { ...this.exportOptions },
+          versionId: this.selectedFlow.versionId || this.selectedFlow.latestVersionId || ''
+        }
+        const result = await api.flows.exportFlow(this.selectedFlow.id, payload)
+        const downloadUrl =
+          typeof result === 'string'
+            ? result
+            : result?.url || result?.downloadUrl || result?.link
+        if (downloadUrl) {
+          this.openDownloadLink(downloadUrl, `${this.selectedFlow.name || '流程'}.${format}`)
+        } else {
+          this.showMessage('导出任务已提交，请稍后查看', 'success')
+        }
+        recordAudit({
+          action: `export_${format}`,
+          detail: `${format} · includeComments=${payload.options.includeComments}`,
+          flowId: this.selectedFlow.id
+        })
+        this.refreshAuditLog()
+      } catch (error) {
+        console.error('导出失败:', error)
+        this.showMessage(`导出失败: ${error?.message}`, 'error')
+      } finally {
+        this.exporting = false
+      }
+    },
+    openDownloadLink(url, fileName) {
+      const link = document.createElement('a')
+      link.href = url
+      link.target = '_blank'
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     },
     showMessage(text, type = 'info') {
       this.message = { text, type }
@@ -797,6 +871,45 @@ export default {
   border: 1px solid var(--app-border);
   padding: 4px 10px;
   font-size: 0.8em;
+}
+
+.export-config {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--app-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--app-text);
+}
+
+.export-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.btn-secondary {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .meta-panel__log {

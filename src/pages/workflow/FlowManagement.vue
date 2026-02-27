@@ -21,8 +21,14 @@
       </div>
     </header>
 
+    <TraceFlowDemo class="flow-management__demo" />
+
     <div v-if="errorMessage" class="alert">{{ errorMessage }}</div>
     <div v-if="historyError" class="alert">{{ historyError }}</div>
+    <div v-if="successMessage" class="alert alert--success">{{ successMessage }}</div>
+    <div v-if="selectedFlow && swapFromIndex !== null" class="alert alert--info">
+      已选中第 {{ swapFromIndex + 1 }} 步，点击任意步骤的“交换”按钮可直接互换位置。
+    </div>
 
     <div v-if="loadingFlows" class="flow-management__state">加载流程中…</div>
     <div v-else-if="filteredFlows.length === 0" class="flow-management__state">暂无符合条件的流程模板</div>
@@ -124,6 +130,14 @@
             >
               ⬇️
             </button>
+            <button
+              class="step-action-btn step-action-btn--swap"
+              :class="{ active: swapFromIndex === index }"
+              @click="handleSwapAction(index)"
+              :title="swapFromIndex === index ? '取消选择' : swapFromIndex === null ? '选中用于交换' : `与第 ${swapFromIndex + 1} 步交换`"
+            >
+              {{ swapFromIndex === index ? '取消' : (swapFromIndex === null ? '选中' : '交换') }}
+            </button>
           </div>
         </li>
         <li v-if="(selectedFlow.steps || []).length === 0" class="empty-step">该流程尚未定义步骤。</li>
@@ -146,9 +160,11 @@
 
 <script>
 import { api } from '../../utils/api.js'
+import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 
 export default {
   name: 'FlowManagement',
+  components: { TraceFlowDemo },
   data() {
     return {
       flows: [],
@@ -159,7 +175,10 @@ export default {
       searchQuery: '',
       selectedFlow: null,
       releaseHistory: {},
-      actionBusy: null
+      actionBusy: null,
+      successMessage: '',
+      successTimer: null,
+      swapFromIndex: null
     }
   },
   computed: {
@@ -290,6 +309,7 @@ export default {
     },
     viewDetails(flow) {
       this.selectedFlow = JSON.parse(JSON.stringify(flow))
+      this.swapFromIndex = null
     },
     formatDate(value) {
       if (!value) return '—'
@@ -384,10 +404,51 @@ export default {
      * @param {number} index - 当前步骤索引
      * @param {number} direction - 移动方向 (-1: 上移, 1: 下移)
      */
+    showSuccessMessage(text) {
+      if (this.successTimer) {
+        clearTimeout(this.successTimer)
+      }
+      this.successMessage = text
+      this.successTimer = setTimeout(() => {
+        this.successMessage = ''
+        this.successTimer = null
+      }, 2500)
+    },
+    async persistSelectedFlowSteps(steps, successText, prevSteps) {
+      if (!this.selectedFlow) return
+      this.errorMessage = ''
+      this.selectedFlow = { ...this.selectedFlow, steps }
+
+      try {
+        await api.flows.update(this.selectedFlow.id, {
+          name: this.selectedFlow.name,
+          description: this.selectedFlow.description,
+          icon: this.selectedFlow.icon,
+          steps
+        })
+
+        const flowIndex = this.flows.findIndex(f => f.id === this.selectedFlow.id)
+        if (flowIndex !== -1) {
+          this.flows[flowIndex] = {
+            ...this.flows[flowIndex],
+            steps: [...steps]
+          }
+        }
+        this.showSuccessMessage(successText)
+      } catch (error) {
+        this.selectedFlow = {
+          ...this.selectedFlow,
+          steps: prevSteps
+        }
+        this.errorMessage = error?.message || '步骤排序失败'
+        console.error('步骤排序失败:', error)
+      }
+    },
     async moveStepInPreview(index, direction) {
       if (!this.selectedFlow || !this.selectedFlow.steps) return
 
-      const steps = this.selectedFlow.steps
+      const prevSteps = [...this.selectedFlow.steps]
+      const steps = [...prevSteps]
       if (steps.length < 2) return
 
       const newIndex = index + direction
@@ -395,35 +456,36 @@ export default {
       // 边界检查
       if (newIndex < 0 || newIndex >= steps.length) return
 
-      // 交换步骤
-      const temp = steps[index]
-      this.$set(steps, index, steps[newIndex])
-      this.$set(steps, newIndex, temp)
-
-      // 保存到数据库
-      try {
-        await api.flows.update(this.selectedFlow.id, {
-          name: this.selectedFlow.name,
-          description: this.selectedFlow.description,
-          icon: this.selectedFlow.icon,
-          steps: steps
-        })
-
-        // 同步更新流程列表中的数据
-        const flowIndex = this.flows.findIndex(f => f.id === this.selectedFlow.id)
-        if (flowIndex !== -1) {
-          this.$set(this.flows[flowIndex], 'steps', [...steps])
-        }
-
-        // 提示用户
-        const directionText = direction === -1 ? '上移' : '下移'
-        const message = `已将第 ${index + 1} 步${directionText}到第 ${newIndex + 1} 步`
-        console.log(message)
-
-      } catch (error) {
-        this.errorMessage = error?.message || '步骤排序失败'
-        console.error('步骤排序失败:', error)
+      // Vue 3: 使用数组重排替代 Vue 2 的 this.$set
+      const [moved] = steps.splice(index, 1)
+      steps.splice(newIndex, 0, moved)
+      this.swapFromIndex = null
+      const directionText = direction === -1 ? '上移' : '下移'
+      await this.persistSelectedFlowSteps(steps, `已将第 ${index + 1} 步${directionText}到第 ${newIndex + 1} 步`, prevSteps)
+    },
+    async swapStepsInPreview(fromIndex, toIndex) {
+      if (!this.selectedFlow?.steps?.length) return
+      if (fromIndex === toIndex) return
+      const prevSteps = [...this.selectedFlow.steps]
+      const steps = [...prevSteps]
+      const temp = steps[fromIndex]
+      steps[fromIndex] = steps[toIndex]
+      steps[toIndex] = temp
+      this.swapFromIndex = null
+      await this.persistSelectedFlowSteps(steps, `已交换第 ${fromIndex + 1} 步与第 ${toIndex + 1} 步`, prevSteps)
+    },
+    handleSwapAction(index) {
+      if (!this.selectedFlow?.steps?.length) return
+      if (this.swapFromIndex == null) {
+        this.swapFromIndex = index
+        this.showSuccessMessage(`已选中第 ${index + 1} 步，点击其他步骤“交换”即可互换`)
+        return
       }
+      if (this.swapFromIndex === index) {
+        this.swapFromIndex = null
+        return
+      }
+      this.swapStepsInPreview(this.swapFromIndex, index)
     },
 
     /**
@@ -441,6 +503,12 @@ export default {
   mounted() {
     this.loadFlows()
     this.loadReleaseHistory()
+  },
+  beforeUnmount() {
+    if (this.successTimer) {
+      clearTimeout(this.successTimer)
+      this.successTimer = null
+    }
   }
 }
 </script>
@@ -451,6 +519,10 @@ export default {
   border-radius: 18px;
   background: var(--app-card);
   box-shadow: var(--app-soft-shadow);
+}
+
+.flow-management__demo {
+  margin-bottom: 14px;
 }
 
 .flow-management__header {
@@ -514,6 +586,18 @@ export default {
   color: var(--app-text);
   border-radius: 10px;
   margin-bottom: 12px;
+}
+
+.alert--success {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.alert--info {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #7dd3fc;
 }
 
 .history-loading {
@@ -891,6 +975,19 @@ export default {
 .step-action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.step-action-btn--swap {
+  width: auto;
+  min-width: 48px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+}
+
+.step-action-btn--swap.active {
+  background: var(--app-primary-light);
+  border-color: var(--app-primary);
+  color: var(--app-primary);
 }
 
 .flow-detail__steps li {
