@@ -4,10 +4,11 @@ import pool from '../db.js';
 import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
 
 const router = express.Router();
+const flowRbacEnabled = String(process.env.FLOW_RBAC_ENABLED || 'false').toLowerCase() === 'true';
 const flowWriteRoles = getRoleGroup('audit');
 const flowAdminRoles = getRoleGroup('admin');
-const flowWriteProtect = requireRoles(...flowWriteRoles);
-const flowAdminProtect = requireRoles(...flowAdminRoles);
+const flowWriteProtect = flowRbacEnabled ? requireRoles(...flowWriteRoles) : (_req, _res, next) => next();
+const flowAdminProtect = flowRbacEnabled ? requireRoles(...flowAdminRoles) : (_req, _res, next) => next();
 
 function hasRole(req, roles = []) {
   const role = String(req?.authUser?.role || '').trim();
@@ -15,10 +16,12 @@ function hasRole(req, roles = []) {
 }
 
 function canWriteFlow(req) {
+  if (!flowRbacEnabled) return true;
   return hasRole(req, flowWriteRoles);
 }
 
 function canAdminFlow(req) {
+  if (!flowRbacEnabled) return true;
   return hasRole(req, flowAdminRoles);
 }
 
@@ -226,6 +229,37 @@ router.get('/', async (req, res) => {
     res.json(flowsWithSteps);
   } catch (error) {
     console.error('获取流程列表失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/flows/:id - 获取单个流程（含步骤）- 无需认证版本
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [flows] = await pool.query(`
+      SELECT
+        f.*,
+        u.name as author_name
+      FROM flows f
+      LEFT JOIN users u ON f.author_id = u.id
+      WHERE f.id = ?
+    `, [id]);
+
+    if (flows.length === 0) {
+      return res.status(404).json({ error: '流程不存在' });
+    }
+
+    const [steps] = await pool.query(
+      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
+      [id]
+    );
+
+    const flow = { ...flows[0], steps };
+    res.json(flow);
+  } catch (error) {
+    console.error('获取流程详情失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -511,6 +545,7 @@ router.get('/permissions/me', async (req, res) => {
   const canAdmin = canAdminFlow(req);
   res.json({
     role,
+    rbacEnabled: flowRbacEnabled,
     actions: {
       read: true,
       comment: true,
@@ -679,37 +714,6 @@ router.post('/:id/releases/rollback', flowWriteProtect, async (req, res) => {
     res.json({ history: remaining });
   } catch (error) {
     console.error('回滚发布记录失败:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// GET /api/flows/:id - 获取单个流程（含步骤）
-router.get('/:id', async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const [flows] = await pool.query(`
-      SELECT
-        f.*,
-        u.name as author_name
-      FROM flows f
-      LEFT JOIN users u ON f.author_id = u.id
-      WHERE f.id = ?
-    `, [id]);
-
-    if (flows.length === 0) {
-      return res.status(404).json({ error: '流程不存在' });
-    }
-
-    const [steps] = await pool.query(
-      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
-      [id]
-    );
-
-    const flow = { ...flows[0], steps };
-    res.json(flow);
-  } catch (error) {
-    console.error('获取流程详情失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
