@@ -360,9 +360,59 @@ async function initDatabase() {
         ('ticket', 0),
         ('request', 0),
         ('article', 0),
-        ('flow', 0)
+        ('flow', 0),
+        ('execution', 0)
     `);
     console.log('✅ 计数器初始化完成');
+
+    // 13.5 流程执行实例表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_executions (
+        id VARCHAR(50) PRIMARY KEY,
+        execution_no VARCHAR(20) UNIQUE NOT NULL,
+        flow_id VARCHAR(50) NOT NULL,
+        flow_release_id VARCHAR(50),
+        status ENUM('pending', 'running', 'completed', 'failed', 'cancelled') DEFAULT 'pending',
+        initiator_id VARCHAR(50),
+        current_step_id VARCHAR(50),
+        context JSON,
+        started_at BIGINT,
+        completed_at BIGINT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow (flow_id),
+        INDEX idx_status (status),
+        INDEX idx_created (created_at),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE RESTRICT,
+        FOREIGN KEY (flow_release_id) REFERENCES flow_releases(id) ON DELETE SET NULL,
+        FOREIGN KEY (initiator_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_executions 已创建');
+
+    // 13.6 步骤执行记录表
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_execution_steps (
+        id VARCHAR(50) PRIMARY KEY,
+        execution_id VARCHAR(50) NOT NULL,
+        step_id VARCHAR(50) NOT NULL,
+        step_name VARCHAR(200) NOT NULL,
+        step_order INT NOT NULL,
+        status ENUM('pending', 'running', 'completed', 'skipped', 'failed') DEFAULT 'pending',
+        assignee_id VARCHAR(50),
+        result JSON,
+        error_message TEXT,
+        started_at BIGINT,
+        completed_at BIGINT,
+        duration INT,
+        created_at BIGINT NOT NULL,
+        INDEX idx_execution (execution_id),
+        INDEX idx_status (status),
+        FOREIGN KEY (execution_id) REFERENCES flow_executions(id) ON DELETE CASCADE,
+        FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_execution_steps 已创建');
 
     // 14. 用户设置表
     await connection.query(`

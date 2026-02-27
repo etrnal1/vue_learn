@@ -22,6 +22,24 @@ async function generateFlowNo() {
   }
 }
 
+// 生成执行编号
+async function generateExecutionNo() {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query("UPDATE counters SET value = value + 1 WHERE id = 'execution'");
+    const [rows] = await connection.query("SELECT value FROM counters WHERE id = 'execution'");
+    await connection.commit();
+    const num = rows[0].value;
+    return `EX${String(num).padStart(6, '0')}`;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 // GET /api/flows - 获取所有流程（含步骤）
 router.get('/', async (req, res) => {
   try {
@@ -336,6 +354,189 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('删除流程失败:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== 流程执行实例 API ====================
+
+// GET /api/flows/:id/executions - 获取流程的所有执行实例
+router.get('/:id/executions', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [executions] = await pool.query(`
+      SELECT e.*, u.name as initiator_name
+      FROM flow_executions e
+      LEFT JOIN users u ON e.initiator_id = u.id
+      WHERE e.flow_id = ?
+      ORDER BY e.created_at DESC
+    `, [id]);
+
+    res.json(executions);
+  } catch (error) {
+    console.error('获取执行实例失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/flows/executions/:executionId - 获取执行详情（含步骤）
+router.get('/executions/:executionId', async (req, res) => {
+  const { executionId } = req.params;
+  try {
+    const [executions] = await pool.query(`
+      SELECT e.*, u.name as initiator_name, f.name as flow_name
+      FROM flow_executions e
+      LEFT JOIN users u ON e.initiator_id = u.id
+      LEFT JOIN flows f ON e.flow_id = f.id
+      WHERE e.id = ?
+    `, [executionId]);
+
+    if (executions.length === 0) {
+      return res.status(404).json({ error: '执行实例不存在' });
+    }
+
+    const [steps] = await pool.query(`
+      SELECT s.*, u.name as assignee_name
+      FROM flow_execution_steps s
+      LEFT JOIN users u ON s.assignee_id = u.id
+      WHERE s.execution_id = ?
+      ORDER BY s.step_order ASC
+    `, [executionId]);
+
+    res.json({ ...executions[0], steps });
+  } catch (error) {
+    console.error('获取执行详情失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/executions - 创建执行实例
+router.post('/:id/executions', async (req, res) => {
+  const { id } = req.params;
+  const { flowReleaseId, initiatorId, context } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 获取流程定义
+    const [flows] = await connection.query('SELECT * FROM flows WHERE id = ?', [id]);
+    if (flows.length === 0) {
+      throw new Error('流程不存在');
+    }
+
+    const [steps] = await connection.query(
+      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
+      [id]
+    );
+
+    // 创建执行实例
+    const executionId = randomUUID();
+    const executionNo = await generateExecutionNo();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_executions
+      (id, execution_no, flow_id, flow_release_id, status, initiator_id, context, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+    `, [executionId, executionNo, id, flowReleaseId || null, initiatorId || null,
+        context ? JSON.stringify(context) : null, now, now]);
+
+    // 创建步骤记录
+    for (const step of steps) {
+      await connection.query(`
+        INSERT INTO flow_execution_steps
+        (id, execution_id, step_id, step_name, step_order, status, created_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+      `, [randomUUID(), executionId, step.id, step.name, step.step_order, now]);
+    }
+
+    await connection.commit();
+
+    // 返回完整数据
+    const [result] = await connection.query(
+      'SELECT * FROM flow_executions WHERE id = ?',
+      [executionId]
+    );
+
+    res.status(201).json(result[0]);
+  } catch (error) {
+    await connection.rollback();
+    console.error('创建执行实例失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// POST /api/flows/executions/:executionId/start - 启动执行
+router.post('/executions/:executionId/start', async (req, res) => {
+  const { executionId } = req.params;
+  const now = Date.now();
+
+  try {
+    await pool.query(`
+      UPDATE flow_executions
+      SET status = 'running', started_at = ?, updated_at = ?
+      WHERE id = ?
+    `, [now, now, executionId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('启动执行失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/executions/:executionId/steps/:stepId/complete - 完成步骤
+router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) => {
+  const { executionId, stepId } = req.params;
+  const { result, status } = req.body;
+  const now = Date.now();
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 更新步骤状态
+    const [stepResult] = await connection.query(`
+      SELECT started_at FROM flow_execution_steps
+      WHERE execution_id = ? AND step_id = ?
+    `, [executionId, stepId]);
+
+    const startedAt = stepResult[0]?.started_at || now;
+    const duration = now - startedAt;
+
+    await connection.query(`
+      UPDATE flow_execution_steps
+      SET status = ?, result = ?, completed_at = ?, duration = ?
+      WHERE execution_id = ? AND step_id = ?
+    `, [status || 'completed', result ? JSON.stringify(result) : null, now, duration, executionId, stepId]);
+
+    // 检查是否所有步骤完成
+    const [allSteps] = await connection.query(`
+      SELECT COUNT(*) as total,
+             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+      FROM flow_execution_steps
+      WHERE execution_id = ?
+    `, [executionId]);
+
+    if (allSteps[0].total === allSteps[0].completed) {
+      // 标记执行完成
+      await connection.query(`
+        UPDATE flow_executions
+        SET status = 'completed', completed_at = ?, updated_at = ?
+        WHERE id = ?
+      `, [now, now, executionId]);
+    }
+
+    await connection.commit();
+    res.json({ success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error('完成步骤失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
   }
 });
 
