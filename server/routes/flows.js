@@ -22,6 +22,148 @@ function canAdminFlow(req) {
   return hasRole(req, flowAdminRoles);
 }
 
+/**
+ * 评估步骤参数（后端版本）
+ * 支持常量、变量、表达式、前一步输出等参数来源
+ */
+function evaluateStepParameters(paramConfigs = [], context = {}) {
+  const result = {};
+  const { variableValues = {}, flowVariables = [], previousStepOutput = {} } = context;
+
+  // 构建变量映射表
+  const variableMap = {};
+  for (const v of flowVariables) {
+    variableMap[v.name] = v.default_value;
+  }
+  Object.assign(variableMap, variableValues);
+
+  for (const param of paramConfigs) {
+    const { paramName, sourceType, sourceValue } = param;
+    if (!paramName) continue;
+
+    try {
+      let value;
+
+      switch (sourceType) {
+        case 'constant':
+          value = parseConstantValue(sourceValue);
+          break;
+
+        case 'variable':
+          value = variableMap[sourceValue] !== undefined ? variableMap[sourceValue] : null;
+          break;
+
+        case 'expression':
+          value = evaluateExpression(sourceValue, variableMap, previousStepOutput);
+          break;
+
+        case 'previous_step':
+          value = previousStepOutput[sourceValue] || null;
+          break;
+
+        default:
+          value = null;
+      }
+
+      result[paramName] = value;
+    } catch (err) {
+      console.warn(`参数评估失败 [${paramName}]:`, err.message);
+      result[paramName] = null;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 解析常量值
+ */
+function parseConstantValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const str = String(value).trim();
+
+  // 布尔值
+  if (str === 'true') return true;
+  if (str === 'false') return false;
+
+  // 数字
+  if (/^-?\d+\.?\d*$/.test(str)) {
+    return Number(str);
+  }
+
+  // null 值
+  if (str === 'null') return null;
+
+  // JSON 对象/数组
+  if ((str.startsWith('{') && str.endsWith('}')) ||
+      (str.startsWith('[') && str.endsWith(']'))) {
+    try {
+      return JSON.parse(str);
+    } catch (e) {
+      return str;
+    }
+  }
+
+  // 默认为字符串
+  return str;
+}
+
+/**
+ * 评估表达式
+ */
+function evaluateExpression(expr, variables = {}, previousOutput = {}) {
+  if (!expr) return null;
+
+  let result = expr;
+
+  // 替换变量引用 ${varName} 或 ${previousStep.fieldName}
+  result = result.replace(/\$\{([^}]+)\}/g, (match, content) => {
+    const trimmed = content.trim();
+
+    // 前一步输出引用
+    if (trimmed.startsWith('previousStep.')) {
+      const fieldName = trimmed.slice('previousStep.'.length);
+      return String(previousOutput[fieldName] || '');
+    }
+
+    // 变量引用
+    const value = variables[trimmed];
+    if (value !== undefined) {
+      return String(value);
+    }
+
+    return match;
+  });
+
+  // 基础算术计算
+  if (/^[\d\s+\-*/().]+$/.test(result)) {
+    try {
+      const compute = Function('"use strict"; return (' + result + ')');
+      return compute();
+    } catch (e) {
+      return result;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 记录执行日志（用于 Phase 4 WebSocket 推送）
+ */
+async function recordExecutionLog(connection, executionId, eventType, details = {}) {
+  try {
+    // 这里预留接口用于 Phase 4 集成
+    // 将在 Phase 4 中添加 flow_execution_logs 表记录
+    console.log(`[ExecutionLog] ${eventType}:`, details);
+  } catch (err) {
+    console.warn('记录执行日志失败:', err.message);
+  }
+}
+
 // 生成流程编号
 async function generateFlowNo() {
   const connection = await pool.getConnection();
@@ -1277,72 +1419,299 @@ router.post('/:id/executions', async (req, res) => {
 // POST /api/flows/executions/:executionId/start - 启动执行
 router.post('/executions/:executionId/start', async (req, res) => {
   const { executionId } = req.params;
-  const now = Date.now();
-
-  try {
-    await pool.query(`
-      UPDATE flow_executions
-      SET status = 'running', started_at = ?, updated_at = ?
-      WHERE id = ?
-    `, [now, now, executionId]);
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('启动执行失败:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/flows/executions/:executionId/steps/:stepId/complete - 完成步骤
-router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) => {
-  const { executionId, stepId } = req.params;
-  const { result, status } = req.body;
+  const { variableValues } = req.body || {};
   const now = Date.now();
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    // 更新步骤状态
+    // 获取执行实例信息
+    const [executions] = await connection.query(
+      'SELECT * FROM flow_executions WHERE id = ?',
+      [executionId]
+    );
+
+    if (executions.length === 0) {
+      return res.status(404).json({ error: '执行实例不存在' });
+    }
+
+    const execution = executions[0];
+
+    // 获取流程的所有变量定义
+    const [flowVariables] = await connection.query(
+      'SELECT * FROM flow_variables WHERE flow_id = ?',
+      [execution.flow_id]
+    );
+
+    // 获取所有步骤和参数映射
+    const [steps] = await connection.query(
+      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
+      [execution.flow_id]
+    );
+
+    // 获取所有执行步骤
+    const [executionSteps] = await connection.query(
+      'SELECT * FROM flow_execution_steps WHERE execution_id = ? ORDER BY step_order ASC',
+      [executionId]
+    );
+
+    // 处理每个步骤的参数
+    const variableMap = { ...variableValues };
+    let previousStepOutput = {};
+
+    for (const execStep of executionSteps) {
+      const [params] = await connection.query(
+        'SELECT * FROM flow_step_parameters WHERE step_id = ? AND param_type = ?',
+        [execStep.step_id, 'input']
+      );
+
+      // 评估输入参数
+      const inputData = evaluateStepParameters(params, {
+        variableValues: variableMap,
+        flowVariables,
+        previousStepOutput
+      });
+
+      // 保存输入参数到执行步骤
+      if (Object.keys(inputData).length > 0) {
+        await connection.query(`
+          UPDATE flow_execution_steps
+          SET input_data = ?
+          WHERE id = ?
+        `, [JSON.stringify(inputData), execStep.id]);
+      }
+    }
+
+    // 更新执行状态为运行中
+    await connection.query(`
+      UPDATE flow_executions
+      SET status = 'running', started_at = ?, updated_at = ?
+      WHERE id = ?
+    `, [now, now, executionId]);
+
+    await connection.commit();
+    res.json({ success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error('启动执行失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// POST /api/flows/executions/:executionId/steps/:stepId/complete - 完成步骤并处理参数传递
+router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) => {
+  const { executionId, stepId } = req.params;
+  const { result, status, outputData } = req.body;
+  const now = Date.now();
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 获取执行步骤
     const [stepResult] = await connection.query(`
-      SELECT started_at FROM flow_execution_steps
-      WHERE execution_id = ? AND step_id = ?
+      SELECT es.*, f.id as flow_id FROM flow_execution_steps es
+      JOIN flow_executions e ON es.execution_id = e.id
+      JOIN flows f ON e.flow_id = f.id
+      WHERE es.execution_id = ? AND es.step_id = ?
     `, [executionId, stepId]);
 
-    const startedAt = stepResult[0]?.started_at || now;
-    const duration = now - startedAt;
+    if (stepResult.length === 0) {
+      return res.status(404).json({ error: '步骤记录不存在' });
+    }
 
+    const execStep = stepResult[0];
+    const startedAt = execStep.started_at || now;
+    const duration = now - startedAt;
+    const flowId = execStep.flow_id;
+
+    // 处理输出参数映射
+    let processedOutputData = outputData || {};
+    if (result) {
+      const [outputParams] = await connection.query(
+        'SELECT * FROM flow_step_parameters WHERE step_id = ? AND param_type = ?',
+        [stepId, 'output']
+      );
+
+      // 根据输出参数映射配置，提取结果中的数据
+      if (outputParams.length > 0) {
+        processedOutputData = {};
+        for (const param of outputParams) {
+          const mappingTo = param.mapping_to || param.param_name;
+          // 从 result 对象中获取对应字段的值
+          processedOutputData[mappingTo] = result[param.param_name] || result[param.source_value];
+        }
+      }
+    }
+
+    // 更新步骤状态和数据
     await connection.query(`
       UPDATE flow_execution_steps
-      SET status = ?, result = ?, completed_at = ?, duration = ?
+      SET status = ?, result = ?, output_data = ?, completed_at = ?, duration = ?
       WHERE execution_id = ? AND step_id = ?
-    `, [status || 'completed', result ? JSON.stringify(result) : null, now, duration, executionId, stepId]);
+    `, [
+      status || 'completed',
+      result ? JSON.stringify(result) : null,
+      Object.keys(processedOutputData).length > 0 ? JSON.stringify(processedOutputData) : null,
+      now,
+      duration,
+      executionId,
+      stepId
+    ]);
 
-    // 检查是否所有步骤完成
+    // 获取下一个待执行步骤并应用参数
     const [allSteps] = await connection.query(`
-      SELECT COUNT(*) as total,
-             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-      FROM flow_execution_steps
+      SELECT * FROM flow_execution_steps
       WHERE execution_id = ?
+      ORDER BY step_order ASC
     `, [executionId]);
 
-    if (allSteps[0].total === allSteps[0].completed) {
+    const currentStepIndex = allSteps.findIndex(s => s.step_id === stepId);
+
+    // 为下一个步骤应用参数映射
+    if (currentStepIndex < allSteps.length - 1) {
+      const nextExecStep = allSteps[currentStepIndex + 1];
+
+      // 获取流程变量
+      const [flowVariables] = await connection.query(
+        'SELECT * FROM flow_variables WHERE flow_id = ?',
+        [flowId]
+      );
+
+      // 获取下一步的参数映射
+      const [nextParams] = await connection.query(
+        'SELECT * FROM flow_step_parameters WHERE step_id = ? AND param_type = ?',
+        [nextExecStep.step_id, 'input']
+      );
+
+      // 评估输入参数（包括来自前一步的输出）
+      const inputData = evaluateStepParameters(nextParams, {
+        variableValues: {},
+        flowVariables,
+        previousStepOutput: processedOutputData
+      });
+
+      // 保存输入参数到下一个执行步骤
+      if (Object.keys(inputData).length > 0) {
+        await connection.query(`
+          UPDATE flow_execution_steps
+          SET input_data = ?
+          WHERE id = ?
+        `, [JSON.stringify(inputData), nextExecStep.id]);
+      }
+    }
+
+    // 检查是否所有步骤完成
+    const [completedCount] = await connection.query(`
+      SELECT COUNT(*) as completed
+      FROM flow_execution_steps
+      WHERE execution_id = ? AND status IN ('completed', 'skipped')
+    `, [executionId]);
+
+    if (completedCount[0].completed === allSteps.length) {
       // 标记执行完成
       await connection.query(`
         UPDATE flow_executions
         SET status = 'completed', completed_at = ?, updated_at = ?
         WHERE id = ?
       `, [now, now, executionId]);
+
+      // 记录执行完成日志
+      await recordExecutionLog(connection, executionId, 'execution_completed', {
+        detail: '流程执行已完成',
+        totalSteps: allSteps.length,
+        duration
+      });
     }
 
     await connection.commit();
-    res.json({ success: true });
+    res.json({ success: true, outputData: processedOutputData });
   } catch (error) {
     await connection.rollback();
     console.error('完成步骤失败:', error);
     res.status(500).json({ error: error.message });
   } finally {
     connection.release();
+  }
+});
+
+// POST /api/flows/executions/:executionId/steps/:stepId/start - 启动单个步骤执行
+router.post('/executions/:executionId/steps/:stepId/start', async (req, res) => {
+  const { executionId, stepId } = req.params;
+  const now = Date.now();
+
+  const connection = await pool.getConnection();
+  try {
+    // 获取执行步骤和执行实例信息
+    const [stepResult] = await connection.query(`
+      SELECT es.*, e.flow_id FROM flow_execution_steps es
+      JOIN flow_executions e ON es.execution_id = e.id
+      WHERE es.execution_id = ? AND es.step_id = ?
+    `, [executionId, stepId]);
+
+    if (stepResult.length === 0) {
+      return res.status(404).json({ error: '步骤记录不存在' });
+    }
+
+    const execStep = stepResult[0];
+
+    // 更新步骤状态为运行中
+    await connection.query(`
+      UPDATE flow_execution_steps
+      SET status = 'running', started_at = ?, updated_at = ?
+      WHERE execution_id = ? AND step_id = ?
+    `, [now, now, executionId, stepId]);
+
+    // 获取该步骤的输入参数
+    const [inputParams] = await connection.query(`
+      SELECT * FROM flow_execution_steps
+      WHERE execution_id = ? AND step_id = ?
+    `, [executionId, stepId]);
+
+    const inputData = inputParams[0]?.input_data ? JSON.parse(inputParams[0].input_data) : {};
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      inputData,
+      startedAt: now
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('启动步骤失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// GET /api/flows/executions/:executionId/steps/:stepId/input-data - 获取步骤输入参数
+router.get('/executions/:executionId/steps/:stepId/input-data', async (req, res) => {
+  const { executionId, stepId } = req.params;
+
+  try {
+    const [stepData] = await pool.query(`
+      SELECT input_data FROM flow_execution_steps
+      WHERE execution_id = ? AND step_id = ?
+    `, [executionId, stepId]);
+
+    if (stepData.length === 0) {
+      return res.status(404).json({ error: '步骤记录不存在' });
+    }
+
+    const inputData = stepData[0].input_data ? JSON.parse(stepData[0].input_data) : {};
+
+    res.json({
+      inputData,
+      paramCount: Object.keys(inputData).length
+    });
+  } catch (error) {
+    console.error('获取步骤输入参数失败:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -315,8 +315,10 @@ export const api = {
     getExecutions: (flowId) => apiRequest(`/flows/${flowId}/executions`),
     getExecution: (executionId) => apiRequest(`/flows/executions/${executionId}`),
     createExecution: (flowId, data) => apiRequest(`/flows/${flowId}/executions`, { method: 'POST', body: JSON.stringify(data) }),
-    startExecution: (executionId) => apiRequest(`/flows/executions/${executionId}/start`, { method: 'POST' }),
+    startExecution: (executionId, data = {}) => apiRequest(`/flows/executions/${executionId}/start`, { method: 'POST', body: JSON.stringify(data) }),
     completeStep: (executionId, stepId, data) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/complete`, { method: 'POST', body: JSON.stringify(data) }),
+    startStep: (executionId, stepId) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/start`, { method: 'POST' }),
+    getStepInputData: (executionId, stepId) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/input-data`),
     // 自动化规则 API
     getAutomationRules: (flowId) => apiRequest(`/flows/${flowId}/automation/rules`),
     createAutomationRule: (flowId, data) => apiRequest(`/flows/${flowId}/automation/rules`, { method: 'POST', body: JSON.stringify(data) }),
