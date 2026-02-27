@@ -307,7 +307,7 @@ export default {
 
       const { x, y } = event
       const newNode = {
-        id: `node_${randomUUID()}`,
+        id: `node_${uuidv4()}`,
         type: this.draggedNodeType,
         position: { x: x - 60, y: y - 40 },
         data: {
