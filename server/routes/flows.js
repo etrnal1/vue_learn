@@ -1585,4 +1585,223 @@ router.post('/automation/execute-rule', async (req, res) => {
   }
 });
 
+// ================== 流程图编辑器 API ==================
+
+// GET /api/flows/:id/diagram - 获取流程图完整数据（节点+连线）
+router.get('/:id/diagram', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 获取流程基本信息
+    const [flows] = await pool.query('SELECT * FROM flows WHERE id = ?', [id]);
+    if (flows.length === 0) {
+      return res.status(404).json({ error: '流程不存在' });
+    }
+
+    // 获取步骤节点
+    const [steps] = await pool.query(
+      'SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_order ASC',
+      [id]
+    );
+
+    // 获取连线
+    const [connections] = await pool.query(
+      'SELECT * FROM flow_connections WHERE flow_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+
+    res.json({
+      flow: flows[0],
+      nodes: steps,
+      edges: connections
+    });
+  } catch (error) {
+    console.error('获取流程图数据失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/nodes - 创建节点
+router.post('/:id/nodes', flowWriteProtect, async (req, res) => {
+  const { id: flowId } = req.params;
+  const {
+    name,
+    description,
+    assignee,
+    duration,
+    position_x,
+    position_y,
+    node_type = 'userTask',
+    node_width = 120,
+    node_height = 80
+  } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 验证流程存在
+    const [flows] = await connection.query('SELECT id FROM flows WHERE id = ?', [flowId]);
+    if (flows.length === 0) {
+      throw new Error('流程不存在');
+    }
+
+    // 获取下一个步骤序号
+    const [stepOrderResult] = await connection.query(
+      'SELECT COALESCE(MAX(step_order), 0) + 1 as next_order FROM flow_steps WHERE flow_id = ?',
+      [flowId]
+    );
+    const stepOrder = stepOrderResult[0].next_order;
+
+    const stepId = randomUUID();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_steps
+      (id, flow_id, name, description, assignee, duration, step_order, position_x, position_y,
+       node_type, node_width, node_height, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      stepId, flowId, name, description, assignee, duration, stepOrder,
+      position_x, position_y, node_type, node_width, node_height, now, now
+    ]);
+
+    await connection.commit();
+
+    const [result] = await connection.query('SELECT * FROM flow_steps WHERE id = ?', [stepId]);
+    res.status(201).json(result[0]);
+  } catch (error) {
+    await connection.rollback();
+    console.error('创建节点失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// PUT /api/flows/:id/nodes/:nodeId - 更新节点
+router.put('/:id/nodes/:nodeId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, nodeId } = req.params;
+  const {
+    name,
+    description,
+    assignee,
+    duration,
+    position_x,
+    position_y,
+    node_width,
+    node_height
+  } = req.body;
+
+  try {
+    const now = Date.now();
+
+    await pool.query(`
+      UPDATE flow_steps
+      SET name = ?, description = ?, assignee = ?, duration = ?,
+          position_x = ?, position_y = ?, node_width = ?, node_height = ?, updated_at = ?
+      WHERE id = ? AND flow_id = ?
+    `, [
+      name, description, assignee, duration,
+      position_x, position_y, node_width, node_height, now,
+      nodeId, flowId
+    ]);
+
+    const [result] = await pool.query('SELECT * FROM flow_steps WHERE id = ?', [nodeId]);
+    res.json(result[0]);
+  } catch (error) {
+    console.error('更新节点失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/flows/:id/nodes/:nodeId - 删除节点
+router.delete('/:id/nodes/:nodeId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, nodeId } = req.params;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 删除相关连线
+    await connection.query(`
+      DELETE FROM flow_connections
+      WHERE flow_id = ? AND (source_step_id = ? OR target_step_id = ?)
+    `, [flowId, nodeId, nodeId]);
+
+    // 删除节点
+    await connection.query('DELETE FROM flow_steps WHERE id = ? AND flow_id = ?', [nodeId, flowId]);
+
+    await connection.commit();
+    res.json({ success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error('删除节点失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// POST /api/flows/:id/connections - 创建连线
+router.post('/:id/connections', flowWriteProtect, async (req, res) => {
+  const { id: flowId } = req.params;
+  const { source_step_id, target_step_id, label, condition_config } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 验证源节点和目标节点存在
+    const [sourceNodes] = await connection.query(
+      'SELECT id FROM flow_steps WHERE id = ? AND flow_id = ?',
+      [source_step_id, flowId]
+    );
+    const [targetNodes] = await connection.query(
+      'SELECT id FROM flow_steps WHERE id = ? AND flow_id = ?',
+      [target_step_id, flowId]
+    );
+
+    if (sourceNodes.length === 0 || targetNodes.length === 0) {
+      throw new Error('源节点或目标节点不存在');
+    }
+
+    const connectionId = randomUUID();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_connections
+      (id, flow_id, source_step_id, target_step_id, label, condition_config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      connectionId, flowId, source_step_id, target_step_id, label,
+      condition_config ? JSON.stringify(condition_config) : null, now, now
+    ]);
+
+    await connection.commit();
+
+    const [result] = await connection.query('SELECT * FROM flow_connections WHERE id = ?', [connectionId]);
+    res.status(201).json(result[0]);
+  } catch (error) {
+    await connection.rollback();
+    console.error('创建连线失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// DELETE /api/flows/:id/connections/:connectionId - 删除连线
+router.delete('/:id/connections/:connectionId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, connectionId } = req.params;
+
+  try {
+    await pool.query('DELETE FROM flow_connections WHERE id = ? AND flow_id = ?', [connectionId, flowId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除连线失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

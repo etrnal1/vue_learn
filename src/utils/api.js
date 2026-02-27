@@ -334,7 +334,14 @@ export const api = {
     executeAutomationRule: (ruleId, executionId) => apiRequest('/flows/automation/execute-rule', {
       method: 'POST',
       body: JSON.stringify({ ruleId, executionId })
-    })
+    }),
+    // 流程图编辑器 API
+    getDiagram: (flowId) => apiRequest(`/flows/${flowId}/diagram`),
+    createNode: (flowId, data) => apiRequest(`/flows/${flowId}/nodes`, { method: 'POST', body: JSON.stringify(data) }),
+    updateNode: (flowId, nodeId, data) => apiRequest(`/flows/${flowId}/nodes/${nodeId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteNode: (flowId, nodeId) => apiRequest(`/flows/${flowId}/nodes/${nodeId}`, { method: 'DELETE' }),
+    createConnection: (flowId, data) => apiRequest(`/flows/${flowId}/connections`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteConnection: (flowId, connectionId) => apiRequest(`/flows/${flowId}/connections/${connectionId}`, { method: 'DELETE' })
   },
 
   // Chats

@@ -121,44 +121,18 @@
 
         <!-- 画布拖拽视图 -->
         <div
-          v-if="canvasMounted && editingFlow.steps && editingFlow.steps.length > 0"
+          v-if="canvasMounted"
           v-show="view === 'canvas'"
           class="canvas-section"
         >
-          <div class="canvas-toolbar">
-            <button
-              class="btn btn-small"
-              :class="{ active: canvasInteractionMode === 'node' }"
-              @click="canvasInteractionMode = 'node'"
-            >
-              节点拖拽
-            </button>
-            <button
-              class="btn btn-small"
-              :class="{ active: canvasInteractionMode === 'pan' }"
-              @click="canvasInteractionMode = 'pan'"
-            >
-              画布拖动
-            </button>
-          </div>
-          <div class="canvas-scroll">
-            <VueFlow
-              class="flow-canvas"
-              :nodes="canvasNodes"
-              :edges="canvasEdges"
-              :nodes-draggable="canvasInteractionMode === 'node'"
-              :pan-on-drag="canvasInteractionMode === 'pan'"
-              :nodes-connectable="false"
-              :zoom-on-pinch="true"
-              :zoom-on-scroll="canvasInteractionMode !== 'pan'"
-              :fit-view-on-init="true"
-              @nodes-change="onCanvasNodesChange"
-              @node-click="onCanvasNodeClick"
-            />
-          </div>
-          <p class="canvas-hint">
-            {{ canvasInteractionMode === 'pan' ? '当前为画布拖动：单指拖动画布，双指缩放。' : '当前为节点拖拽：拖拽节点可调整布局，布局会随流程保存。' }}
-          </p>
+          <FlowEditor
+            v-if="editingFlow"
+            v-model="flowDiagram"
+            :title="editingFlow.name"
+            :readonly="!canEditFlow"
+            @save="onFlowDiagramSave"
+            @node-select="onCanvasNodeClick"
+          />
         </div>
 
         <!-- 列表视图 -->
@@ -574,12 +548,13 @@ import { recordAudit } from '../../utils/auditLog.js'
 import TraceFlowDemo from '../../components/workflow/TraceFlowDemo.vue'
 import TimelineView from '../../components/workflow/TimelineView.vue'
 import { VueFlow, applyNodeChanges } from '@vue-flow/core'
+import FlowEditor from '../../components/flow-editor/FlowEditor.vue'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 
 export default {
   name: 'FlowDiagramEditor',
-  components: { TraceFlowDemo, TimelineView, VueFlow },
+  components: { TraceFlowDemo, TimelineView, VueFlow, FlowEditor },
   data() {
     return {
       flows: [],
@@ -618,7 +593,8 @@ export default {
       canvasInteractionMode: 'node',
       sharedModules: [],
       sharedModulesLoading: false,
-      view: 'list'  // 'list' | 'timeline' | 'canvas'
+      view: 'list',  // 'list' | 'timeline' | 'canvas'
+      flowDiagram: { nodes: [], edges: [] }
     }
   },
   computed: {
