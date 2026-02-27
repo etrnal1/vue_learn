@@ -1804,4 +1804,229 @@ router.delete('/:id/connections/:connectionId', flowWriteProtect, async (req, re
   }
 });
 
+/**
+ * ==================== Phase 3: 参数传递与数据映射 ====================
+ */
+
+// GET /api/flows/:id/variables - 获取流程变量列表
+router.get('/:id/variables', async (req, res) => {
+  const { id: flowId } = req.params;
+
+  try {
+    const [variables] = await pool.query(`
+      SELECT id, flow_id, name, type, default_value, description, required, created_at, updated_at
+      FROM flow_variables
+      WHERE flow_id = ?
+      ORDER BY created_at ASC
+    `, [flowId]);
+
+    res.json(variables);
+  } catch (error) {
+    console.error('获取流程变量失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/variables - 创建流程变量
+router.post('/:id/variables', flowWriteProtect, async (req, res) => {
+  const { id: flowId } = req.params;
+  const { name, type = 'string', defaultValue, description, required = false } = req.body;
+
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: '变量名称不能为空' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const variableId = randomUUID();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_variables
+      (id, flow_id, name, type, default_value, description, required, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [variableId, flowId, name, type, defaultValue ? JSON.stringify(defaultValue) : null, description, required, now, now]);
+
+    await connection.commit();
+
+    res.status(201).json({
+      id: variableId,
+      flowId,
+      name,
+      type,
+      defaultValue,
+      description,
+      required,
+      createdAt: now,
+      updatedAt: now
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('创建流程变量失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// PUT /api/flows/:id/variables/:varId - 更新流程变量
+router.put('/:id/variables/:varId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, varId } = req.params;
+  const { name, type, defaultValue, description, required } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const now = Date.now();
+
+    await connection.query(`
+      UPDATE flow_variables
+      SET name = ?, type = ?, default_value = ?, description = ?, required = ?, updated_at = ?
+      WHERE id = ? AND flow_id = ?
+    `, [name, type, defaultValue ? JSON.stringify(defaultValue) : null, description, required, now, varId, flowId]);
+
+    await connection.commit();
+
+    res.json({ success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error('更新流程变量失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// DELETE /api/flows/:id/variables/:varId - 删除流程变量
+router.delete('/:id/variables/:varId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, varId } = req.params;
+
+  try {
+    await pool.query(
+      'DELETE FROM flow_variables WHERE id = ? AND flow_id = ?',
+      [varId, flowId]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除流程变量失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/flows/:id/steps/:stepId/parameters - 获取步骤参数映射
+router.get('/:id/steps/:stepId/parameters', async (req, res) => {
+  const { id: flowId, stepId } = req.params;
+
+  try {
+    const [parameters] = await pool.query(`
+      SELECT id, flow_id, step_id, param_type, param_name, source_type, source_value,
+             mapping_to, description, step_order, created_at, updated_at
+      FROM flow_step_parameters
+      WHERE flow_id = ? AND step_id = ?
+      ORDER BY param_type ASC, step_order ASC, created_at ASC
+    `, [flowId, stepId]);
+
+    res.json(parameters);
+  } catch (error) {
+    console.error('获取步骤参数映射失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:id/steps/:stepId/parameters - 创建参数映射
+router.post('/:id/steps/:stepId/parameters', flowWriteProtect, async (req, res) => {
+  const { id: flowId, stepId } = req.params;
+  const { paramType = 'input', paramName, sourceType = 'constant', sourceValue, mappingTo, description, stepOrder } = req.body;
+
+  if (!paramName || paramName.trim() === '') {
+    return res.status(400).json({ error: '参数名称不能为空' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const paramId = randomUUID();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_step_parameters
+      (id, flow_id, step_id, param_type, param_name, source_type, source_value, mapping_to, description, step_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [paramId, flowId, stepId, paramType, paramName, sourceType, sourceValue, mappingTo, description, stepOrder, now, now]);
+
+    await connection.commit();
+
+    res.status(201).json({
+      id: paramId,
+      flowId,
+      stepId,
+      paramType,
+      paramName,
+      sourceType,
+      sourceValue,
+      mappingTo,
+      description,
+      stepOrder,
+      createdAt: now,
+      updatedAt: now
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('创建参数映射失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// PUT /api/flows/:id/parameters/:paramId - 更新参数映射
+router.put('/:id/parameters/:paramId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, paramId } = req.params;
+  const { paramType, paramName, sourceType, sourceValue, mappingTo, description, stepOrder } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const now = Date.now();
+
+    await connection.query(`
+      UPDATE flow_step_parameters
+      SET param_type = ?, param_name = ?, source_type = ?, source_value = ?,
+          mapping_to = ?, description = ?, step_order = ?, updated_at = ?
+      WHERE id = ? AND flow_id = ?
+    `, [paramType, paramName, sourceType, sourceValue, mappingTo, description, stepOrder, now, paramId, flowId]);
+
+    await connection.commit();
+
+    res.json({ success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error('更新参数映射失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// DELETE /api/flows/:id/parameters/:paramId - 删除参数映射
+router.delete('/:id/parameters/:paramId', flowWriteProtect, async (req, res) => {
+  const { id: flowId, paramId } = req.params;
+
+  try {
+    await pool.query(
+      'DELETE FROM flow_step_parameters WHERE id = ? AND flow_id = ?',
+      [paramId, flowId]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除参数映射失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

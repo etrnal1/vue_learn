@@ -792,7 +792,80 @@ async function initDatabase() {
       }
     }
 
-    // 16. 登录会话表
+    // 16. 流程变量表（Phase 3：参数传递与数据映射）
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_variables (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        type ENUM('string', 'number', 'boolean', 'array', 'object', 'any') DEFAULT 'string',
+        default_value JSON,
+        description TEXT,
+        required BOOLEAN DEFAULT FALSE,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_flow (flow_id),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_variables 已创建');
+
+    // 17. 步骤参数映射表（Phase 3：参数传递与数据映射）
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS flow_step_parameters (
+        id VARCHAR(50) PRIMARY KEY,
+        flow_id VARCHAR(50) NOT NULL,
+        step_id VARCHAR(50) NOT NULL,
+        param_type ENUM('input', 'output') DEFAULT 'input',
+        param_name VARCHAR(100) NOT NULL,
+        source_type ENUM('constant', 'variable', 'expression', 'previous_step') DEFAULT 'constant',
+        source_value TEXT,
+        mapping_to VARCHAR(100),
+        description TEXT,
+        step_order INT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        INDEX idx_step (step_id),
+        INDEX idx_flow (flow_id),
+        INDEX idx_param_type (param_type),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES flow_steps(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_step_parameters 已创建');
+
+    // 扩展flow_execution_steps表添加参数字段
+    try {
+      await connection.query(`
+        ALTER TABLE flow_execution_steps
+        ADD COLUMN input_data JSON
+        AFTER step_order
+      `);
+      console.log('✅ 表 flow_execution_steps input_data 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_execution_steps input_data 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await connection.query(`
+        ALTER TABLE flow_execution_steps
+        ADD COLUMN output_data JSON
+        AFTER input_data
+      `);
+      console.log('✅ 表 flow_execution_steps output_data 字段已添加');
+    } catch (err) {
+      if (err.code === 'ER_DUP_FIELDNAME') {
+        console.log('✅ 表 flow_execution_steps output_data 字段已存在');
+      } else {
+        throw err;
+      }
+    }
+
+    // 18. 登录会话表
     await connection.query(`
       CREATE TABLE IF NOT EXISTS auth_sessions (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,

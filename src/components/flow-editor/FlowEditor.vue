@@ -220,7 +220,7 @@ import ParallelGatewayNode from './nodes/ParallelGatewayNode.vue'
 import InclusiveGatewayNode from './nodes/InclusiveGatewayNode.vue'
 import EndNode from './nodes/EndNode.vue'
 import ConditionEditorDialog from './dialogs/ConditionEditorDialog.vue'
-import api from '../../utils/api.js'
+import { api } from '../../utils/api.js'
 import { v4 as uuidv4 } from 'uuid'
 
 export default {

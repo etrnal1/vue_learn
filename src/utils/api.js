@@ -341,7 +341,16 @@ export const api = {
     updateNode: (flowId, nodeId, data) => apiRequest(`/flows/${flowId}/nodes/${nodeId}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteNode: (flowId, nodeId) => apiRequest(`/flows/${flowId}/nodes/${nodeId}`, { method: 'DELETE' }),
     createConnection: (flowId, data) => apiRequest(`/flows/${flowId}/connections`, { method: 'POST', body: JSON.stringify(data) }),
-    deleteConnection: (flowId, connectionId) => apiRequest(`/flows/${flowId}/connections/${connectionId}`, { method: 'DELETE' })
+    deleteConnection: (flowId, connectionId) => apiRequest(`/flows/${flowId}/connections/${connectionId}`, { method: 'DELETE' }),
+    // 参数传递与数据映射 API (Phase 3)
+    getVariables: (flowId) => apiRequest(`/flows/${flowId}/variables`),
+    createVariable: (flowId, data) => apiRequest(`/flows/${flowId}/variables`, { method: 'POST', body: JSON.stringify(data) }),
+    updateVariable: (flowId, varId, data) => apiRequest(`/flows/${flowId}/variables/${varId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteVariable: (flowId, varId) => apiRequest(`/flows/${flowId}/variables/${varId}`, { method: 'DELETE' }),
+    getStepParameters: (flowId, stepId) => apiRequest(`/flows/${flowId}/steps/${stepId}/parameters`),
+    createStepParameter: (flowId, stepId, data) => apiRequest(`/flows/${flowId}/steps/${stepId}/parameters`, { method: 'POST', body: JSON.stringify(data) }),
+    updateStepParameter: (flowId, paramId, data) => apiRequest(`/flows/${flowId}/parameters/${paramId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteStepParameter: (flowId, paramId) => apiRequest(`/flows/${flowId}/parameters/${paramId}`, { method: 'DELETE' })
   },
 
   // Chats
