@@ -2,6 +2,14 @@ import express from 'express';
 import { randomUUID } from 'crypto';
 import pool from '../db.js';
 import { getRoleGroup, requireAuth, requireRoles } from '../middleware/rbac.js';
+import {
+  notifyExecutionStarted,
+  notifyStepStarted,
+  notifyStepCompleted,
+  notifyExecutionCompleted,
+  notifyExecutionFailed,
+  notifyProgressUpdated
+} from '../services/executionEventEmitter.js';
 
 const router = express.Router();
 const flowRbacEnabled = String(process.env.FLOW_RBAC_ENABLED || 'false').toLowerCase() === 'true';
@@ -1556,10 +1564,29 @@ router.post('/executions/:executionId/start', async (req, res) => {
     `, [now, now, executionId]);
 
     await connection.commit();
+
+    // 触发 WebSocket 事件：执行启动（新增）
+    notifyExecutionStarted(executionId, {
+      startedAt: now
+    });
+
+    // 触发进度更新（新增）
+    notifyProgressUpdated(executionId, {
+      progress: 0,
+      currentStep: 1,
+      totalSteps: executionSteps.length
+    });
+
     res.json({ success: true });
   } catch (error) {
     await connection.rollback();
     console.error('启动执行失败:', error);
+
+    // 触发 WebSocket 事件：执行失败（新增）
+    notifyExecutionFailed(executionId, {
+      error: error.message
+    });
+
     res.status(500).json({ error: error.message });
   } finally {
     connection.release();
@@ -1627,6 +1654,14 @@ router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) 
       stepId
     ]);
 
+    // 触发 WebSocket 事件：步骤完成（新增）
+    notifyStepCompleted(executionId, stepId, {
+      stepName: execStep.step_name,
+      status: status || 'completed',
+      duration,
+      completedAt: now
+    });
+
     // 获取下一个待执行步骤并应用参数
     const [allSteps] = await connection.query(`
       SELECT * FROM flow_execution_steps
@@ -1676,8 +1711,22 @@ router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) 
       WHERE execution_id = ? AND status IN ('completed', 'skipped')
     `, [executionId]);
 
+    // 计算当前进度（新增）
+    const progress = Math.floor((completedCount[0].completed / allSteps.length) * 100);
+    notifyProgressUpdated(executionId, {
+      progress,
+      currentStep: completedCount[0].completed + 1,
+      totalSteps: allSteps.length
+    });
+
     if (completedCount[0].completed === allSteps.length) {
       // 标记执行完成
+      const [execution] = await connection.query(
+        'SELECT started_at FROM flow_executions WHERE id = ?',
+        [executionId]
+      );
+      const totalDuration = now - (execution[0]?.started_at || now);
+
       await connection.query(`
         UPDATE flow_executions
         SET status = 'completed', completed_at = ?, updated_at = ?
@@ -1689,6 +1738,12 @@ router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) 
         detail: '流程执行已完成',
         totalSteps: allSteps.length,
         duration
+      });
+
+      // 触发 WebSocket 事件：执行完成（新增）
+      notifyExecutionCompleted(executionId, {
+        completedAt: now,
+        totalDuration
       });
     }
 

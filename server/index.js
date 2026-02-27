@@ -5,6 +5,7 @@ import { testConnection } from './db.js';
 import { ensureAuthSchema } from './auth.js';
 import { camelCaseResponse } from './utils.js';
 import { initRuntimeLogCapture, pushRuntimeLog } from './runtimeLogs.js';
+import { initWebSocket } from './websocket.js';
 
 // 导入路由
 import authRouter from './routes/auth.js';
@@ -222,6 +223,10 @@ async function startServer() {
     console.log(`  - /api/database`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
+
+  // 初始化 WebSocket 服务器（新增）
+  const wss = initWebSocket(server);
+  console.log(`[websocket] WebSocket 服务器已启动，路径: ws://localhost:${PORT}/ws`);
 
   server.on('error', (error) => {
     console.error('❌ HTTP 服务监听失败:', {
