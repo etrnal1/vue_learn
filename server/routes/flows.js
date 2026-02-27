@@ -634,4 +634,243 @@ router.post('/executions/:executionId/steps/:stepId/complete', async (req, res) 
   }
 });
 
+// ============ 流程自动化 API ============
+
+// GET /api/flows/:flowId/automation/rules - 获取流程的自动化规则
+router.get('/:flowId/automation/rules', async (req, res) => {
+  const { flowId } = req.params;
+  try {
+    const [rules] = await pool.query(`
+      SELECT r.*, u.name as created_by_name
+      FROM flow_automation_rules r
+      LEFT JOIN users u ON r.created_by = u.id
+      WHERE r.flow_id = ?
+      ORDER BY r.created_at DESC
+    `, [flowId]);
+
+    res.json(rules);
+  } catch (error) {
+    console.error('获取自动化规则失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/:flowId/automation/rules - 创建自动化规则
+router.post('/:flowId/automation/rules', async (req, res) => {
+  const { flowId } = req.params;
+  const { ruleName, ruleType, triggerType, triggerConfig, actionType, actionConfig, createdBy } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    // 验证流程是否存在
+    const [flows] = await connection.query('SELECT id FROM flows WHERE id = ?', [flowId]);
+    if (flows.length === 0) {
+      return res.status(404).json({ error: '流程不存在' });
+    }
+
+    const ruleId = randomUUID();
+    const now = Date.now();
+
+    await connection.query(`
+      INSERT INTO flow_automation_rules
+      (id, flow_id, rule_name, rule_type, trigger_type, trigger_config, action_type, action_config, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      ruleId, flowId, ruleName, ruleType, triggerType,
+      triggerConfig ? JSON.stringify(triggerConfig) : null,
+      actionType, actionConfig ? JSON.stringify(actionConfig) : null,
+      createdBy || null, now, now
+    ]);
+
+    const [result] = await connection.query('SELECT * FROM flow_automation_rules WHERE id = ?', [ruleId]);
+    res.status(201).json(result[0]);
+  } catch (error) {
+    console.error('创建自动化规则失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// PUT /api/flows/automation/rules/:ruleId - 更新自动化规则
+router.put('/automation/rules/:ruleId', async (req, res) => {
+  const { ruleId } = req.params;
+  const { ruleName, triggerType, triggerConfig, actionType, actionConfig, isEnabled } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    const now = Date.now();
+
+    await connection.query(`
+      UPDATE flow_automation_rules
+      SET rule_name = ?, trigger_type = ?, trigger_config = ?, action_type = ?, action_config = ?, is_enabled = ?, updated_at = ?
+      WHERE id = ?
+    `, [
+      ruleName, triggerType,
+      triggerConfig ? JSON.stringify(triggerConfig) : null,
+      actionType, actionConfig ? JSON.stringify(actionConfig) : null,
+      isEnabled !== undefined ? isEnabled : true,
+      now, ruleId
+    ]);
+
+    const [result] = await connection.query('SELECT * FROM flow_automation_rules WHERE id = ?', [ruleId]);
+    res.json(result[0]);
+  } catch (error) {
+    console.error('更新自动化规则失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// DELETE /api/flows/automation/rules/:ruleId - 删除自动化规则
+router.delete('/automation/rules/:ruleId', async (req, res) => {
+  const { ruleId } = req.params;
+
+  try {
+    await pool.query('DELETE FROM flow_automation_rules WHERE id = ?', [ruleId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除自动化规则失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/automation/rules/:ruleId/toggle - 启用/禁用规则
+router.post('/automation/rules/:ruleId/toggle', async (req, res) => {
+  const { ruleId } = req.params;
+  const { isEnabled } = req.body;
+
+  try {
+    const now = Date.now();
+    await pool.query(`
+      UPDATE flow_automation_rules
+      SET is_enabled = ?, updated_at = ?
+      WHERE id = ?
+    `, [isEnabled || false, now, ruleId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('切换规则状态失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/flows/automation/logs - 获取自动化执行日志
+router.get('/automation/logs', async (req, res) => {
+  const { ruleId, executionId, limit = 100, offset = 0 } = req.query;
+
+  try {
+    let sql = 'SELECT * FROM flow_automation_logs WHERE 1=1';
+    const params = [];
+
+    if (ruleId) {
+      sql += ' AND rule_id = ?';
+      params.push(ruleId);
+    }
+
+    if (executionId) {
+      sql += ' AND execution_id = ?';
+      params.push(executionId);
+    }
+
+    sql += ' ORDER BY trigger_time DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+
+    const [logs] = await pool.query(sql, params);
+
+    res.json(logs);
+  } catch (error) {
+    console.error('获取自动化日志失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/flows/automation/execute-rule - 手动触发自动化规则
+router.post('/automation/execute-rule', async (req, res) => {
+  const { ruleId, executionId } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 获取规则
+    const [rules] = await connection.query('SELECT * FROM flow_automation_rules WHERE id = ?', [ruleId]);
+    if (rules.length === 0) {
+      return res.status(404).json({ error: '规则不存在' });
+    }
+
+    const rule = rules[0];
+    const logId = randomUUID();
+    const now = Date.now();
+    let actionExecuted = false;
+    let actionResult = null;
+
+    try {
+      // 根据规则类型执行相应的操作
+      const actionConfig = JSON.parse(rule.action_config || '{}');
+
+      if (rule.action_type === 'execute_step' && executionId && actionConfig.stepId) {
+        // 完成步骤
+        await connection.query(`
+          UPDATE flow_execution_steps
+          SET status = 'completed', completed_at = ?
+          WHERE execution_id = ? AND step_id = ?
+        `, [now, executionId, actionConfig.stepId]);
+
+        actionExecuted = true;
+        actionResult = { type: 'step_completed', stepId: actionConfig.stepId };
+      } else if (rule.action_type === 'skip_step' && executionId && actionConfig.stepId) {
+        // 跳过步骤
+        await connection.query(`
+          UPDATE flow_execution_steps
+          SET status = 'skipped', completed_at = ?
+          WHERE execution_id = ? AND step_id = ?
+        `, [now, executionId, actionConfig.stepId]);
+
+        actionExecuted = true;
+        actionResult = { type: 'step_skipped', stepId: actionConfig.stepId };
+      } else if (rule.action_type === 'execute_flow' && actionConfig.flowId) {
+        // 创建新的流程执行实例
+        const execNo = await generateExecutionNo();
+        const newExecId = randomUUID();
+
+        await connection.query(`
+          INSERT INTO flow_executions
+          (id, execution_no, flow_id, status, created_at, updated_at)
+          VALUES (?, ?, ?, 'pending', ?, ?)
+        `, [newExecId, execNo, actionConfig.flowId, now, now]);
+
+        actionExecuted = true;
+        actionResult = { type: 'flow_executed', executionNo: execNo };
+      }
+
+      // 记录自动化执行
+      await connection.query(`
+        INSERT INTO flow_automation_logs
+        (id, rule_id, execution_id, trigger_time, action_executed, action_result, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [logId, ruleId, executionId || null, now, actionExecuted, actionResult ? JSON.stringify(actionResult) : null, now]);
+
+      await connection.commit();
+
+      res.json({
+        success: actionExecuted,
+        message: actionExecuted ? '规则执行成功' : '规则执行失败',
+        result: actionResult
+      });
+    } catch (execError) {
+      await connection.rollback();
+      console.error('执行规则操作时出错:', execError);
+      res.status(500).json({ error: execError.message });
+    }
+  } catch (error) {
+    await connection.rollback();
+    console.error('手动触发规则失败:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
 export default router;
