@@ -274,7 +274,13 @@ export const api = {
     getReleases: () => apiRequest('/flows/releases'),
     createRelease: (flowId, payload) => apiRequest(`/flows/${flowId}/releases`, { method: 'POST', body: JSON.stringify(payload) }),
     rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' }),
-    exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) })
+    exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) }),
+    // 执行实例 API
+    getExecutions: (flowId) => apiRequest(`/flows/${flowId}/executions`),
+    getExecution: (executionId) => apiRequest(`/flows/executions/${executionId}`),
+    createExecution: (flowId, data) => apiRequest(`/flows/${flowId}/executions`, { method: 'POST', body: JSON.stringify(data) }),
+    startExecution: (executionId) => apiRequest(`/flows/executions/${executionId}/start`, { method: 'POST' }),
+    completeStep: (executionId, stepId, data) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/complete`, { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Chats
