@@ -173,52 +173,112 @@
       </div>
       <div class="user-session">
         <span class="user-chip">{{ currentUser?.name || currentUser?.id }}（{{ currentUser?.role || 'member' }}）</span>
+        <button class="menu-layout-btn" type="button" @click="toggleMenuLayout">
+          菜单：{{ menuLayout === 'side' ? '竖排' : '横排' }}
+        </button>
         <button class="logout-btn" :disabled="authBusy" @click="logout">退出登录</button>
       </div>
     </div>
 
-    <div class="tabs-container">
-      <button
-        v-for="tab in visibleTabs"
-        :key="tab.id"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
-        @click="onTabClick(tab.id)"
-        @mouseenter="preloadTab(tab.id)"
-        @touchstart.passive="preloadTab(tab.id)"
-        :title="getTabTitle(tab.id)"
-      >
-        {{ tab.label }}<span v-if="!canAccessTab(tab.id)" class="lock-mark">🔒</span>
-      </button>
-    </div>
-    <div v-if="permissionMessage" class="permission-message">{{ permissionMessage }}</div>
-    <div class="platform-menu" v-if="platformMenuGroups.length">
-      <div
-        v-for="group in platformMenuGroups"
-        :key="group.title"
-        class="platform-group"
-      >
-        <div class="platform-group-title">{{ group.title }}</div>
-        <div class="platform-group-items">
+    <div class="main-layout" :class="{ sidebar: menuLayout === 'side' }">
+      <aside v-if="menuLayout === 'side'" class="side-menu">
+        <div class="side-section">
+          <div class="side-title">主菜单</div>
           <button
-            v-for="tab in group.tabs"
+            v-for="tab in visibleTabs"
             :key="tab.id"
-            class="platform-btn"
+            class="side-btn"
             :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
             @click="onTabClick(tab.id)"
+            @mouseenter="preloadTab(tab.id)"
+            @touchstart.passive="preloadTab(tab.id)"
+            :title="getTabTitle(tab.id)"
           >
-            <span>{{ tab.label }}</span>
-            <small v-if="!canAccessTab(tab.id)">需要权限</small>
+            <span class="side-btn-label">{{ tab.label }}</span>
+            <span v-if="!canAccessTab(tab.id)" class="lock-mark">🔒</span>
           </button>
         </div>
+
+        <div class="side-section" v-if="platformMenuGroups.length">
+          <div
+            v-for="group in platformMenuGroups"
+            :key="group.title"
+            class="side-group"
+          >
+            <div class="side-title">{{ group.title }}</div>
+            <button
+              v-for="tab in group.tabs"
+              :key="tab.id"
+              class="side-btn"
+              :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
+              @click="onTabClick(tab.id)"
+              :title="getTabTitle(tab.id)"
+            >
+              <span class="side-btn-label">{{ tab.label }}</span>
+              <small v-if="!canAccessTab(tab.id)">需要权限</small>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="main-content">
+        <div v-if="menuLayout !== 'side'" class="tabs-container">
+          <button
+            v-for="tab in visibleTabs"
+            :key="tab.id"
+            class="tab-btn"
+            :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
+            @click="onTabClick(tab.id)"
+            @mouseenter="preloadTab(tab.id)"
+            @touchstart.passive="preloadTab(tab.id)"
+            :title="getTabTitle(tab.id)"
+          >
+            {{ tab.label }}<span v-if="!canAccessTab(tab.id)" class="lock-mark">🔒</span>
+          </button>
+        </div>
+
+        <div v-if="permissionMessage" class="permission-message">{{ permissionMessage }}</div>
+
+        <div v-if="menuLayout !== 'side' && platformMenuGroups.length" class="platform-menu">
+          <div
+            v-for="group in platformMenuGroups"
+            :key="group.title"
+            class="platform-group"
+          >
+            <div class="platform-group-title">{{ group.title }}</div>
+            <div class="platform-group-items">
+              <button
+                v-for="tab in group.tabs"
+                :key="tab.id"
+                class="platform-btn"
+                :class="{ active: activeTab === tab.id, locked: !canAccessTab(tab.id) }"
+                @click="onTabClick(tab.id)"
+              >
+                <span>{{ tab.label }}</span>
+                <small v-if="!canAccessTab(tab.id)">需要权限</small>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <HomePage v-if="activeTab === 'home'" />
+        <KeepAlive :max="8" v-else>
+          <component :is="currentAsyncComponent" :key="activeTab" />
+        </KeepAlive>
       </div>
     </div>
-
-    <HomePage v-if="activeTab === 'home'" />
-    <KeepAlive :max="8" v-else>
-      <component :is="currentAsyncComponent" :key="activeTab" />
-    </KeepAlive>
     </template>
+
+    <button
+      v-if="isLoggedIn && showScrollDown"
+      type="button"
+      class="scroll-down-fab"
+      aria-label="向下滑动"
+      title="向下滑动"
+      @click="scrollDown"
+    >
+      ↓
+    </button>
   </div>
 </template>
 
@@ -264,6 +324,9 @@ const tabLoaders = {
   flowTracking: () => import('./pages/workflow/FlowTracking.vue'),
   flowDiagram: () => import('./pages/workflow/FlowDiagramEditor.vue'),
   flowPreview: () => import('./pages/workflow/FlowPreviewExport.vue'),
+  flowPreviewConsole: () => import('./pages/workflow/FlowPreviewExportConsole.vue'),
+  flowAgentRunner: () => import('./pages/workflow/FlowAgentRunner.vue'),
+  tradeFlowExplorer: () => import('./pages/workflow/TradeFlowExplorer.vue'),
   flowTasks: () => import('./pages/workflow/FlowTasks.vue'),
   flowFiles: () => import('./pages/workflow/FlowFileManager.vue'),
   flowInstances: () => import('./pages/workflow/FlowInstances.vue'),
@@ -314,6 +377,9 @@ const UserAdminConsole = createAsyncPage(tabLoaders.userAdmin)
 const FlowTracking = createAsyncPage(tabLoaders.flowTracking)
 const FlowDiagramEditor = createAsyncPage(tabLoaders.flowDiagram)
 const FlowPreviewExport = createAsyncPage(tabLoaders.flowPreview)
+const FlowPreviewExportConsole = createAsyncPage(tabLoaders.flowPreviewConsole)
+const FlowAgentRunner = createAsyncPage(tabLoaders.flowAgentRunner)
+const TradeFlowExplorer = createAsyncPage(tabLoaders.tradeFlowExplorer)
 const FlowTasks = createAsyncPage(tabLoaders.flowTasks)
 const FlowFileManager = createAsyncPage(tabLoaders.flowFiles)
 const FlowInstances = createAsyncPage(tabLoaders.flowInstances)
@@ -349,6 +415,9 @@ const DEFAULT_PERMISSION_CONFIG = {
     flowTracking: ['admin', 'operator'],
     flowDiagram: ['admin', 'operator'],
     flowPreview: ['admin', 'operator'],
+    flowPreviewConsole: ['admin', 'operator'],
+    flowAgentRunner: ['admin', 'operator'],
+    tradeFlowExplorer: ['admin', 'operator', 'viewer'],
     flowTasks: ['admin', 'operator'],
     flowFiles: ['admin', 'operator'],
     flowInstances: ['admin', 'operator'],
@@ -397,6 +466,8 @@ export default {
       authMessage: '',
       unauthDebugTab: 'authLogs',
       currentUser: null,
+      showScrollDown: false,
+      menuLayout: 'top',
       authForm: {
         id: '',
         name: '',
@@ -430,6 +501,9 @@ export default {
         { id: 'flowDiagram', label: '流程图编辑', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowTasks', label: '流程任务', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowPreview', label: '流程预览/导出', roles: ['admin', 'operator'], menuGroup: 'workflow' },
+        { id: 'flowPreviewConsole', label: '流程预览（控制台风格）', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowAgentRunner', label: '流程代理执行', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'tradeFlowExplorer', label: '交易流程讲解', roles: ['admin', 'operator', 'viewer'], menuGroup: 'workflow' },
         { id: 'flowFiles', label: '流程文件管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowInstances', label: '流程实例管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowWorkItems', label: '流程工作项管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
@@ -499,7 +573,7 @@ export default {
         { title: '平台管理', ids: ['userAdmin'] },
         {
           title: '工作流管理',
-          ids: ['flowTracking', 'flowDiagram', 'flowPreview', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
+          ids: ['flowTracking', 'flowDiagram', 'flowPreview', 'flowPreviewConsole', 'flowAgentRunner', 'tradeFlowExplorer', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
         }
       ]
 
@@ -539,6 +613,9 @@ export default {
         flowTracking: FlowTracking,
         flowDiagram: FlowDiagramEditor,
         flowPreview: FlowPreviewExport,
+        flowPreviewConsole: FlowPreviewExportConsole,
+        flowAgentRunner: FlowAgentRunner,
+        tradeFlowExplorer: TradeFlowExplorer,
         flowTasks: FlowTasks,
         flowFiles: FlowFileManager,
         flowInstances: FlowInstances,
@@ -588,6 +665,11 @@ export default {
     }
   },
   methods: {
+    toggleMenuLayout() {
+      this.menuLayout = this.menuLayout === 'side' ? 'top' : 'side'
+      localStorage.setItem('app_menu_layout', this.menuLayout)
+      this.$nextTick(() => this.updateScrollDownVisibility())
+    },
     switchTheme(id) {
       this.currentTheme = id
       if (!this.appearance.useCustomColors) {
@@ -942,11 +1024,41 @@ export default {
       } else {
         setTimeout(warm, 1800)
       }
+    },
+    updateScrollDownVisibility() {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return
+      const doc = document.documentElement
+      const scrollTop = window.scrollY ?? doc.scrollTop ?? 0
+      const clientHeight = window.innerHeight || doc.clientHeight || 0
+      const scrollHeight = doc.scrollHeight || 0
+      const threshold = 80
+      this.showScrollDown = scrollTop + clientHeight < scrollHeight - threshold
+    },
+    scrollDown() {
+      if (typeof window === 'undefined') return
+      const amount = Math.max(260, Math.floor(window.innerHeight * 0.75))
+      window.scrollBy({ top: amount, left: 0, behavior: 'smooth' })
     }
   },
   async mounted() {
+    this._scrollDownTicking = false
+    this._onWindowScroll = () => {
+      if (this._scrollDownTicking) return
+      this._scrollDownTicking = true
+      window.requestAnimationFrame(() => {
+        this._scrollDownTicking = false
+        this.updateScrollDownVisibility()
+      })
+    }
+    window.addEventListener('scroll', this._onWindowScroll, { passive: true })
+    window.addEventListener('resize', this._onWindowScroll, { passive: true })
+
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
+    const savedMenuLayout = localStorage.getItem('app_menu_layout')
+    if (savedMenuLayout === 'side' || savedMenuLayout === 'top') {
+      this.menuLayout = savedMenuLayout
+    }
     const savedAppearance = localStorage.getItem('app_appearance')
     if (savedAppearance) {
       try {
@@ -967,6 +1079,7 @@ export default {
         this.syncAppearanceWithThemeVars()
       }
       this.syncBodyBackground()
+      this.updateScrollDownVisibility()
     })
     await this.checkAuthSession()
     if (this.isLoggedIn) {
@@ -978,11 +1091,23 @@ export default {
       this.warmupCommonTabs()
     }
   },
+  beforeUnmount() {
+    if (typeof window !== 'undefined' && this._onWindowScroll) {
+      window.removeEventListener('scroll', this._onWindowScroll)
+      window.removeEventListener('resize', this._onWindowScroll)
+    }
+  },
   watch: {
     currentTheme() {
       this.$nextTick(() => {
         this.syncBodyBackground()
       })
+    },
+    activeTab() {
+      this.$nextTick(() => this.updateScrollDownVisibility())
+    },
+    isLoggedIn() {
+      this.$nextTick(() => this.updateScrollDownVisibility())
     }
   }
 }
@@ -995,6 +1120,137 @@ export default {
   transition: color 0.2s ease;
   color: var(--app-text);
   font-size: calc(16px * var(--app-font-scale, 1));
+}
+
+.scroll-down-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: none;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 12px 28px var(--app-shadow);
+  opacity: 0.92;
+  z-index: 1200;
+}
+
+.scroll-down-fab:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.scroll-down-fab:active {
+  transform: translateY(0);
+}
+
+.scroll-down-fab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-primary) 38%, transparent);
+  outline-offset: 3px;
+}
+
+.menu-layout-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.menu-layout-btn:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+}
+
+.main-layout {
+  display: block;
+}
+
+.main-layout.sidebar {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.side-menu {
+  width: 240px;
+  flex: 0 0 240px;
+  position: sticky;
+  top: 10px;
+  max-height: calc(100vh - 20px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-group-bg);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.side-section + .side-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-border);
+}
+
+.side-title {
+  font-size: 0.82em;
+  color: var(--app-text-muted);
+  margin: 2px 0 8px;
+}
+
+.side-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-btn.active {
+  background: var(--app-primary);
+  border-color: transparent;
+  color: var(--app-on-primary);
+  box-shadow: 0 8px 18px var(--app-shadow);
+}
+
+.side-btn.locked {
+  opacity: 0.75;
+}
+
+.main-content {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 900px) {
+  .main-layout.sidebar {
+    flex-direction: column;
+  }
+  .side-menu {
+    width: 100%;
+    flex-basis: auto;
+    position: static;
+    max-height: none;
+  }
 }
 
 .global-theme-bar {
