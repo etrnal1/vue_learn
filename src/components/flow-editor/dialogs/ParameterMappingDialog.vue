@@ -184,7 +184,7 @@
 </template>
 
 <script>
-import api from '../../../utils/api.js'
+import { api } from '../../../utils/api.js'
 import { evaluateParameter } from '../../../utils/parameterEvaluator.js'
 
 export default {

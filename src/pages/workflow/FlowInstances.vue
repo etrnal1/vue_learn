@@ -106,6 +106,16 @@
       </button>
     </div>
 
+    <!-- 参数数据模态框 -->
+    <ItsmModal v-if="showDataModal"
+               :title="`${selectedDataType === 'input' ? '输入参数' : '输出结果'} - ${selectedStepData?.stepName}`"
+               size="medium"
+               @close="showDataModal = false">
+      <div v-if="selectedStepData" class="data-content">
+        <pre class="data-json">{{ formatJsonData(selectedStepData[selectedDataType === 'input' ? 'input_data' : 'output_data']) }}</pre>
+      </div>
+    </ItsmModal>
+
     <!-- 详情模态框 -->
     <ItsmModal v-if="showDetailsModal"
                :title="`执行详情 - ${selectedExecution?.executionNo}`"
@@ -148,6 +158,14 @@
                 <p v-if="step.startedAt || step.started_at">开始：{{ formatDate(step.startedAt || step.started_at) }}</p>
                 <p v-if="step.completedAt || step.completed_at">完成：{{ formatDate(step.completedAt || step.completed_at) }}</p>
                 <p v-if="step.duration">耗时：{{ formatDuration(step.duration) }}</p>
+                <div v-if="step.input_data || step.output_data" class="step-data">
+                  <button v-if="step.input_data" class="btn-data" @click="viewStepData(step, 'input')">
+                    📥 输入参数
+                  </button>
+                  <button v-if="step.output_data" class="btn-data" @click="viewStepData(step, 'output')">
+                    📤 输出结果
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -193,6 +211,9 @@ export default {
       selectedExecution: null,
       loading: false,
       showDetailsModal: false,
+      showDataModal: false,
+      selectedStepData: null,
+      selectedDataType: 'input',
       message: null,
       messageTimer: null
     }
@@ -357,6 +378,23 @@ export default {
     onFilterChange() {
       this.currentPage = 1
       this.loadExecutions()
+    },
+
+    viewStepData(step, dataType) {
+      this.selectedStepData = step
+      this.selectedDataType = dataType
+      this.showDataModal = true
+    },
+
+    formatJsonData(data) {
+      try {
+        if (typeof data === 'string') {
+          return JSON.stringify(JSON.parse(data), null, 2)
+        }
+        return JSON.stringify(data, null, 2)
+      } catch (e) {
+        return String(data)
+      }
     }
   }
 }
@@ -573,6 +611,45 @@ dd {
   margin: 4px 0;
   font-size: 0.9rem;
   color: var(--app-text-muted);
+}
+
+.step-data {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.btn-data {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  border: 1px solid var(--app-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-data:hover {
+  background: var(--app-primary);
+  color: white;
+}
+
+.data-content {
+  padding: 12px 0;
+}
+
+.data-json {
+  background: var(--app-card-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--app-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .empty {
