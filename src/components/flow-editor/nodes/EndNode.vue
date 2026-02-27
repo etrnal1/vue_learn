@@ -35,13 +35,13 @@ export default {
 
 <style scoped>
 .end-node {
-  min-width: 120px;
-  min-height: 60px;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  min-width: 132px;
+  min-height: 64px;
+  background: linear-gradient(130deg, #ef4444, #dc2626 54%, #b91c1c);
   color: white;
-  border-radius: 50px;
+  border-radius: 999px;
   padding: 12px 16px;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 10px 18px rgba(185, 28, 28, 0.34);
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
@@ -53,12 +53,12 @@ export default {
 }
 
 .end-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 22px rgba(185, 28, 28, 0.42);
 }
 
 .end-node.selected {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #0ea5e9;
   outline-offset: 2px;
 }
 
@@ -74,8 +74,9 @@ export default {
 }
 
 .node-label {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
 }
 
 .node-description {

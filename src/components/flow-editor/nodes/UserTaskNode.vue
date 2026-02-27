@@ -51,28 +51,29 @@ export default {
 
 <style scoped>
 .user-task-node {
-  min-width: 140px;
-  min-height: 80px;
-  background: white;
-  border: 2px solid #3b82f6;
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 170px;
+  min-height: 96px;
+  background: linear-gradient(160deg, #ffffff 0%, #f4f8ff 64%, #ecf3ff 100%);
+  border: 1px solid #8ec5ff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 22px rgba(30, 64, 175, 0.18);
   transition: all 0.2s ease;
   cursor: pointer;
   position: relative;
+  backdrop-filter: blur(4px);
 }
 
 .user-task-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border-color: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px rgba(30, 64, 175, 0.24);
+  border-color: #60a5fa;
 }
 
 .user-task-node.selected {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #0ea5e9;
   outline-offset: 2px;
-  border-color: #1d4ed8;
+  border-color: #0284c7;
 }
 
 .node-content {
@@ -88,23 +89,28 @@ export default {
 }
 
 .node-icon {
-  color: #3b82f6;
+  color: #2563eb;
   font-size: 14px;
   font-weight: bold;
 }
 
 .node-label {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1f2937;
+  font-weight: 700;
+  font-size: 13px;
+  color: #12345b;
   flex: 1;
+  letter-spacing: 0.2px;
 }
 
 .node-description {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: 11px;
+  color: #4f647f;
   line-height: 1.3;
   margin: 2px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .node-meta {
@@ -116,7 +122,7 @@ export default {
 .node-assignee,
 .node-duration {
   font-size: 11px;
-  color: #9ca3af;
+  color: #58708d;
   display: flex;
   align-items: center;
   gap: 4px;

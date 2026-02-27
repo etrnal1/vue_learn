@@ -35,13 +35,13 @@ export default {
 
 <style scoped>
 .start-node {
-  min-width: 120px;
-  min-height: 60px;
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  min-width: 132px;
+  min-height: 64px;
+  background: linear-gradient(130deg, #22c55e, #16a34a 58%, #059669);
   color: white;
-  border-radius: 50px;
+  border-radius: 999px;
   padding: 12px 16px;
-  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 10px 18px rgba(5, 150, 105, 0.32);
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
@@ -53,12 +53,12 @@ export default {
 }
 
 .start-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 22px rgba(5, 150, 105, 0.42);
 }
 
 .start-node.selected {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #0ea5e9;
   outline-offset: 2px;
 }
 
@@ -74,15 +74,16 @@ export default {
 }
 
 .node-label {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
 }
 
 .node-description {
   font-size: 11px;
-  opacity: 0.9;
+  opacity: 0.95;
   margin-top: 4px;
-  max-width: 100px;
+  max-width: 112px;
   word-wrap: break-word;
 }
 

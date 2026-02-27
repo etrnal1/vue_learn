@@ -45,10 +45,10 @@ export default {
 
 <style scoped>
 .exclusive-gateway-node {
-  width: 80px;
-  height: 80px;
-  background: white;
-  border: 3px solid #f59e0b;
+  width: 94px;
+  height: 94px;
+  background: linear-gradient(150deg, #fff7ed, #fffbeb);
+  border: 2px solid #f59e0b;
   transform: rotate(45deg);
   display: flex;
   align-items: center;
@@ -56,16 +56,16 @@ export default {
   cursor: pointer;
   position: relative;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 12px 22px rgba(217, 119, 6, 0.24);
 }
 
 .exclusive-gateway-node:hover {
-  border-color: #d97706;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+  border-color: #ea580c;
+  box-shadow: 0 15px 26px rgba(217, 119, 6, 0.34);
 }
 
 .exclusive-gateway-node.selected {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #0ea5e9;
   outline-offset: 4px;
 }
 
@@ -79,26 +79,26 @@ export default {
 }
 
 .node-icon {
-  color: #f59e0b;
-  font-size: 16px;
+  color: #c2410c;
+  font-size: 15px;
   font-weight: bold;
 }
 
 .node-label {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 10px;
-  color: #1f2937;
+  color: #7c2d12;
   white-space: nowrap;
 }
 
 .node-description {
   position: absolute;
-  top: 100px;
+  top: 112px;
   left: 50%;
   transform: translateX(-50%) rotate(-45deg);
   font-size: 11px;
   color: #6b7280;
-  background: white;
+  background: #fff7ed;
   padding: 4px 8px;
   border-radius: 4px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
