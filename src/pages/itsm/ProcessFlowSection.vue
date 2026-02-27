@@ -11,6 +11,23 @@
       placeholder="搜索流程名称..."
     />
 
+    <div class="perf-panel">
+      <div class="perf-item">
+        <span class="perf-label">整体渲染</span>
+        <strong class="perf-value">{{ renderMetrics.overallMs == null ? '—' : `${renderMetrics.overallMs}ms` }}</strong>
+      </div>
+      <div class="perf-item">
+        <span class="perf-label">单选项渲染</span>
+        <strong class="perf-value">{{ renderMetrics.selectedMs == null ? '—' : `${renderMetrics.selectedMs}ms` }}</strong>
+      </div>
+      <button class="btn-sm btn-ghost" @click="measureOverallRender('manual')">重新测量</button>
+    </div>
+
+    <div v-if="pendingFlowDelete" class="undo-banner">
+      <span>已标记删除流程「{{ pendingFlowDelete.flow.name }}」，{{ pendingFlowDelete.secondsLeft }} 秒内可撤销</span>
+      <button class="btn-undo" @click="undoFlowDelete">撤销删除</button>
+    </div>
+
     <div v-if="filteredFlows.length === 0" class="empty-state">暂无流程</div>
     <div v-else class="flows-grid">
       <div v-for="flow in filteredFlows" :key="flow.id" class="flow-card" @click="openDetail(flow)">
@@ -20,7 +37,7 @@
         </div>
         <p class="flow-desc">{{ flow.description }}</p>
         <div class="flow-footer">
-          <span class="step-count">{{ flow.steps.length }} 个步骤</span>
+          <span class="step-count">{{ (flow.steps || []).length }} 个步骤</span>
           <span class="author">{{ getAuthorName(flow.authorId) }}</span>
         </div>
       </div>
@@ -54,18 +71,22 @@
           <h3>流程步骤</h3>
           <button @click="addStep" class="btn-sm">+ 添加步骤</button>
         </div>
+        <div v-if="pendingStepDelete" class="step-undo-banner">
+          <span>已删除第 {{ pendingStepDelete.originalIndex + 1 }} 步，可撤销</span>
+          <button class="btn-undo-inline" @click="undoRemoveStep">撤销</button>
+        </div>
         <div v-if="formData.steps.length === 0" class="empty-hint">还没有步骤，请添加</div>
         <div v-else class="steps-list">
-          <div v-for="(step, idx) in formData.steps" :key="idx" class="step-item">
+          <div v-for="(step, idx) in formData.steps" :key="step.id" class="step-item">
             <div class="step-num">{{ idx + 1 }}</div>
             <div class="step-content">
               <input v-model="step.title" class="step-input" placeholder="步骤标题">
               <textarea v-model="step.description" class="step-textarea" rows="2" placeholder="步骤描述"></textarea>
             </div>
             <div class="step-actions">
-              <button v-if="idx > 0" @click="moveStep(idx, -1)" class="btn-icon">⬆️</button>
-              <button v-if="idx < formData.steps.length - 1" @click="moveStep(idx, 1)" class="btn-icon">⬇️</button>
-              <button @click="removeStep(idx)" class="btn-icon delete">🗑️</button>
+              <button v-if="idx > 0" @click.stop="moveStep(idx, -1)" class="btn-icon">⬆️</button>
+              <button v-if="idx < formData.steps.length - 1" @click.stop="moveStep(idx, 1)" class="btn-icon">⬇️</button>
+              <button @click.stop="removeStep(idx)" class="btn-icon delete">🗑️</button>
             </div>
           </div>
         </div>
@@ -92,7 +113,7 @@
         </div>
 
         <div class="flow-timeline">
-          <div v-for="(step, idx) in viewingFlow.steps" :key="idx" class="timeline-item">
+          <div v-for="(step, idx) in viewingFlow.steps" :key="step.id || idx" class="timeline-item">
             <div class="timeline-node">{{ idx + 1 }}</div>
             <div class="timeline-content">
               <h4>{{ step.title }}</h4>
@@ -115,6 +136,7 @@
 <script>
 import SearchFilter from '../../components/itsm/SearchFilter.vue'
 import ItsmModal from '../../components/itsm/ItsmModal.vue'
+import { appendPerfLog } from '../../utils/perfLogs.js'
 
 export default {
   name: 'ProcessFlowSection',
@@ -131,18 +153,46 @@ export default {
       showForm: false,
       editingFlow: null,
       viewingFlow: null,
-      formData: this.emptyForm()
+      formData: this.emptyForm(),
+      pendingStepDelete: null,
+      pendingFlowDelete: null,
+      renderMetrics: {
+        overallMs: null,
+        selectedMs: null
+      },
+      renderMarks: {
+        overallStart: null,
+        detailStart: null
+      }
     }
   },
   computed: {
     filteredFlows() {
+      const pendingId = this.pendingFlowDelete?.flow?.id
       return this.flows.filter(f => {
+        if (pendingId && f.id === pendingId) return false
         const q = this.searchQuery.toLowerCase()
-        return !q || f.name.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)
-      }).sort((a, b) => b.updatedAt - a.updatedAt)
+        const name = String(f.name || '').toLowerCase()
+        const description = String(f.description || '').toLowerCase()
+        return !q || name.includes(q) || description.includes(q)
+      }).sort((a, b) => {
+        const at = a.updatedAt ?? a.updated_at ?? 0
+        const bt = b.updatedAt ?? b.updated_at ?? 0
+        return bt - at
+      })
     }
   },
   methods: {
+    createStep(seed = {}) {
+      return {
+        id: seed.id || `step_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: seed.title || '',
+        description: seed.description || ''
+      }
+    },
+    normalizeSteps(steps) {
+      return (Array.isArray(steps) ? steps : []).map((step) => this.createStep(step))
+    },
     emptyForm() {
       return { name: '', description: '', icon: '🔄', steps: [] }
     },
@@ -152,24 +202,56 @@ export default {
       this.showForm = true
     },
     openDetail(flow) {
-      this.viewingFlow = JSON.parse(JSON.stringify(flow))
+      const cloned = JSON.parse(JSON.stringify(flow))
+      this.viewingFlow = {
+        ...cloned,
+        steps: this.normalizeSteps(cloned.steps)
+      }
+      this.measureDetailRender(cloned)
     },
     closeForm() {
       this.showForm = false
       this.editingFlow = null
+      this.clearPendingStepDelete()
       this.formData = this.emptyForm()
     },
     addStep() {
-      this.formData.steps.push({ title: '', description: '' })
+      this.formData.steps.push(this.createStep())
     },
     removeStep(idx) {
+      if (idx < 0 || idx >= this.formData.steps.length) return
+      this.clearPendingStepDelete()
+      const removed = this.formData.steps[idx]
       this.formData.steps.splice(idx, 1)
+      const timer = setTimeout(() => {
+        this.pendingStepDelete = null
+      }, 6000)
+      this.pendingStepDelete = {
+        step: removed,
+        originalIndex: idx,
+        timer
+      }
+    },
+    undoRemoveStep() {
+      if (!this.pendingStepDelete) return
+      const { step, originalIndex } = this.pendingStepDelete
+      const insertIndex = Math.min(Math.max(originalIndex, 0), this.formData.steps.length)
+      this.formData.steps.splice(insertIndex, 0, step)
+      this.clearPendingStepDelete()
+    },
+    clearPendingStepDelete() {
+      if (this.pendingStepDelete?.timer) {
+        clearTimeout(this.pendingStepDelete.timer)
+      }
+      this.pendingStepDelete = null
     },
     moveStep(idx, direction) {
       const newIdx = idx + direction
-      const temp = this.formData.steps[idx]
-      this.formData.steps[idx] = this.formData.steps[newIdx]
-      this.formData.steps[newIdx] = temp
+      if (newIdx < 0 || newIdx >= this.formData.steps.length) return
+      const steps = [...this.formData.steps]
+      const [moved] = steps.splice(idx, 1)
+      steps.splice(newIdx, 0, moved)
+      this.formData.steps = steps
     },
     saveFlow() {
       if (!this.formData.name.trim()) {
@@ -181,35 +263,129 @@ export default {
         return
       }
       if (this.editingFlow) {
-        this.$emit('update-flow', { ...this.editingFlow, ...this.formData, updatedAt: Date.now() })
+        this.$emit('update-flow', { ...this.editingFlow, ...this.formData, steps: this.normalizeSteps(this.formData.steps), updatedAt: Date.now() })
       } else {
-        this.$emit('create-flow', { ...this.formData })
+        this.$emit('create-flow', { ...this.formData, steps: this.normalizeSteps(this.formData.steps) })
       }
       this.closeForm()
     },
     editFromDetail() {
-      this.editingFlow = this.viewingFlow
+      this.editingFlow = { ...this.viewingFlow }
       this.formData = {
         name: this.viewingFlow.name,
         description: this.viewingFlow.description,
         icon: this.viewingFlow.icon,
-        steps: JSON.parse(JSON.stringify(this.viewingFlow.steps))
+        steps: this.normalizeSteps(this.viewingFlow.steps)
       }
       this.viewingFlow = null
       this.showForm = true
     },
     deleteFlow() {
-      if (confirm('确定删除此流程？')) {
-        this.$emit('delete-flow', this.viewingFlow.id)
-        this.viewingFlow = null
+      if (!this.viewingFlow) return
+      if (!confirm('确定删除此流程？可在 6 秒内撤销。')) return
+      this.stageFlowDelete(this.viewingFlow)
+      this.viewingFlow = null
+    },
+    stageFlowDelete(flow) {
+      this.undoFlowDelete()
+      const flowSnapshot = JSON.parse(JSON.stringify(flow))
+      const startedAt = Date.now()
+      const interval = setInterval(() => {
+        if (!this.pendingFlowDelete) return
+        const remaining = Math.max(0, 6 - Math.floor((Date.now() - startedAt) / 1000))
+        this.pendingFlowDelete.secondsLeft = remaining
+      }, 250)
+      const timer = setTimeout(() => {
+        this.commitPendingFlowDelete()
+      }, 6000)
+      this.pendingFlowDelete = {
+        flow: flowSnapshot,
+        timer,
+        interval,
+        startedAt,
+        secondsLeft: 6
       }
+    },
+    commitPendingFlowDelete() {
+      if (!this.pendingFlowDelete) return
+      const { flow, timer, interval } = this.pendingFlowDelete
+      clearTimeout(timer)
+      clearInterval(interval)
+      this.pendingFlowDelete = null
+      this.$emit('delete-flow', flow.id)
+    },
+    undoFlowDelete() {
+      if (!this.pendingFlowDelete) return
+      clearTimeout(this.pendingFlowDelete.timer)
+      clearInterval(this.pendingFlowDelete.interval)
+      this.pendingFlowDelete = null
+      this.measureOverallRender('undo_flow_delete')
+    },
+    measureOverallRender(reason = 'unknown') {
+      this.renderMarks.overallStart = performance.now()
+      this.$nextTick(() => {
+        if (this.renderMarks.overallStart == null) return
+        const durationMs = performance.now() - this.renderMarks.overallStart
+        this.renderMetrics.overallMs = Math.round(durationMs)
+        appendPerfLog({
+          module: 'itsm-flow',
+          action: 'render_overall',
+          durationMs,
+          detail: `reason=${reason};count=${this.filteredFlows.length}`
+        })
+        this.renderMarks.overallStart = null
+      })
     },
     getAuthorName(id) {
       const user = this.users.find(u => u.id === id)
       return user ? user.avatar + ' ' + user.name : '未知'
     },
     formatDate(ts) {
-      return new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      if (!ts) return '未知时间'
+      const date = new Date(ts)
+      if (Number.isNaN(date.getTime())) return '未知时间'
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    },
+    measureDetailRender(flow) {
+      this.renderMarks.detailStart = performance.now()
+      this.$nextTick(() => {
+        if (this.renderMarks.detailStart == null) return
+        const durationMs = performance.now() - this.renderMarks.detailStart
+        this.renderMetrics.selectedMs = Math.round(durationMs)
+        appendPerfLog({
+          module: 'itsm-flow',
+          action: 'render_single',
+          name: flow?.name || '',
+          durationMs,
+          detail: `flowId=${flow?.id || ''}`
+        })
+        this.renderMarks.detailStart = null
+      })
+    }
+  },
+  watch: {
+    flows: {
+      handler() {
+        this.measureOverallRender('flows_changed')
+      },
+      deep: true
+    },
+    searchQuery() {
+      this.measureOverallRender('search_changed')
+    },
+    pendingFlowDelete() {
+      this.measureOverallRender('pending_delete_changed')
+    }
+  },
+  mounted() {
+    this.measureOverallRender('mounted')
+  },
+  beforeUnmount() {
+    this.clearPendingStepDelete()
+    if (this.pendingFlowDelete) {
+      clearTimeout(this.pendingFlowDelete.timer)
+      clearInterval(this.pendingFlowDelete.interval)
+      this.pendingFlowDelete = null
     }
   }
 }
@@ -234,6 +410,75 @@ export default {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
+}
+
+.perf-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.perf-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.perf-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.perf-value {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.btn-ghost {
+  background: white;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-ghost:hover {
+  background: #f1f5f9;
+}
+
+.undo-banner,
+.step-undo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #854d0e;
+  font-size: 13px;
+}
+
+.btn-undo,
+.btn-undo-inline {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-undo:hover,
+.btn-undo-inline:hover {
+  background: #d97706;
 }
 
 .flow-card {

@@ -393,16 +393,24 @@ export default {
     // === Flows ===
     async createFlow(data) {
       try {
+        const now = Date.now()
         const flow = {
           id: 'flow' + Date.now(),
           name: data.name,
           description: data.description,
           icon: data.icon,
-          steps: data.steps,
-          authorId: this.currentUser.id
+          steps: Array.isArray(data.steps) ? data.steps : [],
+          authorId: this.currentUser.id,
+          createdAt: now,
+          updatedAt: now
         }
         const created = await api.flows.create(flow)
-        this.flows.unshift(created)
+        const normalized = {
+          ...flow,
+          ...(created || {}),
+          steps: Array.isArray(created?.steps) ? created.steps : flow.steps
+        }
+        this.flows.unshift(normalized)
       } catch (error) {
         console.error('创建流程失败:', error)
         alert('创建流程失败: ' + error.message)
@@ -413,7 +421,17 @@ export default {
         const result = await api.flows.update(updated.id, updated)
         const idx = this.flows.findIndex(f => f.id === updated.id)
         if (idx !== -1) {
-          this.flows[idx] = result
+          const base = this.flows[idx]
+          this.flows[idx] = {
+            ...base,
+            ...updated,
+            ...(result || {}),
+            steps: Array.isArray(result?.steps)
+              ? result.steps
+              : Array.isArray(updated?.steps)
+                ? updated.steps
+                : base.steps
+          }
         }
       } catch (error) {
         console.error('更新流程失败:', error)
