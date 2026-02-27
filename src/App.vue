@@ -331,7 +331,8 @@ const tabLoaders = {
   flowFiles: () => import('./pages/workflow/FlowFileManager.vue'),
   flowInstances: () => import('./pages/workflow/FlowInstances.vue'),
   flowWorkItems: () => import('./pages/workflow/FlowWorkItems.vue'),
-  flowManagement: () => import('./pages/workflow/FlowManagement.vue')
+  flowManagement: () => import('./pages/workflow/FlowManagement.vue'),
+  flowAutomation: () => import('./pages/workflow/FlowAutomation.vue')
 }
 
 function createAsyncPage(loader) {
@@ -385,6 +386,7 @@ const FlowFileManager = createAsyncPage(tabLoaders.flowFiles)
 const FlowInstances = createAsyncPage(tabLoaders.flowInstances)
 const FlowWorkItems = createAsyncPage(tabLoaders.flowWorkItems)
 const FlowManagement = createAsyncPage(tabLoaders.flowManagement)
+const FlowAutomation = createAsyncPage(tabLoaders.flowAutomation)
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
     { id: 'admin', label: '管理员' },
@@ -423,6 +425,7 @@ const DEFAULT_PERMISSION_CONFIG = {
     flowInstances: ['admin', 'operator'],
     flowWorkItems: ['admin', 'operator'],
     flowManagement: ['admin', 'operator'],
+    flowAutomation: ['admin', 'operator'],
     authLogs: ['admin', 'operator'],
     runtimeLogs: ['admin']
   }
@@ -508,6 +511,7 @@ export default {
         { id: 'flowInstances', label: '流程实例管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowWorkItems', label: '流程工作项管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowManagement', label: '流程管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'flowAutomation', label: '流程自动化', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] },
         { id: 'runtimeLogs', label: '📊 实时日志', roles: ['admin'] }
       ],
@@ -573,7 +577,7 @@ export default {
         { title: '平台管理', ids: ['userAdmin'] },
         {
           title: '工作流管理',
-          ids: ['flowTracking', 'flowDiagram', 'flowPreview', 'flowPreviewConsole', 'flowAgentRunner', 'tradeFlowExplorer', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement']
+          ids: ['flowTracking', 'flowDiagram', 'flowPreview', 'flowPreviewConsole', 'flowAgentRunner', 'tradeFlowExplorer', 'flowTasks', 'flowFiles', 'flowInstances', 'flowWorkItems', 'flowManagement', 'flowAutomation']
         }
       ]
 
@@ -621,6 +625,7 @@ export default {
         flowInstances: FlowInstances,
         flowWorkItems: FlowWorkItems,
         flowManagement: FlowManagement,
+        flowAutomation: FlowAutomation,
         authLogs: AuthLogCenter,
         runtimeLogs: RuntimeLogsViewer
       }

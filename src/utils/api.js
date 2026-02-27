@@ -288,7 +288,25 @@ export const api = {
     getExecution: (executionId) => apiRequest(`/flows/executions/${executionId}`),
     createExecution: (flowId, data) => apiRequest(`/flows/${flowId}/executions`, { method: 'POST', body: JSON.stringify(data) }),
     startExecution: (executionId) => apiRequest(`/flows/executions/${executionId}/start`, { method: 'POST' }),
-    completeStep: (executionId, stepId, data) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/complete`, { method: 'POST', body: JSON.stringify(data) })
+    completeStep: (executionId, stepId, data) => apiRequest(`/flows/executions/${executionId}/steps/${stepId}/complete`, { method: 'POST', body: JSON.stringify(data) }),
+    // 自动化规则 API
+    getAutomationRules: (flowId) => apiRequest(`/flows/${flowId}/automation/rules`),
+    createAutomationRule: (flowId, data) => apiRequest(`/flows/${flowId}/automation/rules`, { method: 'POST', body: JSON.stringify(data) }),
+    updateAutomationRule: (ruleId, data) => apiRequest(`/flows/automation/rules/${ruleId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteAutomationRule: (ruleId) => apiRequest(`/flows/automation/rules/${ruleId}`, { method: 'DELETE' }),
+    toggleAutomationRule: (ruleId, isEnabled) => apiRequest(`/flows/automation/rules/${ruleId}/toggle`, { method: 'POST', body: JSON.stringify({ isEnabled }) }),
+    getAutomationLogs: (params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+          .reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {})
+      )
+      return apiRequest(`/flows/automation/logs?${query.toString()}`)
+    },
+    executeAutomationRule: (ruleId, executionId) => apiRequest('/flows/automation/execute-rule', {
+      method: 'POST',
+      body: JSON.stringify({ ruleId, executionId })
+    })
   },
 
   // Chats
