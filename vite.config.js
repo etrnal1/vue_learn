@@ -20,7 +20,12 @@ export default defineConfig({
           if (id.includes('echarts') || id.includes('zrender') || id.includes('vue-echarts')) {
             return 'vendor-echarts'
           }
-          return 'vendor'
+          // Keep only truly core deps in the initial vendor chunk.
+          // Let Rollup keep page-only deps inside their async chunks.
+          if (id.includes('/node_modules/vue/')) return 'vendor-vue'
+          if (id.includes('/node_modules/@vue/')) return 'vendor-vue'
+          if (id.includes('/node_modules/@capacitor/')) return 'vendor-capacitor'
+          return
         }
       }
     }

@@ -273,7 +273,8 @@ export const api = {
     delete: (id) => apiRequest(`/flows/${id}`, { method: 'DELETE' }),
     getReleases: () => apiRequest('/flows/releases'),
     createRelease: (flowId, payload) => apiRequest(`/flows/${flowId}/releases`, { method: 'POST', body: JSON.stringify(payload) }),
-    rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' })
+    rollbackRelease: (flowId) => apiRequest(`/flows/${flowId}/releases/rollback`, { method: 'POST' }),
+    exportFlow: (flowId, payload) => apiRequest(`/flows/${flowId}/export`, { method: 'POST', body: JSON.stringify(payload) })
   },
 
   // Chats

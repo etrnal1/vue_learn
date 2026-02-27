@@ -17,17 +17,40 @@ async function precacheBuildAssets() {
     const manifest = await res.json()
     if (!manifest || typeof manifest !== 'object') return []
 
+    const normalize = (p) => `/${String(p).replace(/^\/+/, '')}`
     const files = new Set()
-    for (const item of Object.values(manifest)) {
-      if (!item || typeof item !== 'object') continue
-      if (item.file) files.add(`/${String(item.file).replace(/^\/+/, '')}`)
-      if (Array.isArray(item.css)) {
-        item.css.forEach((cssFile) => files.add(`/${String(cssFile).replace(/^\/+/, '')}`))
-      }
-      if (Array.isArray(item.assets)) {
-        item.assets.forEach((asset) => files.add(`/${String(asset).replace(/^\/+/, '')}`))
+
+    const addItemFiles = (item) => {
+      if (!item || typeof item !== 'object') return
+      if (item.file) files.add(normalize(item.file))
+      if (Array.isArray(item.css)) item.css.forEach((cssFile) => files.add(normalize(cssFile)))
+      if (Array.isArray(item.assets)) item.assets.forEach((asset) => files.add(normalize(asset)))
+    }
+
+    // Precache only the app entry and its static import graph.
+    // This avoids downloading every async chunk on first load (much faster install & first paint).
+    const entryKey =
+      (Object.keys(manifest).find((k) => manifest?.[k]?.isEntry) || null) ??
+      (manifest['index.html'] ? 'index.html' : null)
+    if (!entryKey) return []
+
+    const visited = new Set()
+    const queue = [entryKey]
+    while (queue.length) {
+      const key = queue.shift()
+      if (!key || visited.has(key)) continue
+      visited.add(key)
+
+      const item = manifest[key]
+      addItemFiles(item)
+
+      if (Array.isArray(item?.imports)) {
+        item.imports.forEach((importKey) => {
+          if (typeof importKey === 'string' && manifest[importKey]) queue.push(importKey)
+        })
       }
     }
+
     return [...files]
   } catch (error) {
     return []
