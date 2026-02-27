@@ -359,6 +359,100 @@ router.delete('/:id', async (req, res) => {
 
 // ==================== 流程执行实例 API ====================
 
+// GET /api/flows/executions - 全局查询所有执行实例（带分页和筛选）
+router.get('/executions/query/all', async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = 'created_at',
+      order = 'DESC',
+      status = '',
+      flowId = '',
+      initiatorId = '',
+      startDate = '',
+      endDate = ''
+    } = req.query;
+
+    // 验证参数
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * pageSize;
+
+    // 白名单验证
+    const allowedSortColumns = ['created_at', 'status', 'updated_at', 'initiator_id'];
+    const sortColumn = allowedSortColumns.includes(sortBy) ? sortBy : 'created_at';
+    const sortOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    // 构建 WHERE 条件
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+      conditions.push('e.status = ?');
+      params.push(status);
+    }
+    if (flowId) {
+      conditions.push('e.flow_id = ?');
+      params.push(flowId);
+    }
+    if (initiatorId) {
+      conditions.push('e.initiator_id = ?');
+      params.push(initiatorId);
+    }
+    if (startDate) {
+      conditions.push('e.created_at >= ?');
+      params.push(parseInt(startDate));
+    }
+    if (endDate) {
+      conditions.push('e.created_at <= ?');
+      params.push(parseInt(endDate));
+    }
+
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // 获取总数
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM flow_executions e ${whereClause}`,
+      params
+    );
+    const total = countResult[0].total;
+
+    // 获取分页数据
+    const [executions] = await pool.query(
+      `
+      SELECT
+        e.*,
+        u.name as initiator_name,
+        f.name as flow_name,
+        (SELECT COUNT(*) FROM flow_execution_steps WHERE execution_id = e.id) as step_count,
+        (SELECT COUNT(*) FROM flow_execution_steps WHERE execution_id = e.id AND status = 'completed') as completed_step_count
+      FROM flow_executions e
+      LEFT JOIN users u ON e.initiator_id = u.id
+      LEFT JOIN flows f ON e.flow_id = f.id
+      ${whereClause}
+      ORDER BY e.${sortColumn} ${sortOrder}
+      LIMIT ? OFFSET ?
+      `,
+      [...params, pageSize, offset]
+    );
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    res.json({
+      total,
+      page: pageNum,
+      limit: pageSize,
+      pages: totalPages,
+      hasMore: pageNum < totalPages,
+      data: executions
+    });
+  } catch (error) {
+    console.error('全局查询执行实例失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/flows/:id/executions - 获取流程的所有执行实例
 router.get('/:id/executions', async (req, res) => {
   const { id } = req.params;
