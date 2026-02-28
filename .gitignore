@@ -28,3 +28,13 @@ server/.env.production
 # 运行时数据
 server/server/data/scheduler/tasks.json
 server/server/data/videos/library.json
+
+# 视频文件（不应该提交到Git）
+server/server/data/videos/uploads/
+server/server/data/videos/processed/
+server/server/data/videos/thumbnails/
+*.mp4
+*.avi
+*.mov
+*.flv
+*.mkv
