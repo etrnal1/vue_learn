@@ -1,0 +1,169 @@
+html,
+body {
+    min-height: 100%;
+}
+
+:root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+    color: #1c1c1e;
+    background: radial-gradient(circle at top, #ffffff 0%, #f2f2f7 56%, #e9ecf5 100%);
+    padding-top: max(16px, calc(var(--safe-area-top) + 8px));
+    padding-right: max(16px, calc(var(--safe-area-right) + 8px));
+    padding-bottom: max(16px, calc(var(--safe-area-bottom) + 8px));
+    padding-left: max(16px, calc(var(--safe-area-left) + 8px));
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    max-width: 1320px;
+    margin: 0 auto;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
+}
+
+/* Shared UI primitives (avoid per-page style drift) */
+.app-card {
+    border: 1px solid var(--app-border);
+    border-radius: 14px;
+    background: var(--app-card);
+    box-shadow: var(--app-soft-shadow);
+}
+
+.app-input,
+.app-select,
+.app-textarea {
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-card);
+    color: var(--app-text);
+    padding: 10px 12px;
+    font-size: 0.95rem;
+}
+
+.app-textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.86rem;
+    line-height: 1.35rem;
+}
+
+.app-input:focus,
+.app-select:focus,
+.app-textarea:focus {
+    outline: none;
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+
+.app-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-card-elevated, var(--app-card));
+    color: var(--app-text-secondary, var(--app-text));
+    padding: 10px 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.app-btn:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
+}
+
+.app-btn:active {
+    transform: translateY(1px);
+}
+
+.app-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.app-btn--primary {
+    border: none;
+    background: var(--app-primary);
+    color: var(--app-on-primary, white);
+    box-shadow: 0 10px 26px color-mix(in srgb, var(--app-primary) 20%, transparent);
+}
+
+.app-btn--ghost {
+    background: transparent;
+}
+
+.app-btn--danger {
+    border-color: rgba(220, 38, 38, 0.35);
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.06);
+}
+
+.app-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    color: var(--app-text-muted);
+    font-weight: 800;
+    font-size: 0.82rem;
+}
+
+.modal-overlay,
+.diff-modal-overlay {
+    padding-top: calc(var(--safe-area-top) + 8px);
+    padding-bottom: calc(var(--safe-area-bottom) + 8px);
+}
+
+.modal,
+.modal-content,
+.diff-modal {
+    max-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 24px) !important;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(120, 120, 128, 0.35);
+    border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 120, 128, 0.52);
+}
+
+@media (max-width: 768px) {
+    body {
+        padding-top: max(10px, calc(var(--safe-area-top) + 6px));
+        padding-right: max(10px, calc(var(--safe-area-right) + 6px));
+        padding-bottom: max(10px, calc(var(--safe-area-bottom) + 10px));
+        padding-left: max(10px, calc(var(--safe-area-left) + 6px));
+    }
+}

@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 构建输出
+dist/
+build/
+public/git-log.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 环境变量
+.env
+.env.local
+.env.test
+.env.production
+server/.env
+server/.env.test
+server/.env.production
+
+# 运行时数据
+server/server/data/scheduler/tasks.json
+server/server/data/videos/library.json

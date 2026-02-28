@@ -1,0 +1,25 @@
+{
+  "name": "itsm-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node scripts/dev-watch.js",
+    "prod": "NODE_ENV=production node -r dotenv/config index.js dotenv_config_path=.env.production",
+    "init-db": "node init-db.js",
+    "init-db:test": "NODE_ENV=test node -r dotenv/config init-db.js dotenv_config_path=.env.test",
+    "init-db:prod": "NODE_ENV=production node -r dotenv/config init-db.js dotenv_config_path=.env.production"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
+    "mammoth": "^1.11.0",
+    "mysql2": "^3.17.3",
+    "pdf-parse": "^2.4.5",
+    "uuid": "^13.0.0",
+    "ws": "^8.19.0"
+  }
+}

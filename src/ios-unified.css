@@ -1,0 +1,192 @@
+.app[data-theme] {
+  --ios-radius-sm: 10px;
+  --ios-radius-md: 14px;
+  --ios-radius-lg: 18px;
+}
+
+.app[data-theme] :is(
+  .card,
+  .panel,
+  .section-card,
+  .settings-card,
+  .status-card,
+  .search-section,
+  .result-section,
+  .concepts-view,
+  .flows-view,
+  .table-wrap,
+  .diagnose,
+  .info-section,
+  .tech-stack,
+  .rule-card,
+  .chart-box,
+  .task-card,
+  .scan-item,
+  .live-item,
+  .chat-card,
+  .function-card,
+  .concept-card,
+  .file-item,
+  .merge-preview-box,
+  .remote-ops-section,
+  .create-branch-section,
+  .branches-section,
+  .modal-content,
+  .modal,
+  .status-item
+) {
+  background: var(--app-card) !important;
+  border: 1px solid var(--app-border) !important;
+  border-radius: var(--ios-radius-md) !important;
+  box-shadow: var(--app-soft-shadow) !important;
+}
+
+.app[data-theme] :is(
+  .btn,
+  .btn-sm,
+  .btn-secondary,
+  .btn-cancel,
+  .btn-outline,
+  .action-btn,
+  .filter-btn,
+  .tab-btn,
+  .subtab,
+  .view-tab,
+  .flow-btn,
+  .chip,
+  .btn-close,
+  .btn-icon
+) {
+  background: var(--app-card-elevated) !important;
+  border: 1px solid var(--app-border) !important;
+  border-radius: var(--ios-radius-sm) !important;
+  color: var(--app-text-secondary) !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+.app[data-theme] :is(
+  .btn-primary,
+  .primary-btn,
+  .tab-btn.active,
+  .subtab.active,
+  .view-tab.active,
+  .flow-btn.active,
+  .filter-btn.active,
+  .chip.active,
+  .theme-pill.active,
+  .badge-common,
+  .badge-active,
+  .tag-active,
+  .btn-refresh,
+  .btn-checkout,
+  .btn-push,
+  .btn-view,
+  .btn-merge
+) {
+  background: var(--app-primary) !important;
+  border-color: transparent !important;
+  color: var(--app-on-primary) !important;
+  box-shadow: 0 8px 18px var(--app-shadow) !important;
+}
+
+.app[data-theme] :is(.btn-danger, .btn-delete) {
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+.app[data-theme] .btn-files {
+  border-color: #f59e0b !important;
+  background: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.app[data-theme] :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  .input,
+  .input-field,
+  .textarea-field,
+  .select-field,
+  .search-input,
+  .branch-input,
+  .branch-search-input,
+  .remote-select,
+  .input-lite,
+  .mini-select
+) {
+  background: var(--app-card-elevated) !important;
+  color: var(--app-text) !important;
+  border: 1px solid var(--app-border) !important;
+  border-radius: var(--ios-radius-sm) !important;
+}
+
+.app[data-theme] :is(
+  input:not([type="checkbox"]):not([type="radio"]):focus,
+  textarea:focus,
+  select:focus,
+  .input:focus,
+  .input-field:focus,
+  .textarea-field:focus,
+  .search-input:focus,
+  .branch-input:focus,
+  .branch-search-input:focus,
+  .remote-select:focus
+) {
+  outline: none !important;
+  border-color: var(--app-primary) !important;
+  box-shadow: 0 0 0 3px var(--app-shadow-light) !important;
+}
+
+.app[data-theme] :is(.stat, .tag, .tip, .current-badge, .tech-tag) {
+  background: var(--app-card-elevated) !important;
+  border: 1px solid var(--app-border) !important;
+  color: var(--app-text-secondary) !important;
+  border-radius: 999px !important;
+}
+
+.app[data-theme] :is(.page-header h1, .page-head h2, .head h2, .panel h3, .card h2) {
+  color: var(--app-text) !important;
+  -webkit-text-fill-color: var(--app-text) !important;
+  background: none !important;
+}
+
+.app[data-theme] :is(.subtitle, .meta, .detail, .status, .scan-tip, .hint, .filter-summary) {
+  color: var(--app-text-muted) !important;
+}
+
+.app[data-theme] :is(.branch-item.current, .hero) {
+  background: var(--app-primary) !important;
+  color: var(--app-on-primary) !important;
+  border-color: transparent !important;
+}
+
+.app[data-theme] :is(.branch-item.current .branch-name, .branch-item.current .current-badge) {
+  color: var(--app-on-primary) !important;
+}
+
+.app[data-theme] :is(.modal-overlay, .diff-modal-overlay) {
+  background: rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.app[data-theme] :is(table, th, td) {
+  border-color: var(--app-border) !important;
+}
+
+.app[data-theme] th {
+  background: var(--app-card-elevated) !important;
+  color: var(--app-text-secondary) !important;
+}
+
+.app[data-theme] :is(.empty, .empty-state, .empty-lite, .loading-state) {
+  border: 1px dashed var(--app-border) !important;
+  border-radius: var(--ios-radius-md) !important;
+  background: var(--app-card-elevated) !important;
+  color: var(--app-text-muted) !important;
+}
+
+.app[data-theme] :is(.player-wrap, .code-block) {
+  border-radius: var(--ios-radius-sm) !important;
+}
