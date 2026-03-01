@@ -3,6 +3,15 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+function escapeHtml(input) {
+  return String(input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 export function buildHistorySnapshot(article, options = {}) {
   const now = Date.now()
   const time = asNumber(options.updatedAt ?? article?.updatedAt, now)
@@ -70,12 +79,21 @@ export function normalizeHistoryEntries(history, fallbackArticle = {}, fallbackU
 export function normalizeAnnotations(list, fallbackTime = Date.now()) {
   if (!Array.isArray(list)) return []
   return list
-    .map((ann) => ({
+    .map((ann) => {
+      const rawQuote = String(ann.quote || '').trim()
+      const migratedQuote = rawQuote.length > 18 ? rawQuote.replace(/\.{3,}\s*$/, '') : rawQuote
+      return ({
       id: String(ann.id || `ann_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`),
-      quote: String(ann.quote || '').trim(),
+      quote: migratedQuote,
       note: String(ann.note || '').trim(),
       color: String(ann.color || 'yellow'),
       status: String(ann.status || 'open') === 'resolved' ? 'resolved' : 'open',
+      anchor: ann?.anchor && typeof ann.anchor === 'object'
+        ? {
+          blockExcerpt: String(ann.anchor.blockExcerpt || '').trim().slice(0, 120),
+          blockTag: String(ann.anchor.blockTag || '').trim().toLowerCase()
+        }
+        : null,
       replies: Array.isArray(ann.replies)
         ? ann.replies
           .map((reply) => ({
@@ -88,7 +106,7 @@ export function normalizeAnnotations(list, fallbackTime = Date.now()) {
           .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
         : [],
       createdAt: asNumber(ann.createdAt, fallbackTime)
-    }))
+    })})
     .filter((ann) => ann.quote)
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
 }
@@ -97,19 +115,124 @@ function escapeRegExp(text) {
   return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export function applyAnnotationsToHtml(html, annotations = []) {
-  let output = String(html || '')
-  for (const ann of Array.isArray(annotations) ? annotations : []) {
-    const quote = String(ann?.quote || '').trim()
-    if (!quote) continue
-    const pattern = new RegExp(escapeRegExp(quote))
-    if (!pattern.test(output)) continue
-    output = output.replace(
-      pattern,
-      `<mark class="text-annotation ann-${String(ann.color || 'yellow')}" data-ann-id="${String(ann.id || '')}">${quote}</mark>`
-    )
+function buildFlexibleWhitespacePattern(text) {
+  const tokens = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!tokens.length) return null
+  const body = tokens.map((token) => escapeRegExp(token)).join('\\s+')
+  return new RegExp(body, 'i')
+}
+
+function buildQuoteVariants(quote) {
+  const normalized = String(quote || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return []
+  const variants = [normalized]
+  if (normalized.length > 160) variants.push(normalized.slice(0, 160).trim())
+  if (normalized.length > 96) variants.push(normalized.slice(0, 96).trim())
+  if (normalized.length > 48) variants.push(normalized.slice(0, 48).trim())
+  return Array.from(new Set(variants.filter(Boolean)))
+}
+
+function normalizeLooseText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+const BLOCK_SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th'
+
+function tryWrapByQuoteInRoot(root, ann) {
+  const quote = String(ann?.quote || '').trim()
+  if (!quote || !root) return false
+  const variants = buildQuoteVariants(quote)
+  if (!variants.length) return false
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+  while (node) {
+    const raw = String(node.nodeValue || '')
+    if (!raw.trim()) {
+      node = walker.nextNode()
+      continue
+    }
+    for (const variant of variants) {
+      const directIdx = raw.toLowerCase().indexOf(variant.toLowerCase())
+      let start = directIdx
+      let matchText = directIdx >= 0 ? raw.slice(directIdx, directIdx + variant.length) : ''
+      if (start < 0) {
+        const flex = buildFlexibleWhitespacePattern(variant)
+        const m = flex ? raw.match(flex) : null
+        if (m && typeof m.index === 'number') {
+          start = m.index
+          matchText = m[0]
+        }
+      }
+      if (start < 0 || !matchText) continue
+
+      const end = start + matchText.length
+      const before = raw.slice(0, start)
+      const after = raw.slice(end)
+
+      const wrap = document.createElement('span')
+      wrap.className = 'ann-inline-wrap'
+
+      const mark = document.createElement('mark')
+      mark.className = `text-annotation ann-${String(ann.color || 'yellow')}`
+      mark.dataset.annId = String(ann.id || '')
+      mark.textContent = matchText
+
+      const note = document.createElement('span')
+      const noteText = String(ann.note || '').trim()
+      note.className = `ann-inline-note${noteText ? '' : ' is-empty'}`
+      note.textContent = noteText || '批注'
+
+      wrap.appendChild(mark)
+      wrap.appendChild(note)
+
+      const frag = document.createDocumentFragment()
+      if (before) frag.appendChild(document.createTextNode(before))
+      frag.appendChild(wrap)
+      if (after) frag.appendChild(document.createTextNode(after))
+      node.parentNode?.replaceChild(frag, node)
+      return true
+    }
+    node = walker.nextNode()
   }
-  return output
+  return false
+}
+
+function findAnchorBlock(host, ann) {
+  const excerpt = normalizeLooseText(ann?.anchor?.blockExcerpt || '')
+  if (!excerpt) return null
+  const tag = String(ann?.anchor?.blockTag || '').trim().toLowerCase()
+  const blocks = Array.from(host.querySelectorAll(BLOCK_SELECTOR))
+  if (!blocks.length) return null
+  const list = tag ? blocks.filter((el) => el.tagName.toLowerCase() === tag) : blocks
+  for (const block of list) {
+    const text = normalizeLooseText(block.textContent || '')
+    if (text && text.includes(excerpt)) return block
+  }
+  return null
+}
+
+export function applyAnnotationsToHtml(html, annotations = []) {
+  const source = String(html || '')
+  const list = Array.isArray(annotations) ? annotations : []
+  if (!source || list.length === 0) return source
+  if (typeof document === 'undefined') return source
+
+  const host = document.createElement('div')
+  host.innerHTML = source
+
+  for (const ann of list) {
+    const anchorBlock = findAnchorBlock(host, ann)
+    if (anchorBlock && tryWrapByQuoteInRoot(anchorBlock, ann)) {
+      continue
+    }
+    tryWrapByQuoteInRoot(host, ann)
+  }
+
+  return host.innerHTML
 }
 
 export function filterHistoryEntries(history, mode = 'all') {

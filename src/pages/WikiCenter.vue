@@ -74,7 +74,7 @@
       </div>
     </div>
 
-    <div class="wiki-layout">
+    <div class="wiki-layout" :class="{ 'focus-reading': focusMode }">
       <aside v-show="!isMobile || !mobileReadMode" class="panel list-panel">
         <h3>词条列表</h3>
         <div v-if="filteredArticles.length === 0" class="empty">没有匹配词条</div>
@@ -85,13 +85,14 @@
             :key="item.id"
             class="article-item"
             :class="{ active: item.id === activeArticleId }"
+            :data-article-id="item.id"
             @click="openArticle(item.id)"
           >
             <div class="item-head">
               <h4>{{ item.title }}</h4>
               <div class="item-actions">
                 <button class="star-btn" @click.stop="toggleStar(item)">{{ item.starred ? '★' : '☆' }}</button>
-                <button class="btn btn-sm btn-danger-inline" @click.stop="removeArticle(item.id)">删</button>
+                <button class="btn btn-sm btn-danger-inline" @click.stop="requestRemoveArticle(item.id)">删</button>
               </div>
             </div>
             <div class="meta">
@@ -131,19 +132,67 @@
               <button v-if="isMobile && mobileReadMode" class="btn" @click="backToList">返回列表</button>
               <button class="btn" @click="viewTab = 'read'">阅读</button>
               <button class="btn" @click="startEdit">编辑</button>
-              <button class="btn" @click="publishCurrentVersion">发布版本</button>
+              <button v-if="viewTab === 'read' && !isMobile" class="btn" @click="toggleReadRail">
+                {{ hideReadRail ? '显示侧栏' : '隐藏侧栏' }}
+              </button>
+              <button class="btn" @click="locateActiveArticle">定位词条</button>
+              <button v-if="viewTab === 'read'" class="btn" @click="toggleFocusMode">
+                {{ focusMode ? '退出沉浸' : '沉浸阅读' }}
+              </button>
+              <button v-if="viewTab === 'read'" class="btn" @click="quickAnnotateMode = !quickAnnotateMode">
+                {{ quickAnnotateMode ? '关闭快批' : '段落快批' }}
+              </button>
+              <button class="btn" @click="openPublishForm">发布版本</button>
               <button class="btn" @click="viewTab = 'history'">历史</button>
               <button class="btn" @click="viewTab = 'timeline'">时间轴</button>
               <button class="btn" @click="viewTab = 'discuss'">讨论</button>
               <button v-if="isMobile && viewTab === 'read' && toc.length" class="btn" @click="toggleMobileToc">
                 {{ showMobileToc ? '收起目录' : '目录' }}
               </button>
-              <button class="btn btn-danger" @click="removeArticle(activeArticle.id)">删除</button>
+              <button
+                v-if="isMobile && viewTab === 'read' && (activeArticle?.annotations?.length || 0) > 0"
+                class="btn"
+                @click="toggleMobileAnnotationList"
+              >
+                {{ showMobileAnnotationList ? '收起批注' : `批注(${activeArticle.annotations.length})` }}
+              </button>
+              <button class="btn btn-danger" @click="requestRemoveArticle(activeArticle.id)">删除</button>
+            </div>
+          </div>
+          <div v-if="deleteConfirmVisible && deleteTargetArticle" class="delete-form-panel">
+            <div class="delete-form-title">谨慎删除确认</div>
+            <p class="delete-form-tip">
+              即将删除：<strong>{{ deleteTargetArticle.title }}</strong>。此操作不可恢复，请输入完整标题后再确认。
+            </p>
+            <input
+              v-model.trim="deleteConfirmInput"
+              class="input"
+              :placeholder="`输入：${deleteTargetArticle.title}`"
+            >
+            <div class="actions">
+              <button class="btn btn-danger" :disabled="!canConfirmDelete" @click="confirmRemoveArticle">确认删除</button>
+              <button class="btn" @click="cancelRemoveArticle">取消</button>
+            </div>
+          </div>
+          <div v-if="publishFormVisible && viewTab === 'read'" class="publish-form-panel">
+            <div class="publish-form-title">发布版本</div>
+            <div class="form-group">
+              <label>发布说明</label>
+              <textarea
+                v-model.trim="publishFormNote"
+                class="input"
+                rows="3"
+                placeholder="请输入本次发布说明（可选）"
+              ></textarea>
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary" @click="publishCurrentVersion">确认发布</button>
+              <button class="btn" @click="cancelPublishForm">取消</button>
             </div>
           </div>
 
           <div v-if="viewTab === 'read'" class="read-area">
-            <div class="read-layout">
+            <div class="read-layout" :class="{ 'compact-rail': hideReadRail || focusMode }">
               <div class="read-main">
                 <div v-if="isMobile" class="mobile-read-tools">
                   <button class="btn btn-sm" @click="adjustReaderFont(-1)">A-</button>
@@ -151,12 +200,42 @@
                   <button class="btn btn-sm" @click="adjustReaderFont(1)">A+</button>
                   <button class="btn btn-sm" @click="adjustReaderLineHeight(-0.05)">紧凑</button>
                   <button class="btn btn-sm" @click="adjustReaderLineHeight(0.05)">舒展</button>
+                  <button class="btn btn-sm btn-primary" @click="annotateCurrentParagraphOnMobile">当前段落批注</button>
+                  <select v-model="annotationViewMode" class="input reader-select">
+                    <option value="all">批注: 全部</option>
+                    <option value="highlight">批注: 仅高亮</option>
+                    <option value="note">批注: 仅旁注</option>
+                  </select>
+                  <button class="btn btn-sm" @click="quickAnnotateMode = !quickAnnotateMode">
+                    {{ quickAnnotateMode ? '关闭快批' : '段落快批' }}
+                  </button>
                 </div>
+                <ArticleReaderModule
+                  :query="inPageQuery"
+                  :hit-count="inPageMatches.length"
+                  :can-navigate="inPageMatches.length > 0"
+                  :visible="readerModuleVisible"
+                  @update:query="inPageQuery = $event"
+                  @prev="jumpToPrevInPageMatch"
+                  @next="jumpToNextInPageMatch"
+                  @top="jumpReaderToTop"
+                  @bottom="jumpReaderToBottom"
+                  @toggle-visible="readerModuleVisible = $event"
+                >
+                  <template #extra>
+                    <select v-model="annotationViewMode" class="input inpage-select">
+                      <option value="all">全部批注</option>
+                      <option value="highlight">仅高亮</option>
+                      <option value="note">仅旁注</option>
+                    </select>
+                  </template>
+                </ArticleReaderModule>
                 <p v-if="activeArticle.summary" class="lead">{{ activeArticle.summary }}</p>
                 <div
-                  class="markdown"
+                  :class="['markdown', `ann-view-${annotationViewMode}`]"
                   :style="readerStyle"
                   v-html="renderedHtml"
+                  @click="handleMarkdownClickForQuickAnnotate"
                   @mouseup="captureSelectionForAnnotation"
                   @touchend.passive="captureSelectionForAnnotation"
                 ></div>
@@ -194,61 +273,101 @@
                     <button class="btn btn-sm" @click="clearAnnotationComposer">取消</button>
                   </div>
                 </div>
-                <div v-if="activeArticle.annotations?.length" class="annotation-list">
-                  <div class="annotation-list-title">批注列表</div>
-                  <article v-for="item in activeArticle.annotations" :key="item.id" class="annotation-item">
-                    <button class="annotation-jump" @click="jumpToAnnotation(item.id)">定位</button>
-                    <div class="annotation-body">
-                      <p class="annotation-hit">
-                        <span class="annotation-color-dot" :class="`dot-${item.color || 'yellow'}`"></span>
-                        {{ item.quote }}
-                      </p>
-                      <p class="annotation-status" :class="`status-${item.status || 'open'}`">
-                        {{ (item.status || 'open') === 'resolved' ? '已解决' : '待处理' }}
-                      </p>
-                      <p v-if="item.note" class="annotation-note">{{ item.note }}</p>
-                      <p class="meta">创建于 {{ formatDate(item.createdAt) }}</p>
-                      <div v-if="item.replies?.length" class="annotation-replies">
-                        <article v-for="reply in item.replies" :key="reply.id" class="annotation-reply">
-                          <p class="meta">{{ reply.author }} · {{ formatDate(reply.createdAt) }}</p>
-                          <p>{{ reply.text }}</p>
-                        </article>
-                      </div>
-                      <div class="annotation-reply-editor">
-                        <input
-                          v-model.trim="annotationReplyDrafts[item.id]"
-                          class="input"
-                          placeholder="回复此批注..."
-                          @keyup.enter="addAnnotationReply(item.id)"
-                        >
-                      </div>
-                    </div>
-                    <div class="annotation-side-actions">
-                      <button class="btn btn-sm" @click="toggleAnnotationStatus(item.id)">
-                        {{ (item.status || 'open') === 'resolved' ? '重开' : '解决' }}
-                      </button>
-                      <button class="btn btn-sm" @click="addAnnotationReply(item.id)">回复</button>
-                      <button class="btn btn-sm" @click="removeAnnotation(item.id)">删除</button>
-                    </div>
-                  </article>
-                </div>
                 <p v-if="annotationSavedAt" class="annotation-saved-tip">批注已保存：{{ formatDate(annotationSavedAt) }}</p>
               </div>
 
-              <aside v-if="toc.length > 0" class="inline-toc">
-                <h4>章节目录</h4>
-                <div class="toc-list">
-                  <a
-                    v-for="item in toc"
-                    :key="item.id"
-                    class="toc-item"
-                    :style="{ paddingLeft: `${(item.level - 1) * 10 + 8}px` }"
-                    @click="jumpToHeading(item.id)"
-                  >
-                    {{ item.text }}
-                  </a>
+              <aside v-if="!(hideReadRail || focusMode) && (toc.length > 0 || (activeArticle.annotations?.length > 0) || inPageQuery)" class="inline-toc">
+                <div v-if="toc.length > 0" class="inline-panel-section">
+                  <h4>章节目录</h4>
+                  <div class="toc-list">
+                    <a
+                      v-for="item in toc"
+                      :key="item.id"
+                      class="toc-item"
+                      :style="{ paddingLeft: `${(item.level - 1) * 10 + 8}px` }"
+                      @click="jumpToHeading(item.id)"
+                    >
+                      {{ item.text }}
+                    </a>
+                  </div>
+                </div>
+
+                <div v-if="activeArticle.annotations?.length" class="inline-panel-section">
+                  <h4>批注列表</h4>
+                  <div class="annotation-list annotation-list--rail">
+                    <article
+                      v-for="item in activeArticle.annotations"
+                      :key="item.id"
+                      class="annotation-item"
+                      :data-ann-row-id="item.id"
+                      role="button"
+                      tabindex="0"
+                      @click="jumpToAnnotation(item.id)"
+                      @keyup.enter="jumpToAnnotation(item.id)"
+                    >
+                      <button class="annotation-jump" @click.stop="jumpToAnnotation(item.id)">定位</button>
+                      <div class="annotation-body">
+                        <p class="annotation-hit">
+                          <span class="annotation-color-dot" :class="`dot-${item.color || 'yellow'}`"></span>
+                          {{ item.quote }}
+                        </p>
+                        <p class="annotation-status" :class="`status-${item.status || 'open'}`">
+                          {{ (item.status || 'open') === 'resolved' ? '已解决' : '待处理' }}
+                        </p>
+                        <p v-if="!renderedAnnotationIds.has(String(item.id))" class="annotation-locate-tip">待定位</p>
+                        <p class="annotation-note">{{ item.note || '（仅高亮，无文字批注）' }}</p>
+                        <p class="meta">创建于 {{ formatDate(item.createdAt) }}</p>
+                        <div v-if="item.replies?.length" class="annotation-replies">
+                          <article v-for="reply in item.replies" :key="reply.id" class="annotation-reply">
+                            <p class="meta">{{ reply.author }} · {{ formatDate(reply.createdAt) }}</p>
+                            <p>{{ reply.text }}</p>
+                          </article>
+                        </div>
+                        <div class="annotation-reply-editor">
+                          <input
+                            v-model.trim="annotationReplyDrafts[item.id]"
+                            class="input"
+                            placeholder="回复此批注..."
+                            @click.stop
+                            @keyup.enter="addAnnotationReply(item.id)"
+                          >
+                        </div>
+                      </div>
+                      <div class="annotation-side-actions">
+                        <button class="btn btn-sm" @click.stop="toggleAnnotationStatus(item.id)">
+                          {{ (item.status || 'open') === 'resolved' ? '重开' : '解决' }}
+                        </button>
+                        <button class="btn btn-sm" @click.stop="addAnnotationReply(item.id)">回复</button>
+                        <button class="btn btn-sm" @click.stop="removeAnnotation(item.id)">删除</button>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div v-if="inPageQuery" class="inline-panel-section">
+                  <h4>检索结果</h4>
+                  <div v-if="inPageMatches.length === 0" class="empty mini">未命中正文内容</div>
+                  <div v-else class="toc-list">
+                    <button
+                      v-for="(hit, idx) in inPageMatches"
+                      :key="hit.id"
+                      class="toc-item hit-item"
+                      :class="{ active: idx === inPageActiveIndex }"
+                      @click="jumpToInPageMatch(idx)"
+                    >
+                      {{ hit.preview }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="toc.length === 0 && (!activeArticle.annotations || activeArticle.annotations.length === 0)" class="empty mini">
+                  暂无目录和批注
                 </div>
               </aside>
+            </div>
+            <div class="reader-jump-tools">
+              <button class="btn btn-sm" @click="jumpReaderToTop">页首</button>
+              <button class="btn btn-sm" @click="jumpReaderToBottom">页尾</button>
             </div>
           </div>
 
@@ -415,6 +534,30 @@
         </a>
       </div>
     </aside>
+    <div v-if="isMobile && showMobileAnnotationList" class="mobile-toc-mask" @click="showMobileAnnotationList = false"></div>
+    <aside v-if="isMobile" class="mobile-ann-list-drawer panel" :class="{ open: showMobileAnnotationList }">
+      <div class="mobile-toc-head">
+        <h3>批注汇总</h3>
+        <button class="btn btn-sm" @click="showMobileAnnotationList = false">关闭</button>
+      </div>
+      <div v-if="!activeArticle?.annotations?.length" class="empty mini">暂无批注</div>
+      <div v-else class="annotation-list">
+        <article
+          v-for="item in activeArticle.annotations"
+          :key="`mobile-ann-${item.id}`"
+          class="annotation-item"
+          @click="jumpToAnnotation(item.id)"
+        >
+          <div class="annotation-body">
+            <p class="annotation-hit">
+              <span class="annotation-color-dot" :class="`dot-${item.color || 'yellow'}`"></span>
+              {{ item.quote }}
+            </p>
+            <p class="annotation-note">{{ item.note || '（仅高亮，无文字批注）' }}</p>
+          </div>
+        </article>
+      </div>
+    </aside>
     <div v-if="isMobile && annotationSelection.text" class="mobile-annotation-mask" @click="clearAnnotationComposer"></div>
     <aside v-if="isMobile && annotationSelection.text" class="mobile-annotation-drawer panel">
       <div class="mobile-annotation-head">
@@ -450,6 +593,7 @@
 <script>
 import { api } from '../utils/api.js'
 import { marked } from 'marked'
+import ArticleReaderModule from '../components/article/ArticleReaderModule.vue'
 import {
   applyAnnotationsToHtml,
   buildHistorySnapshot,
@@ -458,6 +602,15 @@ import {
   normalizeAnnotations,
   normalizeHistoryEntries
 } from '../utils/wikiArticleUtils.js'
+import {
+  buildInPageMatches,
+  findReaderRoot,
+  flashElement,
+  jumpReaderToBottom,
+  jumpReaderToTop,
+  jumpToInPageMatch,
+  locateListItemById
+} from '../utils/readerAssist.js'
 
 const STORAGE_KEY = 'wiki_center_articles_v1'
 const STATE_KEY = 'wiki_center_state_v1'
@@ -475,6 +628,9 @@ function escapeHtml(input) {
 
 export default {
   name: 'WikiCenter',
+  components: {
+    ArticleReaderModule
+  },
   data() {
     return {
       articles: [],
@@ -495,6 +651,8 @@ export default {
       viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1200,
       mobileReadMode: false,
       showMobileToc: false,
+      showMobileAnnotationList: false,
+      mobileSelectionLockUntil: 0,
       importingDoc: false,
       importLogs: [],
       articleListScrollTop: 0,
@@ -505,9 +663,13 @@ export default {
       showPalette: false,
       readerFontSize: 15,
       readerLineHeight: 1.8,
+      hideReadRail: false,
+      focusMode: false,
+      quickAnnotateMode: false,
       editVersionNote: '',
       annotationSelection: {
-        text: ''
+        text: '',
+        anchor: null
       },
       annotationAnchor: {
         x: 24,
@@ -518,6 +680,16 @@ export default {
       annotationColor: 'yellow',
       annotationReplyDrafts: {},
       annotationSavedAt: null,
+      annotationViewMode: 'all',
+      readerModuleVisible: true,
+      publishFormVisible: false,
+      publishFormNote: '',
+      deleteConfirmVisible: false,
+      deleteTargetId: null,
+      deleteConfirmInput: '',
+      inPageQuery: '',
+      inPageMatches: [],
+      inPageActiveIndex: -1,
       annotationColors: [
         { value: 'yellow', label: '黄色' },
         { value: 'green', label: '绿色' },
@@ -590,6 +762,15 @@ export default {
     activeArticle() {
       return this.articles.find((item) => item.id === this.activeArticleId) || null
     },
+    deleteTargetArticle() {
+      if (!this.deleteTargetId) return null
+      return this.articles.find((item) => item.id === this.deleteTargetId) || null
+    },
+    canConfirmDelete() {
+      const target = this.deleteTargetArticle
+      if (!target) return false
+      return String(this.deleteConfirmInput || '') === String(target.title || '')
+    },
     toc() {
       if (!this.activeArticle) return []
       const normalized = this.normalizeDocumentMarkdown(this.activeArticle.content || '')
@@ -600,6 +781,17 @@ export default {
       const normalized = this.normalizeDocumentMarkdown(this.activeArticle.content || '')
       const html = this.markdownToHtml(normalized)
       return applyAnnotationsToHtml(html, this.activeArticle.annotations || [])
+    },
+    renderedAnnotationIds() {
+      const set = new Set()
+      const html = String(this.renderedHtml || '')
+      const regex = /data-ann-id="([^"]+)"/g
+      let m = regex.exec(html)
+      while (m) {
+        if (m[1]) set.add(String(m[1]))
+        m = regex.exec(html)
+      }
+      return set
     },
     filteredHistory() {
       return filterHistoryEntries(this.activeArticle?.history || [], this.historyFilter)
@@ -1355,12 +1547,37 @@ export default {
       this.compareVersionId = ''
       this.clearDraftCache()
     },
+    openPublishForm() {
+      if (!this.activeArticle) return
+      this.publishFormVisible = true
+      this.publishFormNote = ''
+    },
+    cancelPublishForm() {
+      this.publishFormVisible = false
+      this.publishFormNote = ''
+    },
+    requestRemoveArticle(id) {
+      const target = this.articles.find((item) => item.id === id)
+      if (!target) return
+      this.deleteTargetId = target.id
+      this.deleteConfirmInput = ''
+      this.deleteConfirmVisible = true
+      this.cancelPublishForm()
+    },
+    cancelRemoveArticle() {
+      this.deleteConfirmVisible = false
+      this.deleteTargetId = null
+      this.deleteConfirmInput = ''
+    },
+    confirmRemoveArticle() {
+      if (!this.canConfirmDelete) return
+      this.removeArticle(this.deleteTargetId)
+      this.cancelRemoveArticle()
+    },
     publishCurrentVersion() {
       if (!this.activeArticle) return
-      const noteInput = window.prompt('发布说明（可选）', '')
-      if (noteInput === null) return
       const now = Date.now()
-      const note = String(noteInput || '').trim()
+      const note = String(this.publishFormNote || '').trim()
       const seq = Math.max(1, Number(this.activeArticle.versionSeq) || 1)
       if (!Array.isArray(this.activeArticle.history)) this.activeArticle.history = []
       this.activeArticle.history.unshift(buildHistorySnapshot(this.activeArticle, {
@@ -1372,6 +1589,47 @@ export default {
       }))
       this.activeArticle.updatedAt = now
       this.persistArticles()
+      this.cancelPublishForm()
+    },
+    toggleReadRail() {
+      this.hideReadRail = !this.hideReadRail
+    },
+    toggleFocusMode() {
+      this.focusMode = !this.focusMode
+      if (this.focusMode) {
+        this.hideReadRail = true
+      }
+    },
+    handleMarkdownClickForQuickAnnotate(event) {
+      if (!this.quickAnnotateMode || this.viewTab !== 'read') return
+      if (this.isMobile) {
+        const selected = String(window.getSelection?.()?.toString?.() || '').trim()
+        if (selected) return
+        if (Date.now() < Number(this.mobileSelectionLockUntil || 0)) return
+      }
+      const target = event?.target
+      if (!target || !(target instanceof Element)) return
+      if (target.closest('a, button, code, pre, mark')) return
+      const block = target.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th')
+      if (!block) return
+      const text = String(block.textContent || '').replace(/\s+/g, ' ').trim()
+      if (!text || text.length < 2) return
+      this.annotationSelection = {
+        text: text.slice(0, 280),
+        anchor: this.buildAnnotationAnchor(block)
+      }
+      const rect = block.getBoundingClientRect()
+      this.annotationAnchor = {
+        x: rect.right + 10,
+        y: rect.top - 8
+      }
+      this.showAnnotationComposer = !this.isMobile
+      if (!this.isMobile) {
+        this.$nextTick(() => {
+          const input = this.$refs.annotationInputRef
+          if (input && typeof input.focus === 'function') input.focus()
+        })
+      }
     },
     captureSelectionForAnnotation() {
       if (this.viewTab !== 'read') return
@@ -1385,7 +1643,17 @@ export default {
       const anchorNode = selection?.anchorNode
       const targetElement = anchorNode?.nodeType === 1 ? anchorNode : anchorNode?.parentElement
       if (!targetElement || !targetElement.closest('.markdown')) return
-      this.annotationSelection = { text: selected.slice(0, 280) }
+      const block = targetElement.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th')
+      const pickedText = this.isMobile
+        ? this.refineMobileSelectionText(selected)
+        : selected.slice(0, 280)
+      this.annotationSelection = {
+        text: pickedText,
+        anchor: this.buildAnnotationAnchor(block)
+      }
+      if (this.isMobile) {
+        this.mobileSelectionLockUntil = Date.now() + 1200
+      }
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null
       const rect = range?.getBoundingClientRect?.()
       if (rect) {
@@ -1398,6 +1666,59 @@ export default {
         this.showAnnotationComposer = false
       }
     },
+    refineMobileSelectionText(selectedText) {
+      const text = String(selectedText || '').replace(/\s+/g, ' ').trim()
+      if (!text) return ''
+      if (text.length <= 120) return text
+      const sentenceParts = text
+        .split(/(?<=[。！？!?；;])/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+      const candidate = sentenceParts.find((item) => item.length >= 6 && item.length <= 120)
+      if (candidate) return candidate
+      return text.slice(0, 120).trim()
+    },
+    buildAnnotationAnchor(blockEl) {
+      if (!blockEl) return null
+      const blockText = String(blockEl.textContent || '').replace(/\s+/g, ' ').trim()
+      if (!blockText) return null
+      return {
+        blockExcerpt: blockText.slice(0, 120),
+        blockTag: String(blockEl.tagName || '').toLowerCase()
+      }
+    },
+    annotateCurrentParagraphOnMobile() {
+      if (!this.isMobile || this.viewTab !== 'read') return
+      const root = this.findMarkdownRoot()
+      if (!root) return
+      const blocks = Array.from(root.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th'))
+      if (!blocks.length) return
+      const viewportCenter = window.innerHeight * 0.42
+      let picked = null
+      let minDistance = Number.POSITIVE_INFINITY
+      for (const block of blocks) {
+        const rect = block.getBoundingClientRect()
+        if (rect.bottom < 64 || rect.top > window.innerHeight - 56) continue
+        const center = rect.top + rect.height / 2
+        const distance = Math.abs(center - viewportCenter)
+        if (distance < minDistance) {
+          minDistance = distance
+          picked = { block, rect }
+        }
+      }
+      if (!picked) return
+      const text = String(picked.block.textContent || '').replace(/\s+/g, ' ').trim()
+      if (!text) return
+      this.annotationSelection = {
+        text: this.refineMobileSelectionText(text).slice(0, 180),
+        anchor: this.buildAnnotationAnchor(picked.block)
+      }
+      this.annotationAnchor = {
+        x: picked.rect.right + 10,
+        y: picked.rect.top - 8
+      }
+      flashElement(picked.block, 'inpage-match-focus', 900)
+    },
     openAnnotationComposer() {
       if (!this.annotationSelection.text) return
       this.showAnnotationComposer = true
@@ -1409,7 +1730,7 @@ export default {
       })
     },
     clearAnnotationComposer() {
-      this.annotationSelection = { text: '' }
+      this.annotationSelection = { text: '', anchor: null }
       this.annotationDraft = ''
       this.annotationColor = 'yellow'
       this.showAnnotationComposer = false
@@ -1421,10 +1742,12 @@ export default {
       if (!Array.isArray(this.activeArticle.annotations)) {
         this.activeArticle.annotations = []
       }
+      const annotationId = `ann_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`
       this.activeArticle.annotations.unshift({
-        id: `ann_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+        id: annotationId,
         quote,
         note: String(this.annotationDraft || '').trim(),
+        anchor: this.annotationSelection?.anchor || null,
         color: this.annotationColor || 'yellow',
         status: 'open',
         replies: [],
@@ -1433,10 +1756,12 @@ export default {
       this.activeArticle.updatedAt = Date.now()
       this.persistArticles()
       this.annotationSavedAt = Date.now()
+      this.annotationViewMode = 'all'
       this.clearAnnotationComposer()
       if (typeof window.getSelection === 'function') {
         window.getSelection()?.removeAllRanges?.()
       }
+      this.$nextTick(() => this.jumpToAnnotation(annotationId))
     },
     removeAnnotation(annotationId) {
       if (!this.activeArticle || !Array.isArray(this.activeArticle.annotations)) return
@@ -1473,9 +1798,108 @@ export default {
       this.persistArticles()
     },
     jumpToAnnotation(annotationId) {
+      if (this.isMobile) {
+        this.showMobileAnnotationList = false
+      }
       const el = document.querySelector(`[data-ann-id="${String(annotationId)}"]`)
-      if (!el) return
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        const wrap = el.closest('.ann-inline-wrap')
+        if (wrap) {
+          flashElement(wrap, 'ann-focus', 1100)
+        }
+        return
+      }
+      const row = this.$el?.querySelector?.(`[data-ann-row-id="${String(annotationId)}"]`)
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        flashElement(row, 'ann-focus-row', 1100)
+      }
+    },
+    findMarkdownRoot() {
+      return findReaderRoot(this.$el, '.read-main .markdown')
+    },
+    refreshInPageMatches() {
+      const query = String(this.inPageQuery || '').trim()
+      const oldMatches = Array.isArray(this.inPageMatches) ? this.inPageMatches : []
+      const oldActive = Number(this.inPageActiveIndex)
+      const oldActiveId = oldMatches[oldActive]?.id || ''
+      if (!query || this.viewTab !== 'read') {
+        this.inPageMatches = []
+        this.inPageActiveIndex = -1
+        return
+      }
+      const root = this.findMarkdownRoot()
+      if (!root) {
+        this.inPageMatches = []
+        this.inPageActiveIndex = -1
+        return
+      }
+      const out = buildInPageMatches(root, query, { limit: 120 })
+      this.inPageMatches = out
+      if (!out.length) {
+        this.inPageActiveIndex = -1
+        return
+      }
+      if (oldActiveId) {
+        const keepIdx = out.findIndex((item) => item.id === oldActiveId)
+        if (keepIdx >= 0) {
+          this.inPageActiveIndex = keepIdx
+          return
+        }
+      }
+      if (oldActive >= 0) {
+        this.inPageActiveIndex = Math.min(oldActive, out.length - 1)
+        return
+      }
+      this.inPageActiveIndex = 0
+    },
+    jumpToInPageMatch(index) {
+      const targetIndex = Number(index)
+      if (!Number.isFinite(targetIndex) || targetIndex < 0 || targetIndex >= this.inPageMatches.length) return
+      const hit = this.inPageMatches[targetIndex]
+      if (!hit) return
+      const root = this.findMarkdownRoot()
+      if (!root) return
+      this.inPageActiveIndex = targetIndex
+      jumpToInPageMatch(root, hit, { focusClass: 'inpage-match-focus', focusDuration: 1000 })
+    },
+    jumpToNextInPageMatch() {
+      if (!this.inPageMatches.length) return
+      const base = this.inPageActiveIndex >= 0 ? this.inPageActiveIndex : -1
+      const next = (base + 1) % this.inPageMatches.length
+      this.jumpToInPageMatch(next)
+    },
+    jumpToPrevInPageMatch() {
+      if (!this.inPageMatches.length) return
+      const base = this.inPageActiveIndex >= 0 ? this.inPageActiveIndex : 0
+      const prev = (base - 1 + this.inPageMatches.length) % this.inPageMatches.length
+      this.jumpToInPageMatch(prev)
+    },
+    jumpReaderToTop() {
+      const root = this.findMarkdownRoot()
+      if (!root) return
+      jumpReaderToTop(root)
+    },
+    jumpReaderToBottom() {
+      const root = this.findMarkdownRoot()
+      if (!root) return
+      jumpReaderToBottom(root)
+    },
+    locateActiveArticle() {
+      if (!this.activeArticleId) return
+      if (this.isMobile && this.mobileReadMode) {
+        this.mobileReadMode = false
+      }
+      this.$nextTick(() => {
+        const list = this.$refs.articleListRef
+        if (!list) return
+        locateListItemById(list, this.activeArticleId, {
+          dataAttr: 'data-article-id',
+          highlightClass: 'located',
+          highlightDuration: 1200
+        })
+      })
     },
     handleSelectionChange() {
       if (this.viewTab !== 'read') return
@@ -1500,7 +1924,6 @@ export default {
     removeArticle(id) {
       const target = this.articles.find((item) => item.id === id)
       if (!target) return
-      if (!confirm(`确定删除词条“${target.title}”吗？`)) return
 
       this.articles = this.articles.filter((item) => item.id !== id)
       this.recentIds = this.recentIds.filter((item) => item !== id)
@@ -1988,10 +2411,20 @@ export default {
       if (!this.isMobile) {
         this.mobileReadMode = false
         this.showMobileToc = false
+        this.showMobileAnnotationList = false
       }
     },
     toggleMobileToc() {
       this.showMobileToc = !this.showMobileToc
+      if (this.showMobileToc) {
+        this.showMobileAnnotationList = false
+      }
+    },
+    toggleMobileAnnotationList() {
+      this.showMobileAnnotationList = !this.showMobileAnnotationList
+      if (this.showMobileAnnotationList) {
+        this.showMobileToc = false
+      }
     },
     adjustReaderFont(delta) {
       const next = this.readerFontSize + Number(delta || 0)
@@ -2023,6 +2456,16 @@ export default {
     },
     onNetworkBackOnline() {
       this.syncLibraryInBackground()
+    },
+    handleButtonPressFeedback(event) {
+      const target = event?.target
+      if (!target || typeof target.closest !== 'function') return
+      const button = target.closest('button, .btn, [role="button"]')
+      if (!button || button.disabled) return
+      button.classList.add('btn-pressed')
+      setTimeout(() => {
+        button.classList.remove('btn-pressed')
+      }, 220)
     }
   },
   watch: {
@@ -2053,12 +2496,29 @@ export default {
       this.clearEditAutoSaveTimer()
       if (this.viewTab !== 'read') {
         this.clearAnnotationComposer()
+        this.cancelPublishForm()
+        this.cancelRemoveArticle()
+        this.showMobileToc = false
+        this.showMobileAnnotationList = false
       }
+      this.$nextTick(() => this.refreshInPageMatches())
     },
     activeArticleId() {
       this.showMobileToc = false
+      this.showMobileAnnotationList = false
       this.historyFilter = 'all'
       this.clearAnnotationComposer()
+      this.cancelPublishForm()
+      this.cancelRemoveArticle()
+      this.inPageQuery = ''
+      this.inPageMatches = []
+      this.inPageActiveIndex = -1
+    },
+    inPageQuery() {
+      this.$nextTick(() => this.refreshInPageMatches())
+    },
+    renderedHtml() {
+      this.$nextTick(() => this.refreshInPageMatches())
     }
   },
   mounted() {
@@ -2069,6 +2529,7 @@ export default {
     window.addEventListener('keydown', this.handleSaveShortcut)
     document.addEventListener('selectionchange', this.handleSelectionChange)
     document.addEventListener('mouseup', this.handleGlobalMouseUp)
+    this.$el?.addEventListener?.('click', this.handleButtonPressFeedback, true)
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
@@ -2076,6 +2537,7 @@ export default {
     window.removeEventListener('keydown', this.handleSaveShortcut)
     document.removeEventListener('selectionchange', this.handleSelectionChange)
     document.removeEventListener('mouseup', this.handleGlobalMouseUp)
+    this.$el?.removeEventListener?.('click', this.handleButtonPressFeedback, true)
     this.clearEditAutoSaveTimer()
     if (this.syncTimer) {
       clearTimeout(this.syncTimer)
@@ -2585,6 +3047,23 @@ export default {
   border-radius: 10px;
   background: var(--app-card-elevated);
   padding: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.annotation-item:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
+}
+
+.annotation-item:focus-visible {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+.annotation-item.ann-focus-row {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 20%, transparent);
 }
 .annotation-jump {
   border: 1px solid var(--app-border);
@@ -2646,6 +3125,17 @@ export default {
 .annotation-status.status-resolved {
   background: #dcfce7;
   color: #166534;
+}
+.annotation-locate-tip {
+  margin: 6px 0 0;
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.76em;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
 }
 .annotation-replies {
   margin-top: 8px;
@@ -2783,7 +3273,22 @@ export default {
   transform: translateY(105%);
   transition: transform 0.22s ease;
 }
+.mobile-ann-list-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 72dvh;
+  overflow: auto;
+  z-index: 50;
+  border-radius: 16px 16px 0 0;
+  transform: translateY(105%);
+  transition: transform 0.22s ease;
+}
 .mobile-toc-drawer.open {
+  transform: translateY(0);
+}
+.mobile-ann-list-drawer.open {
   transform: translateY(0);
 }
 .mobile-toc-head {
@@ -2848,7 +3353,7 @@ export default {
 }
 
 .wiki-layout {
-  grid-template-columns: 250px minmax(0, 1.8fr) 230px;
+  grid-template-columns: 220px minmax(0, 2.45fr) 210px;
   gap: 20px;
 }
 
@@ -2905,6 +3410,13 @@ export default {
   border-color: color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
 }
 
+.article-item.located {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 16%, #ffffff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 28%, transparent);
+  animation: locatedPulse 1.1s ease;
+}
+
 .item-head h4 {
   font-size: 1.08rem;
   line-height: 1.4;
@@ -2928,6 +3440,43 @@ export default {
   border-bottom: 1px solid var(--app-border);
 }
 
+.publish-form-panel {
+  margin: -8px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-primary) 7%, var(--app-card));
+}
+
+.publish-form-title {
+  margin-bottom: 8px;
+  font-size: 0.92em;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+}
+
+.delete-form-panel {
+  margin: -8px 0 14px;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff7f7;
+}
+
+.delete-form-title {
+  margin-bottom: 8px;
+  font-size: 0.92em;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.delete-form-tip {
+  margin: 0 0 10px;
+  font-size: 0.84em;
+  color: #7f1d1d;
+  line-height: 1.5;
+}
+
 .head-actions,
 .actions,
 .tags {
@@ -2936,19 +3485,95 @@ export default {
 
 .read-layout {
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.read-layout.compact-rail {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.read-layout.compact-rail .inline-toc {
+  display: none;
 }
 
 .read-main {
   order: 1;
+  min-width: 0;
+}
+
+.inpage-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-card) 95%, #ffffff);
+  margin-bottom: 12px;
+}
+
+.inpage-meta {
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+
+.inpage-select {
+  width: auto;
+  min-width: 110px;
+  padding: 6px 9px;
+}
+
+.reader-select {
+  width: auto;
+  min-width: 110px;
+  padding: 5px 8px;
+  font-size: 0.8em;
 }
 
 .inline-toc {
   order: 2;
-  position: static;
-  max-height: none;
-  margin-top: 8px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100dvh - 120px);
+  overflow: auto;
+  margin-top: 0;
   background: color-mix(in srgb, var(--app-card) 95%, #ffffff);
+  border: 1px solid var(--app-border);
+  padding: 12px;
+}
+
+.inline-panel-section + .inline-panel-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--app-border);
+}
+
+.inline-panel-section h4 {
+  margin: 0 0 8px;
+  font-size: 0.92em;
+  color: var(--app-text-secondary);
+}
+
+.annotation-list--rail {
+  margin-top: 0;
+}
+
+.hit-item.active {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+.reader-jump-tools {
+  position: fixed;
+  right: 18px;
+  bottom: 20px;
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .btn {
@@ -2956,6 +3581,24 @@ export default {
   font-size: 14px;
   font-weight: 700;
   padding: 8px 12px;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 28%, transparent);
+}
+
+.btn.btn-pressed {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 32%, transparent);
 }
 
 .btn-primary {
@@ -2971,8 +3614,12 @@ export default {
 .markdown {
   font-size: 17px;
   line-height: 2;
-  max-width: 84ch;
+  max-width: 104ch;
   margin: 0 auto;
+}
+
+.read-layout.compact-rail .markdown {
+  max-width: 116ch;
 }
 
 .lead {
@@ -3001,8 +3648,86 @@ export default {
 
 .inline-toc,
 .mobile-read-tools,
-.mobile-toc-drawer {
+.mobile-toc-drawer,
+.mobile-ann-list-drawer {
   border-radius: 10px;
+}
+
+:deep(.ann-inline-wrap) {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  vertical-align: baseline;
+}
+
+:deep(.ann-inline-note) {
+  display: inline-block;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 30%, var(--app-border));
+  background: color-mix(in srgb, var(--app-card) 95%, #fff);
+  color: var(--app-text-secondary);
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 0.8em;
+  line-height: 1.35;
+  max-width: min(46ch, 78vw);
+}
+
+:deep(.ann-inline-note.is-empty) {
+  opacity: 0.76;
+  border-style: dashed;
+}
+
+:deep(.ann-inline-wrap.ann-focus .ann-inline-note) {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+
+:deep(.inpage-match-focus) {
+  background: color-mix(in srgb, var(--app-primary) 13%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--app-primary) 45%, transparent);
+  border-radius: 8px;
+  transition: background 0.25s ease;
+}
+
+.markdown :deep(.ann-fallback-list) {
+  border: 1px dashed color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+  background: color-mix(in srgb, var(--app-primary) 6%, #ffffff);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 10px 0 14px;
+}
+
+.markdown :deep(.ann-fallback-title) {
+  font-size: 0.82em;
+  color: var(--app-text-secondary);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.markdown :deep(.ann-fallback-item) {
+  font-size: 0.84em;
+  color: var(--app-text-muted);
+  line-height: 1.45;
+}
+
+.markdown :deep(.ann-fallback-item + .ann-fallback-item) {
+  margin-top: 4px;
+}
+
+.markdown.ann-view-highlight :deep(.ann-inline-note) {
+  display: none;
+}
+
+.markdown.ann-view-note :deep(mark.text-annotation) {
+  background: transparent;
+  border-bottom: 2px dashed color-mix(in srgb, var(--app-primary) 55%, transparent);
+}
+
+@keyframes locatedPulse {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-1px); }
+  100% { transform: translateY(0); }
 }
 
 @media (max-width: 1200px) {
@@ -3013,6 +3738,32 @@ export default {
     grid-column: 1 / -1;
     min-height: auto;
   }
+}
+
+@media (min-width: 1600px) {
+  .wiki-layout {
+    grid-template-columns: 230px minmax(0, 2.8fr) 220px;
+  }
+  .markdown {
+    max-width: 118ch;
+  }
+  .read-layout.compact-rail .markdown {
+    max-width: 126ch;
+  }
+}
+
+.wiki-layout.focus-reading {
+  grid-template-columns: 1fr;
+}
+
+.wiki-layout.focus-reading .list-panel,
+.wiki-layout.focus-reading .side-panel {
+  display: none;
+}
+
+.wiki-layout.focus-reading .content-panel {
+  grid-column: 1 / -1;
+  min-height: auto;
 }
 
 @media (max-width: 880px) {
@@ -3036,12 +3787,31 @@ export default {
     flex: 1 1 auto;
     min-width: 78px;
   }
+  .inpage-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .inpage-meta {
+    grid-column: 1 / -1;
+  }
+  .inpage-select {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
   .read-layout {
     grid-template-columns: 1fr;
     gap: 12px;
   }
+  .inline-toc {
+    position: static;
+    max-height: none;
+    order: 2;
+  }
   .markdown {
     font-size: 15px;
+  }
+  .reader-jump-tools {
+    right: 10px;
+    bottom: 12px;
   }
 }
 </style>

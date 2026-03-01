@@ -178,7 +178,20 @@
             </div>
 
             <div v-if="isSelectedCustomDoc && customMessage" class="custom-message">{{ customMessage }}</div>
-            <div class="markdown-body" v-html="renderedHtml"></div>
+            <ArticleReaderModule
+              v-if="(selectedDocName || isSelectedCustomDoc) && !contentLoading && !contentError"
+              :query="readerQuery"
+              :hit-count="readerMatches.length"
+              :can-navigate="readerMatches.length > 0"
+              :visible="readerModuleVisible"
+              @update:query="readerQuery = $event"
+              @prev="jumpToPrevReaderMatch"
+              @next="jumpToNextReaderMatch"
+              @top="jumpDocToTop"
+              @bottom="jumpDocToBottom"
+              @toggle-visible="readerModuleVisible = $event"
+            />
+            <div ref="docMarkdownRef" class="markdown-body" v-html="renderedHtml"></div>
 
             <div v-if="isSelectedCustomDoc" class="assets-panel">
               <div v-if="selectedCustomDoc.images?.length" class="asset-block">
@@ -240,10 +253,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 import { api } from '../utils/api'
 import * as XLSX from 'xlsx'
+import ArticleReaderModule from '../components/article/ArticleReaderModule.vue'
+import { buildInPageMatches, jumpReaderToBottom, jumpReaderToTop, jumpToInPageMatch } from '../utils/readerAssist.js'
 
 const CUSTOM_DOCS_KEY = 'documentation_center_custom_docs_v1'
 
@@ -319,6 +334,9 @@ function buildHeadingData(markdown) {
 
 export default {
   name: 'DocumentationCenter',
+  components: {
+    ArticleReaderModule
+  },
   setup() {
     const docsList = ref([])
     const docGroups = ref([])
@@ -346,6 +364,11 @@ export default {
     const excelUploadRef = ref(null)
     const attachmentUploadRef = ref(null)
     const imageUploadRef = ref(null)
+    const docMarkdownRef = ref(null)
+    const readerQuery = ref('')
+    const readerMatches = ref([])
+    const readerActiveIndex = ref(-1)
+    const readerModuleVisible = ref(true)
 
     let searchTimer = null
     let stopQueueWatch = null
@@ -765,6 +788,72 @@ export default {
       }
     }
 
+    function refreshReaderMatches() {
+      const oldList = Array.isArray(readerMatches.value) ? readerMatches.value : []
+      const oldIdx = Number(readerActiveIndex.value)
+      const oldId = oldList[oldIdx]?.id || ''
+      const keyword = String(readerQuery.value || '').trim()
+      if (!keyword) {
+        readerMatches.value = []
+        readerActiveIndex.value = -1
+        return
+      }
+      const root = docMarkdownRef.value
+      if (!root) {
+        readerMatches.value = []
+        readerActiveIndex.value = -1
+        return
+      }
+      const out = buildInPageMatches(root, keyword, { limit: 120 })
+      readerMatches.value = out
+      if (!out.length) {
+        readerActiveIndex.value = -1
+        return
+      }
+      if (oldId) {
+        const idx = out.findIndex((item) => item.id === oldId)
+        if (idx >= 0) {
+          readerActiveIndex.value = idx
+          return
+        }
+      }
+      if (oldIdx >= 0) {
+        readerActiveIndex.value = Math.min(oldIdx, out.length - 1)
+        return
+      }
+      readerActiveIndex.value = 0
+    }
+
+    function jumpToReaderMatch(index) {
+      const i = Number(index)
+      if (!Number.isFinite(i) || i < 0 || i >= readerMatches.value.length) return
+      const hit = readerMatches.value[i]
+      const root = docMarkdownRef.value
+      if (!root || !hit) return
+      readerActiveIndex.value = i
+      jumpToInPageMatch(root, hit, { focusClass: 'inpage-match-focus', focusDuration: 1000 })
+    }
+
+    function jumpToNextReaderMatch() {
+      if (!readerMatches.value.length) return
+      const base = readerActiveIndex.value >= 0 ? readerActiveIndex.value : -1
+      jumpToReaderMatch((base + 1) % readerMatches.value.length)
+    }
+
+    function jumpToPrevReaderMatch() {
+      if (!readerMatches.value.length) return
+      const base = readerActiveIndex.value >= 0 ? readerActiveIndex.value : 0
+      jumpToReaderMatch((base - 1 + readerMatches.value.length) % readerMatches.value.length)
+    }
+
+    function jumpDocToTop() {
+      jumpReaderToTop(docMarkdownRef.value, { block: 'start' })
+    }
+
+    function jumpDocToBottom() {
+      jumpReaderToBottom(docMarkdownRef.value, { block: 'end' })
+    }
+
     async function searchDocuments(query) {
       const keyword = String(query || '').trim()
       if (!keyword) {
@@ -865,6 +954,11 @@ export default {
       }, 260)
     })
 
+    watch([readerQuery, renderedHtml, selectedDocName, selectedCustomDocId], async () => {
+      await nextTick()
+      refreshReaderMatches()
+    })
+
     onMounted(() => {
       stopQueueWatch = api.onWriteQueueChange((state) => {
         queueStatus.value = {
@@ -918,6 +1012,10 @@ export default {
       excelUploadRef,
       attachmentUploadRef,
       imageUploadRef,
+      docMarkdownRef,
+      readerQuery,
+      readerMatches,
+      readerModuleVisible,
       renderedHtml,
       isSearching,
       searchSidebarItems,
@@ -942,7 +1040,11 @@ export default {
       handleWordUpload,
       handleExcelUpload,
       handleAttachmentUpload,
-      handleImageUpload
+      handleImageUpload,
+      jumpToPrevReaderMatch,
+      jumpToNextReaderMatch,
+      jumpDocToTop,
+      jumpDocToBottom
     }
   }
 }
@@ -1420,6 +1522,12 @@ export default {
 
 .markdown-body :deep(a:hover) {
   text-decoration: underline;
+}
+
+.markdown-body :deep(.inpage-match-focus) {
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--app-primary) 45%, transparent);
+  border-radius: 6px;
 }
 
 .btn {

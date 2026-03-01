@@ -55,6 +55,18 @@
       </div>
 
       <div class="detail-content">
+        <ArticleReaderModule
+          :query="readerQuery"
+          :hit-count="readerMatches.length"
+          :can-navigate="readerMatches.length > 0"
+          :visible="readerModuleVisible"
+          @update:query="readerQuery = $event"
+          @prev="jumpToPrevReaderMatch"
+          @next="jumpToNextReaderMatch"
+          @top="jumpDetailToTop"
+          @bottom="jumpDetailToBottom"
+          @toggle-visible="readerModuleVisible = $event"
+        />
         <MarkdownRenderer :content="selectedArticle.content" />
       </div>
     </div>
@@ -69,15 +81,21 @@
 
 <script>
 import MarkdownRenderer from '../../components/itsm/MarkdownRenderer.vue'
+import ArticleReaderModule from '../../components/article/ArticleReaderModule.vue'
+import { buildInPageMatches, jumpReaderToBottom, jumpReaderToTop, jumpToInPageMatch } from '../../utils/readerAssist.js'
 
 export default {
   name: 'KnowledgeArticlesSection',
-  components: { MarkdownRenderer },
+  components: { MarkdownRenderer, ArticleReaderModule },
   data() {
     return {
       searchQuery: '',
       selectedCategory: '全部',
       selectedArticle: null,
+      readerQuery: '',
+      readerMatches: [],
+      readerActiveIndex: -1,
+      readerModuleVisible: true,
       categories: ['全部', '系统架构', '代码编辑器', '响应式设计', '功能指南', 'API 文档', '主题系统', '开发工具', '对话总结'],
       articles: [
         {
@@ -2463,6 +2481,80 @@ cloudflared tunnel --url http://localhost:5173
         hour: '2-digit',
         minute: '2-digit'
       })
+    },
+    findDetailMarkdownRoot() {
+      return this.$el?.querySelector?.('.article-detail .markdown-body') || null
+    },
+    refreshReaderMatches() {
+      const old = Array.isArray(this.readerMatches) ? this.readerMatches : []
+      const oldIdx = Number(this.readerActiveIndex)
+      const oldId = old[oldIdx]?.id || ''
+      const keyword = String(this.readerQuery || '').trim()
+      if (!keyword) {
+        this.readerMatches = []
+        this.readerActiveIndex = -1
+        return
+      }
+      const root = this.findDetailMarkdownRoot()
+      if (!root) {
+        this.readerMatches = []
+        this.readerActiveIndex = -1
+        return
+      }
+      const out = buildInPageMatches(root, keyword, { limit: 120 })
+      this.readerMatches = out
+      if (!out.length) {
+        this.readerActiveIndex = -1
+        return
+      }
+      if (oldId) {
+        const keep = out.findIndex((item) => item.id === oldId)
+        if (keep >= 0) {
+          this.readerActiveIndex = keep
+          return
+        }
+      }
+      if (oldIdx >= 0) {
+        this.readerActiveIndex = Math.min(oldIdx, out.length - 1)
+        return
+      }
+      this.readerActiveIndex = 0
+    },
+    jumpToReaderMatch(index) {
+      const i = Number(index)
+      if (!Number.isFinite(i) || i < 0 || i >= this.readerMatches.length) return
+      const root = this.findDetailMarkdownRoot()
+      const hit = this.readerMatches[i]
+      if (!root || !hit) return
+      this.readerActiveIndex = i
+      jumpToInPageMatch(root, hit, { focusClass: 'inpage-match-focus', focusDuration: 1000 })
+    },
+    jumpToNextReaderMatch() {
+      if (!this.readerMatches.length) return
+      const base = this.readerActiveIndex >= 0 ? this.readerActiveIndex : -1
+      this.jumpToReaderMatch((base + 1) % this.readerMatches.length)
+    },
+    jumpToPrevReaderMatch() {
+      if (!this.readerMatches.length) return
+      const base = this.readerActiveIndex >= 0 ? this.readerActiveIndex : 0
+      this.jumpToReaderMatch((base - 1 + this.readerMatches.length) % this.readerMatches.length)
+    },
+    jumpDetailToTop() {
+      jumpReaderToTop(this.findDetailMarkdownRoot(), { block: 'start' })
+    },
+    jumpDetailToBottom() {
+      jumpReaderToBottom(this.findDetailMarkdownRoot(), { block: 'end' })
+    }
+  },
+  watch: {
+    readerQuery() {
+      this.$nextTick(() => this.refreshReaderMatches())
+    },
+    selectedArticle() {
+      this.readerQuery = ''
+      this.readerMatches = []
+      this.readerActiveIndex = -1
+      this.$nextTick(() => this.refreshReaderMatches())
     }
   },
   mounted() {
@@ -2645,6 +2737,16 @@ cloudflared tunnel --url http://localhost:5173
 .detail-content {
   color: #333;
   line-height: 1.7;
+}
+
+.detail-content :deep(.reader-module-wrap) {
+  margin-bottom: 12px;
+}
+
+.detail-content :deep(.inpage-match-focus) {
+  background: color-mix(in srgb, #3b82f6 16%, transparent);
+  outline: 1px solid color-mix(in srgb, #3b82f6 46%, transparent);
+  border-radius: 6px;
 }
 
 .article-placeholder {
