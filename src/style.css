@@ -8,6 +8,11 @@ body {
     --safe-area-right: env(safe-area-inset-right, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
+    --app-space-xs: 6px;
+    --app-space-sm: 10px;
+    --app-space-md: 14px;
+    --app-space-lg: 18px;
+    --app-space-xl: 24px;
 }
 
 * {
@@ -45,6 +50,18 @@ select {
     border-radius: 14px;
     background: var(--app-card);
     box-shadow: var(--app-soft-shadow);
+}
+
+.app-panel {
+    border: 1px solid var(--app-border);
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--app-card-elevated, var(--app-card)), var(--app-card));
+    box-shadow: var(--app-soft-shadow);
+}
+
+.app-stack {
+    display: grid;
+    gap: var(--app-space-lg);
 }
 
 .app-input,
@@ -166,4 +183,30 @@ select {
         padding-bottom: max(10px, calc(var(--safe-area-bottom) + 10px));
         padding-left: max(10px, calc(var(--safe-area-left) + 6px));
     }
+}
+
+/* Article typography baseline */
+:where(.markdown-body, .markdown, .article-content, .doc-read-content) {
+    line-height: 1.85;
+}
+
+:where(.markdown-body, .markdown, .article-content, .doc-read-content) :where(p) {
+    margin-top: 0.85em;
+    margin-bottom: 0.85em;
+}
+
+:where(.markdown-body, .markdown, .article-content, .doc-read-content) :where(h1, h2, h3, h4, h5, h6) {
+    margin-top: 1.2em;
+    margin-bottom: 0.7em;
+    line-height: 1.4;
+}
+
+:where(.markdown-body, .markdown, .article-content, .doc-read-content) :where(ul, ol, blockquote, pre, table) {
+    margin-top: 0.9em;
+    margin-bottom: 0.9em;
+}
+
+:where(.markdown-body, .markdown, .article-content, .doc-read-content) :where(li) {
+    margin-top: 0.3em;
+    margin-bottom: 0.3em;
 }

@@ -131,6 +131,7 @@
               <button v-if="isMobile && mobileReadMode" class="btn" @click="backToList">返回列表</button>
               <button class="btn" @click="viewTab = 'read'">阅读</button>
               <button class="btn" @click="startEdit">编辑</button>
+              <button class="btn" @click="publishCurrentVersion">发布版本</button>
               <button class="btn" @click="viewTab = 'history'">历史</button>
               <button class="btn" @click="viewTab = 'timeline'">时间轴</button>
               <button class="btn" @click="viewTab = 'discuss'">讨论</button>
@@ -152,7 +153,86 @@
                   <button class="btn btn-sm" @click="adjustReaderLineHeight(0.05)">舒展</button>
                 </div>
                 <p v-if="activeArticle.summary" class="lead">{{ activeArticle.summary }}</p>
-                <div class="markdown" :style="readerStyle" v-html="renderedHtml"></div>
+                <div
+                  class="markdown"
+                  :style="readerStyle"
+                  v-html="renderedHtml"
+                  @mouseup="captureSelectionForAnnotation"
+                  @touchend.passive="captureSelectionForAnnotation"
+                ></div>
+                <button
+                  v-if="annotationSelection.text && !isMobile && !showAnnotationComposer"
+                  class="annotation-fab"
+                  :style="annotationFabStyle"
+                  @click="openAnnotationComposer"
+                >
+                  添加批注
+                </button>
+                <div v-if="annotationSelection.text && !isMobile && showAnnotationComposer" class="annotation-composer">
+                  <div class="annotation-quote">{{ annotationSelection.text }}</div>
+                  <div class="annotation-color-row">
+                    <button
+                      v-for="color in annotationColors"
+                      :key="`desktop-${color.value}`"
+                      type="button"
+                      class="annotation-color-btn"
+                      :class="[`is-${color.value}`, { active: annotationColor === color.value }]"
+                      @click="annotationColor = color.value"
+                    >
+                      {{ color.label }}
+                    </button>
+                  </div>
+                  <textarea
+                    ref="annotationInputRef"
+                    v-model.trim="annotationDraft"
+                    class="input annotation-input"
+                    rows="3"
+                    placeholder="输入批注内容（可选）"
+                  ></textarea>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" @click="saveAnnotation">高亮并批注</button>
+                    <button class="btn btn-sm" @click="clearAnnotationComposer">取消</button>
+                  </div>
+                </div>
+                <div v-if="activeArticle.annotations?.length" class="annotation-list">
+                  <div class="annotation-list-title">批注列表</div>
+                  <article v-for="item in activeArticle.annotations" :key="item.id" class="annotation-item">
+                    <button class="annotation-jump" @click="jumpToAnnotation(item.id)">定位</button>
+                    <div class="annotation-body">
+                      <p class="annotation-hit">
+                        <span class="annotation-color-dot" :class="`dot-${item.color || 'yellow'}`"></span>
+                        {{ item.quote }}
+                      </p>
+                      <p class="annotation-status" :class="`status-${item.status || 'open'}`">
+                        {{ (item.status || 'open') === 'resolved' ? '已解决' : '待处理' }}
+                      </p>
+                      <p v-if="item.note" class="annotation-note">{{ item.note }}</p>
+                      <p class="meta">创建于 {{ formatDate(item.createdAt) }}</p>
+                      <div v-if="item.replies?.length" class="annotation-replies">
+                        <article v-for="reply in item.replies" :key="reply.id" class="annotation-reply">
+                          <p class="meta">{{ reply.author }} · {{ formatDate(reply.createdAt) }}</p>
+                          <p>{{ reply.text }}</p>
+                        </article>
+                      </div>
+                      <div class="annotation-reply-editor">
+                        <input
+                          v-model.trim="annotationReplyDrafts[item.id]"
+                          class="input"
+                          placeholder="回复此批注..."
+                          @keyup.enter="addAnnotationReply(item.id)"
+                        >
+                      </div>
+                    </div>
+                    <div class="annotation-side-actions">
+                      <button class="btn btn-sm" @click="toggleAnnotationStatus(item.id)">
+                        {{ (item.status || 'open') === 'resolved' ? '重开' : '解决' }}
+                      </button>
+                      <button class="btn btn-sm" @click="addAnnotationReply(item.id)">回复</button>
+                      <button class="btn btn-sm" @click="removeAnnotation(item.id)">删除</button>
+                    </div>
+                  </article>
+                </div>
+                <p v-if="annotationSavedAt" class="annotation-saved-tip">批注已保存：{{ formatDate(annotationSavedAt) }}</p>
               </div>
 
               <aside v-if="toc.length > 0" class="inline-toc">
@@ -172,11 +252,11 @@
             </div>
           </div>
 
-          <div v-if="viewTab === 'edit'" class="edit-area">
-            <div class="form-group">
-              <label>标题 *</label>
-              <input v-model.trim="draft.title" class="input" placeholder="输入词条标题">
-            </div>
+            <div v-if="viewTab === 'edit'" class="edit-area">
+              <div class="form-group">
+                <label>标题 *</label>
+                <input v-model.trim="draft.title" class="input" placeholder="输入词条标题">
+              </div>
             <div class="form-group">
               <label>摘要</label>
               <input v-model.trim="draft.summary" class="input" placeholder="一句话摘要">
@@ -191,15 +271,19 @@
                 <input v-model.trim="draft.tagsText" class="input" placeholder="vue, javascript, web">
               </div>
             </div>
-            <div class="form-group">
-              <label>正文（支持基础 Markdown）</label>
-              <textarea v-model="draft.content" class="input content-input" rows="14" placeholder="# 标题\n\n- 要点 A\n- 要点 B"></textarea>
-            </div>
-            <div class="form-group">
-              <label>图片上传（可预览并插入正文）</label>
-              <input class="input" type="file" accept="image/*" multiple @change="handleImageUpload">
-            </div>
-            <div v-if="draftImages.length" class="image-preview-list">
+              <div class="form-group">
+                <label>正文（支持基础 Markdown）</label>
+                <textarea v-model="draft.content" class="input content-input" rows="14" placeholder="# 标题\n\n- 要点 A\n- 要点 B"></textarea>
+              </div>
+              <div class="form-group">
+                <label>版本说明（会写入历史）</label>
+                <input v-model.trim="editVersionNote" class="input" placeholder="例如：补充示例，修正文案，发布到 v3">
+              </div>
+              <div class="form-group">
+                <label>图片上传（可预览并插入正文）</label>
+                <input class="input" type="file" accept="image/*" multiple @change="handleImageUpload">
+              </div>
+              <div v-if="draftImages.length" class="image-preview-list">
               <article v-for="item in draftImages" :key="item.id" class="image-preview-card">
                 <img :src="item.url" :alt="item.name" class="image-preview" loading="lazy" decoding="async">
                 <div class="image-preview-actions">
@@ -211,17 +295,31 @@
             <div v-if="draftSavedAt" class="draft-tip">草稿已自动保存：{{ formatDate(draftSavedAt) }}</div>
             <div class="actions">
               <button class="btn btn-primary" @click="saveDraft">保存词条</button>
+              <button class="btn" @click="saveDraft({ publish: true })">保存并发布版本</button>
               <button class="btn" @click="cancelEdit">取消</button>
             </div>
           </div>
 
           <div v-if="viewTab === 'history'" class="history-area">
-            <div v-if="!activeArticle.history.length" class="empty">暂无历史版本</div>
+            <div class="history-filter-bar">
+              <label>历史筛选</label>
+              <select v-model="historyFilter" class="input history-filter-select">
+                <option value="all">全部</option>
+                <option value="publish">仅发布</option>
+                <option value="edit">仅编辑</option>
+              </select>
+              <span class="meta">共 {{ filteredHistory.length }} 条</span>
+            </div>
+            <div v-if="!filteredHistory.length" class="empty">暂无符合筛选条件的历史版本</div>
             <div v-else class="history-list">
-              <article v-for="ver in activeArticle.history" :key="ver.id" class="history-item">
+              <article v-for="ver in filteredHistory" :key="ver.id" class="history-item">
                 <div>
-                  <strong>{{ formatDate(ver.updatedAt) }}</strong>
-                  <div class="meta">{{ ver.summary || '无摘要' }}</div>
+                  <strong>{{ ver.label || '未命名版本' }} · {{ formatDate(ver.updatedAt) }}</strong>
+                  <div class="meta">
+                    <span>{{ ver.note || ver.summary || '无备注' }}</span>
+                    <span v-if="ver.action"> · {{ ver.action === 'publish' ? '发布' : '编辑' }}</span>
+                    <span v-if="ver.publishedAt"> · 已发布</span>
+                  </div>
                 </div>
                 <div class="history-actions">
                   <button class="btn btn-sm" @click="previewVersionDiff(ver.id)">查看对比</button>
@@ -317,12 +415,49 @@
         </a>
       </div>
     </aside>
+    <div v-if="isMobile && annotationSelection.text" class="mobile-annotation-mask" @click="clearAnnotationComposer"></div>
+    <aside v-if="isMobile && annotationSelection.text" class="mobile-annotation-drawer panel">
+      <div class="mobile-annotation-head">
+        <strong>添加批注</strong>
+        <button class="btn btn-sm" @click="clearAnnotationComposer">关闭</button>
+      </div>
+      <p class="annotation-quote">{{ annotationSelection.text }}</p>
+      <div class="annotation-color-row">
+        <button
+          v-for="color in annotationColors"
+          :key="`mobile-${color.value}`"
+          type="button"
+          class="annotation-color-btn"
+          :class="[`is-${color.value}`, { active: annotationColor === color.value }]"
+          @click="annotationColor = color.value"
+        >
+          {{ color.label }}
+        </button>
+      </div>
+      <textarea
+        v-model.trim="annotationDraft"
+        class="input annotation-input"
+        rows="3"
+        placeholder="输入批注内容（可选）"
+      ></textarea>
+      <div class="actions">
+        <button class="btn btn-primary btn-sm" @click="saveAnnotation">高亮并批注</button>
+      </div>
+    </aside>
   </div>
 </template>
 
 <script>
 import { api } from '../utils/api.js'
 import { marked } from 'marked'
+import {
+  applyAnnotationsToHtml,
+  buildHistorySnapshot,
+  filterHistoryEntries,
+  nextVersionSeq,
+  normalizeAnnotations,
+  normalizeHistoryEntries
+} from '../utils/wikiArticleUtils.js'
 
 const STORAGE_KEY = 'wiki_center_articles_v1'
 const STATE_KEY = 'wiki_center_state_v1'
@@ -349,6 +484,7 @@ export default {
       sortBy: 'recent',
       onlyStarred: false,
       viewTab: 'read',
+      historyFilter: 'all',
       draft: this.emptyDraft(),
       draftSavedAt: null,
       compareVersionId: '',
@@ -363,12 +499,38 @@ export default {
       importLogs: [],
       articleListScrollTop: 0,
       articleListViewportHeight: 760,
-      articleItemHeight: 190,
+      articleItemHeight: 232,
       articleRenderBuffer: 6,
       draftImages: [],
       showPalette: false,
       readerFontSize: 15,
       readerLineHeight: 1.8,
+      editVersionNote: '',
+      annotationSelection: {
+        text: ''
+      },
+      annotationAnchor: {
+        x: 24,
+        y: 120
+      },
+      showAnnotationComposer: false,
+      annotationDraft: '',
+      annotationColor: 'yellow',
+      annotationReplyDrafts: {},
+      annotationSavedAt: null,
+      annotationColors: [
+        { value: 'yellow', label: '黄色' },
+        { value: 'green', label: '绿色' },
+        { value: 'blue', label: '蓝色' },
+        { value: 'pink', label: '粉色' },
+        { value: 'orange', label: '橙色' },
+        { value: 'purple', label: '紫色' },
+        { value: 'cyan', label: '青色' },
+        { value: 'red', label: '红色' }
+      ],
+      syncTimer: null,
+      syncing: false,
+      editAutoSaveTimer: null,
       paletteGroups: [
         { name: '主色', colors: ['#2563EB', '#0EA5E9', '#06B6D4', '#14B8A6', '#22C55E', '#84CC16'] },
         { name: '暖色', colors: ['#F97316', '#F59E0B', '#EAB308', '#EF4444', '#EC4899', '#D946EF'] },
@@ -436,12 +598,26 @@ export default {
     renderedHtml() {
       if (!this.activeArticle) return ''
       const normalized = this.normalizeDocumentMarkdown(this.activeArticle.content || '')
-      return this.markdownToHtml(normalized)
+      const html = this.markdownToHtml(normalized)
+      return applyAnnotationsToHtml(html, this.activeArticle.annotations || [])
+    },
+    filteredHistory() {
+      return filterHistoryEntries(this.activeArticle?.history || [], this.historyFilter)
     },
     readerStyle() {
       return {
         fontSize: `${this.readerFontSize}px`,
         lineHeight: this.readerLineHeight
+      }
+    },
+    annotationFabStyle() {
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+      const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+      const left = Math.max(12, Math.min(vw - 116, Number(this.annotationAnchor?.x) || 12))
+      const top = Math.max(12, Math.min(vh - 56, Number(this.annotationAnchor?.y) || 12))
+      return {
+        left: `${left}px`,
+        top: `${top}px`
       }
     },
     relatedArticles() {
@@ -554,6 +730,18 @@ export default {
         .filter(Boolean)
         .slice(0, 20)
     },
+    hasDraftChanges() {
+      if (!this.activeArticleId) return false
+      const current = this.articles.find((item) => item.id === this.activeArticleId)
+      if (!current) return false
+      return (
+        String(this.draft.title || '').trim() !== String(current.title || '') ||
+        String(this.draft.summary || '').trim() !== String(current.summary || '') ||
+        String(this.draft.category || '').trim() !== String(current.category || '') ||
+        this.parseTags(this.draft.tagsText).join(',') !== (Array.isArray(current.tags) ? current.tags.join(',') : '') ||
+        String(this.draft.content || '') !== String(current.content || '')
+      )
+    },
     buildSearchText(item) {
       const title = String(item?.title || '')
       const summary = String(item?.summary || '')
@@ -595,6 +783,7 @@ export default {
       const payload = {
         activeArticleId: this.activeArticleId || null,
         draft: this.draft,
+        editVersionNote: this.editVersionNote,
         savedAt: Date.now()
       }
       localStorage.setItem(DRAFT_KEY, JSON.stringify(payload))
@@ -625,6 +814,7 @@ export default {
           tagsText: String(cachedDraft.tagsText || ''),
           content: String(cachedDraft.content || '')
         }
+        this.editVersionNote = String(parsed.editVersionNote || '')
         this.viewTab = 'edit'
         this.draftSavedAt = Number(parsed.savedAt) || null
       } catch (error) {
@@ -825,6 +1015,19 @@ export default {
           seen.add(id)
           const createdAt = Number(item.createdAt) || now
           const updatedAt = Number(item.updatedAt) || createdAt
+          const historyList = normalizeHistoryEntries(item.history, {
+            title,
+            summary: String(item.summary || ''),
+            content: String(item.content || ''),
+            category: String(item.category || '').trim(),
+            tags: Array.isArray(item.tags) ? item.tags : [],
+            versionSeq: 1,
+            updatedAt
+          }, updatedAt)
+          const maxHistorySeq = historyList.reduce((max, ver) => {
+            const match = String(ver.label || '').match(/^v(\d+)$/i)
+            return Math.max(max, match ? Number(match[1]) : 0)
+          }, 1)
           const normalizedItem = {
             id,
             title,
@@ -836,19 +1039,9 @@ export default {
             starred: Boolean(item.starred),
             createdAt,
             updatedAt,
-            history: Array.isArray(item.history)
-              ? item.history
-                .map((ver) => ({
-                  id: String(ver.id || `ver_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`),
-                  title: String(ver.title || title),
-                  summary: String(ver.summary || ''),
-                  content: String(ver.content || ''),
-                  category: String(ver.category || '').trim(),
-                  tags: Array.isArray(ver.tags) ? ver.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 20) : [],
-                  updatedAt: Number(ver.updatedAt) || updatedAt
-                }))
-                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-              : [],
+            versionSeq: Math.max(1, Number(item.versionSeq) || maxHistorySeq),
+            history: historyList,
+            annotations: normalizeAnnotations(item.annotations, updatedAt),
             comments: Array.isArray(item.comments)
               ? item.comments
                 .map((comment) => ({
@@ -914,25 +1107,46 @@ export default {
         }
       ]
     },
-    async persistArticles() {
+    persistArticles() {
       const normalized = this.normalizeArticles(this.articles)
       this.articles = normalized
       localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
       this.writeSyncMeta({ dirty: true, lastSyncedAt: this.readSyncMeta().lastSyncedAt })
+      this.scheduleBackgroundSync(900)
+    },
+    persistState() {
+      localStorage.setItem(STATE_KEY, JSON.stringify({ recentIds: this.recentIds }))
+    },
+    scheduleBackgroundSync(delay = 1200) {
+      if (this.syncTimer) {
+        clearTimeout(this.syncTimer)
+      }
+      this.syncTimer = setTimeout(() => {
+        this.syncTimer = null
+        this.syncLibraryInBackground()
+      }, delay)
+    },
+    async syncLibraryInBackground(force = false) {
+      if (this.syncing) return
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      const meta = this.readSyncMeta()
+      if (!force && !meta.dirty) return
+
+      this.syncing = true
       try {
+        const normalized = this.normalizeArticles(this.articles)
         const saved = await api.wiki.saveLibrary(normalized)
-        const merged = this.normalizeArticles(saved?.items || normalized)
+        const merged = this.mergeArticlesPreferNewer(normalized, saved?.items || [])
         this.articles = merged
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
         this.storageMode = 'server'
         this.writeSyncMeta({ dirty: false, lastSyncedAt: Date.now() })
       } catch (error) {
         this.storageMode = 'local'
-        console.warn('保存维基库失败，已回退本地存储', error)
+        console.warn('后台同步 wiki 失败，将在网络恢复后重试', error)
+      } finally {
+        this.syncing = false
       }
-    },
-    persistState() {
-      localStorage.setItem(STATE_KEY, JSON.stringify({ recentIds: this.recentIds }))
     },
     async load() {
       let localItems = []
@@ -990,6 +1204,9 @@ export default {
       this.viewTab = 'read'
       this.$nextTick(() => this.measureArticleListViewport())
       this.restoreDraftCache()
+      if (localItems.length > 0) {
+        this.scheduleBackgroundSync(1800)
+      }
     },
     openArticle(id) {
       const article = this.articles.find((item) => item.id === id)
@@ -997,6 +1214,9 @@ export default {
       this.activeArticleId = id
       article.views += 1
       this.viewTab = 'read'
+      this.historyFilter = 'all'
+      this.clearAnnotationComposer()
+      this.annotationReplyDrafts = {}
       this.commentText = ''
       this.compareVersionId = ''
       if (this.isMobile) {
@@ -1040,30 +1260,52 @@ export default {
         this.$nextTick(() => this.focusContentPanel())
       }
     },
-    saveDraft() {
-      if (!this.draft.title.trim()) {
-        alert('请填写词条标题')
+    saveDraft(options = {}) {
+      const opts = {
+        publish: false,
+        auto: false,
+        keepEditing: false,
+        silent: false,
+        ...options
+      }
+
+      const title = String(this.draft.title || '').trim()
+      if (!title) {
+        if (!opts.silent) alert('请填写词条标题')
         return
       }
 
+      if (opts.auto && !this.activeArticleId) return
+      if (opts.auto && !this.hasDraftChanges()) return
+
       const now = Date.now()
       const payload = {
-        title: this.draft.title.trim(),
-        summary: this.draft.summary.trim(),
-        category: this.draft.category.trim(),
+        title,
+        summary: String(this.draft.summary || '').trim(),
+        category: String(this.draft.category || '').trim(),
         tags: this.parseTags(this.draft.tagsText),
         content: this.draft.content,
         updatedAt: now
       }
 
+      const note = String(this.editVersionNote || '').trim()
       if (!this.activeArticleId) {
         const id = `wiki_${now}`
+        const historyEntry = buildHistorySnapshot({ ...payload, versionSeq: 1 }, {
+          updatedAt: now,
+          label: 'v1',
+          note: note || '初始版本',
+          action: opts.publish ? 'publish' : 'edit',
+          publishedAt: opts.publish ? now : 0
+        })
         this.articles.unshift({
           id,
           views: 0,
           starred: false,
           createdAt: now,
-          history: [],
+          versionSeq: 1,
+          history: [historyEntry],
+          annotations: [],
           comments: [],
           ...payload
         })
@@ -1072,27 +1314,176 @@ export default {
         const idx = this.articles.findIndex((item) => item.id === this.activeArticleId)
         if (idx === -1) return
         const current = this.articles[idx]
-        current.history.unshift({
-          id: `ver_${now}`,
-          title: current.title,
-          summary: current.summary,
-          category: current.category,
-          tags: [...current.tags],
-          content: current.content,
-          updatedAt: current.updatedAt
-        })
+        const currentSeq = Math.max(1, Number(current.versionSeq) || 1)
+        if (!Array.isArray(current.history)) current.history = []
+
+        if (!opts.auto) {
+          current.history.unshift(buildHistorySnapshot(current, {
+            updatedAt: Number(current.updatedAt) || now,
+            label: `v${currentSeq}`,
+            note: note || '编辑保存前版本',
+            action: 'edit'
+          }))
+        }
+
+        const nextSeq = opts.auto ? currentSeq : Math.max(currentSeq + 1, nextVersionSeq(current))
         this.articles[idx] = {
           ...current,
-          ...payload
+          ...payload,
+          versionSeq: nextSeq
+        }
+
+        if (!opts.auto && opts.publish) {
+          this.articles[idx].history.unshift(buildHistorySnapshot(this.articles[idx], {
+            updatedAt: now,
+            label: `v${this.articles[idx].versionSeq}`,
+            note: note || '发布版本',
+            action: 'publish',
+            publishedAt: now
+          }))
         }
       }
 
       this.persistArticles()
-      this.viewTab = 'read'
+      this.draftSavedAt = now
+      if (opts.auto) return
+
+      this.viewTab = opts.keepEditing ? 'edit' : 'read'
       this.draft = this.emptyDraft()
+      this.editVersionNote = ''
       this.draftImages = []
       this.compareVersionId = ''
       this.clearDraftCache()
+    },
+    publishCurrentVersion() {
+      if (!this.activeArticle) return
+      const noteInput = window.prompt('发布说明（可选）', '')
+      if (noteInput === null) return
+      const now = Date.now()
+      const note = String(noteInput || '').trim()
+      const seq = Math.max(1, Number(this.activeArticle.versionSeq) || 1)
+      if (!Array.isArray(this.activeArticle.history)) this.activeArticle.history = []
+      this.activeArticle.history.unshift(buildHistorySnapshot(this.activeArticle, {
+        updatedAt: now,
+        label: `v${seq}`,
+        note: note || '手动发布版本',
+        action: 'publish',
+        publishedAt: now
+      }))
+      this.activeArticle.updatedAt = now
+      this.persistArticles()
+    },
+    captureSelectionForAnnotation() {
+      if (this.viewTab !== 'read') return
+      setTimeout(() => this.refreshAnnotationSelection(), 0)
+    },
+    refreshAnnotationSelection() {
+      if (this.viewTab !== 'read') return
+      const selection = window.getSelection?.()
+      const selected = String(selection?.toString?.() || '').replace(/\s+/g, ' ').trim()
+      if (!selected || selected.length < 2) return
+      const anchorNode = selection?.anchorNode
+      const targetElement = anchorNode?.nodeType === 1 ? anchorNode : anchorNode?.parentElement
+      if (!targetElement || !targetElement.closest('.markdown')) return
+      this.annotationSelection = { text: selected.slice(0, 280) }
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+      const rect = range?.getBoundingClientRect?.()
+      if (rect) {
+        this.annotationAnchor = {
+          x: rect.right + 10,
+          y: rect.top - 8
+        }
+      }
+      if (!this.isMobile) {
+        this.showAnnotationComposer = false
+      }
+    },
+    openAnnotationComposer() {
+      if (!this.annotationSelection.text) return
+      this.showAnnotationComposer = true
+      this.$nextTick(() => {
+        const input = this.$refs.annotationInputRef
+        if (input && typeof input.focus === 'function') {
+          input.focus()
+        }
+      })
+    },
+    clearAnnotationComposer() {
+      this.annotationSelection = { text: '' }
+      this.annotationDraft = ''
+      this.annotationColor = 'yellow'
+      this.showAnnotationComposer = false
+    },
+    saveAnnotation() {
+      if (!this.activeArticle) return
+      const quote = String(this.annotationSelection?.text || '').trim()
+      if (!quote) return
+      if (!Array.isArray(this.activeArticle.annotations)) {
+        this.activeArticle.annotations = []
+      }
+      this.activeArticle.annotations.unshift({
+        id: `ann_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+        quote,
+        note: String(this.annotationDraft || '').trim(),
+        color: this.annotationColor || 'yellow',
+        status: 'open',
+        replies: [],
+        createdAt: Date.now()
+      })
+      this.activeArticle.updatedAt = Date.now()
+      this.persistArticles()
+      this.annotationSavedAt = Date.now()
+      this.clearAnnotationComposer()
+      if (typeof window.getSelection === 'function') {
+        window.getSelection()?.removeAllRanges?.()
+      }
+    },
+    removeAnnotation(annotationId) {
+      if (!this.activeArticle || !Array.isArray(this.activeArticle.annotations)) return
+      this.activeArticle.annotations = this.activeArticle.annotations.filter((item) => item.id !== annotationId)
+      if (this.annotationReplyDrafts[annotationId]) {
+        delete this.annotationReplyDrafts[annotationId]
+      }
+      this.activeArticle.updatedAt = Date.now()
+      this.persistArticles()
+    },
+    toggleAnnotationStatus(annotationId) {
+      if (!this.activeArticle || !Array.isArray(this.activeArticle.annotations)) return
+      const item = this.activeArticle.annotations.find((ann) => ann.id === annotationId)
+      if (!item) return
+      item.status = item.status === 'resolved' ? 'open' : 'resolved'
+      this.activeArticle.updatedAt = Date.now()
+      this.persistArticles()
+    },
+    addAnnotationReply(annotationId) {
+      if (!this.activeArticle || !Array.isArray(this.activeArticle.annotations)) return
+      const item = this.activeArticle.annotations.find((ann) => ann.id === annotationId)
+      if (!item) return
+      const text = String(this.annotationReplyDrafts[annotationId] || '').trim()
+      if (!text) return
+      if (!Array.isArray(item.replies)) item.replies = []
+      item.replies.push({
+        id: `ann_reply_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+        author: this.commentAuthor || '当前用户',
+        text,
+        createdAt: Date.now()
+      })
+      this.annotationReplyDrafts[annotationId] = ''
+      this.activeArticle.updatedAt = Date.now()
+      this.persistArticles()
+    },
+    jumpToAnnotation(annotationId) {
+      const el = document.querySelector(`[data-ann-id="${String(annotationId)}"]`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    },
+    handleSelectionChange() {
+      if (this.viewTab !== 'read') return
+      this.refreshAnnotationSelection()
+    },
+    handleGlobalMouseUp() {
+      if (this.viewTab !== 'read') return
+      this.refreshAnnotationSelection()
     },
     cancelEdit() {
       if (this.activeArticleId) {
@@ -1102,6 +1493,7 @@ export default {
         this.activeArticleId = this.articles[0]?.id || null
       }
       this.draft = this.emptyDraft()
+      this.editVersionNote = ''
       this.draftImages = []
       this.clearDraftCache()
     },
@@ -1124,15 +1516,13 @@ export default {
       if (!confirm('确定回滚到该历史版本吗？')) return
 
       const now = Date.now()
-      const currentSnapshot = {
-        id: `ver_${now}`,
-        title: this.activeArticle.title,
-        summary: this.activeArticle.summary,
-        category: this.activeArticle.category,
-        tags: [...this.activeArticle.tags],
-        content: this.activeArticle.content,
-        updatedAt: this.activeArticle.updatedAt
-      }
+      const currentSeq = Math.max(1, Number(this.activeArticle.versionSeq) || 1)
+      const currentSnapshot = buildHistorySnapshot(this.activeArticle, {
+        updatedAt: this.activeArticle.updatedAt || now,
+        label: `v${currentSeq}`,
+        note: '回滚前版本备份',
+        action: 'edit'
+      })
 
       this.activeArticle.history.unshift(currentSnapshot)
       this.activeArticle.title = version.title
@@ -1141,6 +1531,10 @@ export default {
       this.activeArticle.tags = [...version.tags]
       this.activeArticle.content = version.content
       this.activeArticle.updatedAt = now
+      const rollbackSeqMatch = String(version.label || '').match(/^v(\d+)$/i)
+      if (rollbackSeqMatch) {
+        this.activeArticle.versionSeq = Number(rollbackSeqMatch[1]) || currentSeq
+      }
 
       this.persistArticles()
       this.viewTab = 'read'
@@ -1199,7 +1593,23 @@ export default {
         starred: false,
         createdAt: now,
         updatedAt: now,
-        history: [],
+        versionSeq: 1,
+        history: [buildHistorySnapshot({
+          title: cleanTitle,
+          summary: cleanSummary,
+          content: cleanContent,
+          category: '导入文档',
+          tags: Array.from(new Set(tags)).slice(0, 20),
+          versionSeq: 1,
+          updatedAt: now
+        }, {
+          updatedAt: now,
+          label: 'v1',
+          note: '导入初始版本',
+          action: 'publish',
+          publishedAt: now
+        })],
+        annotations: [],
         comments: []
       }
 
@@ -1590,6 +2000,29 @@ export default {
     adjustReaderLineHeight(delta) {
       const next = Math.round((this.readerLineHeight + Number(delta || 0)) * 100) / 100
       this.readerLineHeight = Math.max(1.45, Math.min(2.2, next))
+    },
+    ensureEditAutoSaveTimer() {
+      if (this.editAutoSaveTimer) return
+      this.editAutoSaveTimer = setInterval(() => {
+        if (this.viewTab !== 'edit') return
+        this.saveDraft({ auto: true, silent: true, keepEditing: true })
+      }, 15000)
+    },
+    clearEditAutoSaveTimer() {
+      if (!this.editAutoSaveTimer) return
+      clearInterval(this.editAutoSaveTimer)
+      this.editAutoSaveTimer = null
+    },
+    handleSaveShortcut(event) {
+      const key = String(event?.key || '').toLowerCase()
+      if (key !== 's') return
+      if (!event?.ctrlKey && !event?.metaKey) return
+      if (this.viewTab !== 'edit') return
+      event.preventDefault()
+      this.saveDraft()
+    },
+    onNetworkBackOnline() {
+      this.syncLibraryInBackground()
     }
   },
   watch: {
@@ -1612,20 +2045,42 @@ export default {
       }
     },
     viewTab() {
-      if (this.viewTab !== 'edit') return
-      this.saveDraftCache()
+      if (this.viewTab === 'edit') {
+        this.saveDraftCache()
+        this.ensureEditAutoSaveTimer()
+        return
+      }
+      this.clearEditAutoSaveTimer()
+      if (this.viewTab !== 'read') {
+        this.clearAnnotationComposer()
+      }
     },
     activeArticleId() {
       this.showMobileToc = false
+      this.historyFilter = 'all'
+      this.clearAnnotationComposer()
     }
   },
   mounted() {
     this.load()
     this.$nextTick(() => this.measureArticleListViewport())
     window.addEventListener('resize', this.handleResize)
+    window.addEventListener('online', this.onNetworkBackOnline)
+    window.addEventListener('keydown', this.handleSaveShortcut)
+    document.addEventListener('selectionchange', this.handleSelectionChange)
+    document.addEventListener('mouseup', this.handleGlobalMouseUp)
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
+    window.removeEventListener('online', this.onNetworkBackOnline)
+    window.removeEventListener('keydown', this.handleSaveShortcut)
+    document.removeEventListener('selectionchange', this.handleSelectionChange)
+    document.removeEventListener('mouseup', this.handleGlobalMouseUp)
+    this.clearEditAutoSaveTimer()
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer)
+      this.syncTimer = null
+    }
   }
 }
 </script>
@@ -1994,6 +2449,22 @@ export default {
   gap: 10px;
 }
 .history-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.history-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.history-filter-bar label {
+  font-size: 0.88em;
+  color: var(--app-text-secondary);
+}
+.history-filter-select {
+  width: auto;
+  min-width: 120px;
+  padding: 6px 10px;
+}
 .diff-panel {
   margin-top: 10px;
   border: 1px solid var(--app-border);
@@ -2039,6 +2510,204 @@ export default {
 }
 .comment-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .comment-item p { margin: 6px 0 0; white-space: pre-wrap; }
+.annotation-composer {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-primary) 6%, var(--app-card));
+}
+.annotation-fab {
+  position: fixed;
+  z-index: 70;
+  border: 1px solid var(--app-primary);
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.82em;
+  font-weight: 700;
+  box-shadow: 0 8px 16px color-mix(in srgb, var(--app-primary) 25%, transparent);
+  cursor: pointer;
+}
+.annotation-quote {
+  border-left: 3px solid var(--app-primary);
+  padding: 6px 10px;
+  color: var(--app-text-secondary);
+  margin-bottom: 10px;
+  font-size: 0.92em;
+}
+.annotation-input {
+  margin-bottom: 10px;
+}
+.annotation-color-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.annotation-color-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+.annotation-color-btn.active {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+.annotation-color-btn.is-yellow { background: #fff6b8; }
+.annotation-color-btn.is-green { background: #dcfce7; }
+.annotation-color-btn.is-blue { background: #dbeafe; }
+.annotation-color-btn.is-pink { background: #fce7f3; }
+.annotation-color-btn.is-orange { background: #ffedd5; }
+.annotation-color-btn.is-purple { background: #ede9fe; }
+.annotation-color-btn.is-cyan { background: #cffafe; }
+.annotation-color-btn.is-red { background: #fee2e2; }
+.annotation-list {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+.annotation-list-title {
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  font-size: 0.9em;
+}
+.annotation-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+  padding: 8px;
+}
+.annotation-jump {
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+}
+.annotation-body {
+  min-width: 0;
+}
+.annotation-hit {
+  margin: 0;
+  color: var(--app-text);
+  font-weight: 600;
+  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.annotation-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.dot-yellow { background: #eab308; }
+.dot-green { background: #22c55e; }
+.dot-blue { background: #3b82f6; }
+.dot-pink { background: #ec4899; }
+.dot-orange { background: #f97316; }
+.dot-purple { background: #8b5cf6; }
+.dot-cyan { background: #06b6d4; }
+.dot-red { background: #ef4444; }
+.annotation-note {
+  margin: 6px 0 0;
+  color: var(--app-text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.annotation-saved-tip {
+  margin-top: 8px;
+  font-size: 0.82em;
+  color: #166534;
+}
+.annotation-status {
+  margin: 6px 0 0;
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+.annotation-status.status-open {
+  background: #fef3c7;
+  color: #92400e;
+}
+.annotation-status.status-resolved {
+  background: #dcfce7;
+  color: #166534;
+}
+.annotation-replies {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+.annotation-reply {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--app-card);
+}
+.annotation-reply p {
+  margin: 4px 0 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.annotation-reply-editor {
+  margin-top: 8px;
+}
+.annotation-side-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:deep(mark.text-annotation) {
+  background: #fff2a8;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+:deep(mark.text-annotation.ann-green) { background: #bbf7d0; }
+:deep(mark.text-annotation.ann-blue) { background: #bfdbfe; }
+:deep(mark.text-annotation.ann-pink) { background: #fbcfe8; }
+:deep(mark.text-annotation.ann-orange) { background: #fed7aa; }
+:deep(mark.text-annotation.ann-purple) { background: #ddd6fe; }
+:deep(mark.text-annotation.ann-cyan) { background: #a5f3fc; }
+:deep(mark.text-annotation.ann-red) { background: #fecaca; }
+
+.mobile-annotation-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  z-index: 60;
+}
+.mobile-annotation-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  border-radius: 14px 14px 0 0;
+  padding: 12px;
+  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.2);
+}
+.mobile-annotation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 .timeline-list { display: grid; gap: 10px; }
 .timeline-item {
   display: grid;
@@ -2154,6 +2823,225 @@ export default {
   .mobile-read-tools .btn {
     padding: 6px 8px;
     font-size: 0.78em;
+  }
+  .annotation-item {
+    grid-template-columns: 1fr;
+  }
+  .annotation-side-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* Enterprise Layout Overrides */
+.wiki-page {
+  background:
+    radial-gradient(circle at 88% -8%, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 92%, #ffffff), var(--app-bg));
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.panel {
+  border-radius: 14px;
+  box-shadow: var(--app-soft-shadow);
+}
+
+.wiki-layout {
+  grid-template-columns: 250px minmax(0, 1.8fr) 230px;
+  gap: 20px;
+}
+
+.wiki-hero {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  background: color-mix(in srgb, var(--app-card) 94%, #ffffff);
+  margin-bottom: 16px;
+}
+
+.wiki-hero h2,
+.content-head h3,
+.markdown {
+  font-family: "Segoe UI", "PingFang SC", sans-serif;
+}
+
+.wiki-toolbar {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--app-card);
+  box-shadow: var(--app-soft-shadow);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.list-panel,
+.content-panel,
+.side-panel {
+  min-height: 660px;
+  padding: 26px;
+  background: color-mix(in srgb, var(--app-card) 96%, #ffffff);
+}
+
+.article-list {
+  gap: 12px;
+}
+
+.article-item {
+  border-radius: 12px;
+  padding: 14px;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+  contain-intrinsic-size: 220px;
+}
+
+.article-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+}
+
+.article-item.active {
+  background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
+}
+
+.item-head h4 {
+  font-size: 1.08rem;
+  line-height: 1.4;
+}
+
+.summary {
+  margin-top: 10px;
+  font-size: 0.94rem;
+  line-height: 1.64;
+}
+
+.meta {
+  font-size: 0.86rem;
+  gap: 8px;
+}
+
+.content-head {
+  gap: 18px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.head-actions,
+.actions,
+.tags {
+  gap: 12px;
+}
+
+.read-layout {
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.read-main {
+  order: 1;
+}
+
+.inline-toc {
+  order: 2;
+  position: static;
+  max-height: none;
+  margin-top: 8px;
+  background: color-mix(in srgb, var(--app-card) 95%, #ffffff);
+}
+
+.btn {
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.btn-primary {
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+.input {
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
+.markdown {
+  font-size: 17px;
+  line-height: 2;
+  max-width: 84ch;
+  margin: 0 auto;
+}
+
+.lead {
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.toc-item,
+.related-item {
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.history-item,
+.comment-item,
+.timeline-item {
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.widget {
+  margin-bottom: 18px;
+}
+
+.inline-toc,
+.mobile-read-tools,
+.mobile-toc-drawer {
+  border-radius: 10px;
+}
+
+@media (max-width: 1200px) {
+  .wiki-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+  .side-panel {
+    grid-column: 1 / -1;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 880px) {
+  .wiki-page {
+    padding: 0;
+  }
+  .wiki-toolbar {
+    padding: 12px;
+    gap: 10px;
+  }
+  .list-panel,
+  .content-panel,
+  .side-panel {
+    min-height: auto;
+    padding: 14px;
+  }
+  .head-actions {
+    width: 100%;
+  }
+  .head-actions .btn {
+    flex: 1 1 auto;
+    min-width: 78px;
+  }
+  .read-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .markdown {
+    font-size: 15px;
   }
 }
 </style>

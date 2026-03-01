@@ -2,7 +2,7 @@
   <div class="admin-page">
     <div class="page-head">
       <h2>部门管理</h2>
-      <p>支持部门树（一级/二级）和负责人维护。</p>
+      <p>支持多级部门树和负责人维护。</p>
     </div>
 
     <div class="layout-grid">
@@ -23,9 +23,9 @@
             </thead>
             <tbody>
               <tr v-for="row in deptRows" :key="row.id">
-                <td>{{ row.level === 1 ? '一级' : '二级' }}</td>
+                <td>{{ displayLevel(row) }}级部门</td>
                 <td>
-                  <span :class="['name-text', { child: row.level === 2 }]">{{ row.name }}</span>
+                  <span class="name-text" :style="{ paddingLeft: `${Math.max(0, row.level - 1) * 18}px` }">{{ row.name }}</span>
                 </td>
                 <td>{{ row.leader || '-' }}</td>
                 <td>{{ row.phone || '-' }}</td>
@@ -52,7 +52,7 @@
           <span>上级部门</span>
           <select v-model="form.parentId" class="input">
             <option :value="''">无（一级部门）</option>
-            <option v-for="item in topDepartments" :key="item.id" :value="item.id">{{ item.name }}</option>
+            <option v-for="item in parentOptions" :key="item.id" :value="item.id">{{ item.label }}</option>
           </select>
         </label>
         <label class="field">
@@ -76,6 +76,13 @@
           <select v-model="form.status" class="input">
             <option value="enabled">启用</option>
             <option value="disabled">停用</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>部门级别（几级部门）</span>
+          <select v-model="form.customLevel" class="input">
+            <option :value="null">自动（按层级）</option>
+            <option v-for="level in levelOptions" :key="level" :value="level">{{ level }}级部门</option>
           </select>
         </label>
         <div class="actions">
@@ -107,6 +114,7 @@ export default {
   data() {
     return {
       departments: [],
+      levelOptions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       editingId: '',
       message: '',
       form: {
@@ -115,28 +123,52 @@ export default {
         leader: '',
         phone: '',
         order: 1,
-        status: 'enabled'
+        status: 'enabled',
+        customLevel: null
       }
     }
   },
   computed: {
-    topDepartments() {
-      return this.departments.filter((item) => !item.parentId).sort(sortByOrder)
+    parentOptions() {
+      const disabled = new Set(this.editingId ? this.collectDescendantIds(this.editingId) : [])
+      if (this.editingId) disabled.add(this.editingId)
+      return this.flattenTree()
+        .filter((item) => !disabled.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          label: `${'\u3000'.repeat(Math.max(0, item.level - 1))}${this.displayLevel(item)}级部门 - ${item.name}`
+        }))
     },
     deptRows() {
-      const rows = []
-      this.topDepartments.forEach((parent) => {
-        rows.push({ ...parent, level: 1 })
-        const children = this.departments
-          .filter((item) => item.parentId === parent.id)
-          .sort(sortByOrder)
-          .map((item) => ({ ...item, level: 2 }))
-        rows.push(...children)
-      })
-      return rows
+      return this.flattenTree()
     }
   },
   methods: {
+    getChildren(parentId) {
+      return this.departments
+        .filter((item) => normalizeParentId(item.parentId) === normalizeParentId(parentId))
+        .sort(sortByOrder)
+    },
+    flattenTree(parentId = null, level = 1, visited = new Set()) {
+      const rows = []
+      const children = this.getChildren(parentId)
+      children.forEach((item) => {
+        if (visited.has(item.id)) return
+        visited.add(item.id)
+        rows.push({ ...item, level })
+        rows.push(...this.flattenTree(item.id, level + 1, visited))
+      })
+      return rows
+    },
+    collectDescendantIds(id, visited = new Set()) {
+      const children = this.getChildren(id)
+      children.forEach((child) => {
+        if (visited.has(child.id)) return
+        visited.add(child.id)
+        this.collectDescendantIds(child.id, visited)
+      })
+      return visited
+    },
     loadData() {
       this.departments = getDepartments()
     },
@@ -149,16 +181,30 @@ export default {
         leader: '',
         phone: '',
         order: 1,
-        status: 'enabled'
+        status: 'enabled',
+        customLevel: null
       }
+    },
+    displayLevel(row) {
+      const custom = Number(row.customLevel)
+      if (Number.isFinite(custom) && custom > 0) return custom
+      return Number(row.level || 1)
     },
     saveItem() {
       this.message = ''
       const parentId = normalizeParentId(this.form.parentId)
       if (parentId) {
         const parent = this.departments.find((item) => item.id === parentId)
-        if (!parent || parent.parentId) {
-          this.message = '二级部门只能挂在一级部门下'
+        if (!parent) {
+          this.message = '上级部门不存在'
+          return
+        }
+        if (this.editingId && parentId === this.editingId) {
+          this.message = '上级部门不能选择自己'
+          return
+        }
+        if (this.editingId && this.collectDescendantIds(this.editingId).has(parentId)) {
+          this.message = '上级部门不能选择当前部门的子级'
           return
         }
       }
@@ -169,7 +215,8 @@ export default {
         leader: this.form.leader,
         phone: this.form.phone,
         order: Number(this.form.order || 1),
-        status: this.form.status
+        status: this.form.status,
+        customLevel: this.form.customLevel ? Number(this.form.customLevel) : null
       }
 
       if (this.editingId) {
@@ -193,7 +240,8 @@ export default {
         leader: row.leader || '',
         phone: row.phone || '',
         order: Number(row.order || 1),
-        status: row.status || 'enabled'
+        status: row.status || 'enabled',
+        customLevel: row.customLevel ? Number(row.customLevel) : null
       }
     },
     removeItem(row) {
@@ -265,15 +313,8 @@ td {
   white-space: nowrap;
 }
 
-.name-text.child {
-  padding-left: 18px;
-  position: relative;
-}
-
-.name-text.child::before {
-  content: '└';
-  position: absolute;
-  left: 0;
+.name-text {
+  display: inline-block;
 }
 
 .form-grid {
@@ -363,6 +404,78 @@ td {
 .message {
   margin: 0;
   grid-column: 1 / -1;
+}
+
+/* Enterprise overrides */
+.admin-page {
+  padding: 6px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% -8%, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 94%, #ffffff), var(--app-bg));
+}
+
+.page-head {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--app-card) 96%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.page-head h2 {
+  font-size: 1.05em;
+}
+
+.page-head p {
+  font-size: 0.82em;
+}
+
+.panel {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-card) 97%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.panel h3 {
+  font-size: 0.95em;
+}
+
+.input,
+.btn {
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  background: color-mix(in srgb, var(--app-primary) 6%, transparent);
+}
+
+td {
+  font-size: 12px;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.status-tag {
+  border: 1px solid transparent;
+}
+
+.status-tag.enabled {
+  border-color: rgba(22, 163, 74, 0.25);
+}
+
+.status-tag.disabled {
+  border-color: rgba(220, 38, 38, 0.2);
 }
 
 @media (max-width: 1040px) {

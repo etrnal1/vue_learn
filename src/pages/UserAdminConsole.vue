@@ -147,6 +147,17 @@
           {{ savingPermission ? '保存中…' : '保存' }}
         </button>
       </div>
+      <div class="permission-help">
+        <div class="help-title">中文解释</div>
+        <p>每一行是一个功能页（Tab ID），每一列是一个角色。勾选表示“该角色允许访问此功能页”。</p>
+        <p>未勾选表示“该角色默认不可访问此功能页”。</p>
+        <p>若在上方用户详情里配置了“用户菜单授权”，则以用户级授权为准，会覆盖这里的角色默认权限。</p>
+        <div class="role-help-list">
+          <span v-for="item in roleExplainList" :key="`role-help-${item.id}`" class="role-help-item">
+            <strong>{{ item.label }}</strong>：{{ item.desc }}
+          </span>
+        </div>
+      </div>
       <div v-if="permissionConfig.roles.length === 0" class="placeholder">权限配置加载中…</div>
       <div v-else class="permission-table">
         <div class="permission-row head">
@@ -241,6 +252,18 @@ export default {
       const userId = this.selectedUser.id
       const source = this.permissionConfig.userTabPermissions || {}
       return Array.isArray(source[userId]) ? source[userId] : []
+    },
+    roleExplainList() {
+      const explainMap = {
+        admin: '管理员：通常可访问全部模块，负责系统配置与授权管理。',
+        operator: '运维：通常负责日常运维与业务配置，可访问大多数操作模块。',
+        viewer: '访客：通常只读访问，不允许高风险配置操作。'
+      }
+      return (this.permissionConfig.roles || []).map((role) => ({
+        id: String(role?.id || ''),
+        label: String(role?.label || role?.id || ''),
+        desc: explainMap[String(role?.id || '').toLowerCase()] || '自定义角色：按实际岗位职责勾选可访问模块。'
+      }))
     }
   },
   methods: {
@@ -546,6 +569,39 @@ export default {
   justify-content: space-between;
   align-items: center;
 }
+.permission-help {
+  margin-top: 10px;
+  border: 1px dashed var(--app-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--app-card-elevated) 84%, transparent);
+}
+.help-title {
+  font-size: 0.86em;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  margin-bottom: 6px;
+}
+.permission-help p {
+  margin: 4px 0;
+  font-size: 0.8em;
+  color: var(--app-text-muted);
+  line-height: 1.6;
+}
+.role-help-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.role-help-item {
+  font-size: 0.78em;
+  color: var(--app-text-secondary);
+  background: var(--app-card);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
 .permission-table {
   margin-top: 12px;
   overflow: auto;
@@ -624,5 +680,119 @@ export default {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* Enterprise Layout Overrides */
+.user-admin {
+  gap: 12px;
+  padding: 6px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 90% -8%, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 94%, #ffffff), var(--app-bg));
+}
+
+.section-head {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-card) 95%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+  padding: 12px 14px;
+}
+
+.section-head h2 {
+  font-size: 1.05em;
+  margin: 0;
+}
+
+.section-head p {
+  margin-top: 5px;
+  font-size: 0.82em;
+}
+
+.panel,
+.panel-create {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--app-card) 96%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+  backdrop-filter: none;
+}
+
+.panel-create {
+  margin-top: 0;
+}
+
+.stats-row {
+  margin-top: 0;
+}
+
+.stat-card {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-primary) 10%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--app-primary) 24%, var(--app-border));
+}
+
+.stat-value {
+  color: var(--app-text);
+  font-size: 1.6em;
+}
+
+.list {
+  gap: 8px;
+}
+
+.list-item {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--app-card-elevated);
+  color: var(--app-text);
+}
+
+.list-item:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-card-elevated));
+  border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+}
+
+.list-item.active {
+  border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+  color: var(--app-text);
+}
+
+.role-chip {
+  background: color-mix(in srgb, var(--app-primary) 14%, #eef2ff);
+  color: color-mix(in srgb, var(--app-primary) 78%, #3730a3);
+  border: 1px solid color-mix(in srgb, var(--app-primary) 28%, transparent);
+}
+
+.input,
+.btn {
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.btn {
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+}
+
+.btn-primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+.permission-table {
+  border-top: 1px solid var(--app-border);
+}
+
+.permission-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 85%, transparent);
+}
+
+.permission-row.head {
+  border-color: var(--app-border);
 }
 </style>

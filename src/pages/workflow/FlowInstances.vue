@@ -999,3 +999,49 @@ dd {
   }
 }
 </style>
+
+<style scoped>
+.flow-instances {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1320px;
+}
+.flow-instances .page-header,
+.flow-instances .filter-panel,
+.flow-instances .pagination-header,
+.flow-instances .pagination-nav,
+.flow-instances .exec-card {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  box-shadow: var(--app-soft-shadow);
+}
+.flow-instances .page-header {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.flow-instances .exec-card__header h3 {
+  font-size: 1rem;
+}
+.flow-instances .badge {
+  border-radius: 999px;
+}
+.flow-instances .btn,
+.flow-instances .btn-nav,
+.flow-instances .page-number,
+.flow-instances .filter-select,
+.flow-instances .page-size-select,
+.flow-instances .btn-toggle-sort {
+  border-radius: 10px;
+}
+@media (max-width: 768px) {
+  .flow-instances {
+    padding: 12px;
+  }
+  .flow-instances .page-header,
+  .flow-instances .filter-panel,
+  .flow-instances .pagination-header,
+  .flow-instances .pagination-nav {
+    padding: 10px;
+  }
+}
+</style>

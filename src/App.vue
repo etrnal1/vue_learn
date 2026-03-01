@@ -183,6 +183,44 @@
       </div>
     </div>
 
+    <div class="sync-status-bar">
+      <div class="sync-status-left">
+        <span class="sync-pill" :class="{ offline: !networkOnline }">
+          {{ networkOnline ? '在线' : '离线' }}
+        </span>
+        <span class="sync-text">
+          写入队列：{{ writeQueueState.count }} 条
+        </span>
+        <span v-if="writeQueueState.flushing" class="sync-working">同步中…</span>
+      </div>
+      <div class="sync-status-actions">
+        <button
+          type="button"
+          class="sync-btn"
+          :disabled="writeQueueState.count === 0"
+          @click="openWriteQueueModal"
+        >
+          队列详情
+        </button>
+        <button
+          type="button"
+          class="sync-btn"
+          :disabled="!networkOnline || writeQueueState.count === 0 || writeQueueState.flushing"
+          @click="flushWriteQueueNow"
+        >
+          立即同步
+        </button>
+        <button
+          type="button"
+          class="sync-btn danger"
+          :disabled="writeQueueState.count === 0 || writeQueueState.flushing"
+          @click="clearWriteQueueNow"
+        >
+          清空队列
+        </button>
+      </div>
+    </div>
+
     <div class="main-layout">
       <aside class="side-menu" :class="{ open: mobileMenuOpen, collapsed: isDesktopCollapsed }">
         <div class="side-mobile-head">
@@ -276,6 +314,41 @@
       </div>
     </div>
     <div v-if="mobileMenuOpen" class="mobile-menu-mask" @click="closeSidebarDrawer"></div>
+
+    <div v-if="showWriteQueueModal" class="queue-modal-mask" @click="closeWriteQueueModal">
+      <div class="queue-modal" @click.stop>
+        <div class="queue-modal-head">
+          <strong>离线写入队列</strong>
+          <button type="button" class="queue-close-btn" @click="closeWriteQueueModal">关闭</button>
+        </div>
+        <div class="queue-modal-body">
+          <div v-if="writeQueueItems.length === 0" class="queue-empty">当前没有待同步写入项</div>
+          <div v-else class="queue-list">
+            <div v-for="item in writeQueueItems" :key="item.id" class="queue-item">
+              <div class="queue-item-head">
+                <code class="queue-method">{{ item.method }}</code>
+                <code class="queue-endpoint">{{ item.endpoint }}</code>
+              </div>
+              <div class="queue-item-meta">
+                <span>入队: {{ formatQueueTime(item.queuedAt) }}</span>
+                <span v-if="item.lastError">最近失败: {{ item.lastError }}</span>
+              </div>
+              <div class="queue-item-actions">
+                <button
+                  type="button"
+                  class="sync-btn"
+                  :disabled="!networkOnline || writeQueueState.flushing"
+                  @click="retryWriteQueueItem(item.id)"
+                >
+                  重试
+                </button>
+                <button type="button" class="sync-btn danger" @click="removeWriteQueueItem(item.id)">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     </template>
 
     <button
@@ -297,6 +370,7 @@ import Header from './components/Header.vue'
 import HomePage from './pages/HomePage.vue'
 import { api } from './utils/api.js'
 import { getSidebarNavConfig, getSidebarNavEventName } from './utils/adminMockStore.js'
+import { createFormAutoSave } from './utils/formAutoSave.js'
 const IS_DEBUG_MODE = import.meta.env.MODE !== 'production' || import.meta.env.VITE_DEBUG_MODE === 'true'
 const DEBUG_ONLY_TAB_IDS = new Set(['logs', 'authLogs'])
 
@@ -550,6 +624,14 @@ export default {
         { id: 'viewer', label: '访客' }
       ],
       permissionMessage: '',
+      networkOnline: typeof navigator !== 'undefined' ? navigator.onLine !== false : true,
+      writeQueueState: {
+        count: 0,
+        flushing: false,
+        offline: false
+      },
+      showWriteQueueModal: false,
+      writeQueueItems: [],
       tabAccessSource: 'role',
       tabAccessReady: false,
       allowedTabsFromServer: [],
@@ -952,6 +1034,75 @@ export default {
       document.body.style.background = getComputedStyle(this.$el).getPropertyValue('--app-bg').trim()
       document.body.style.transition = 'background 0.5s ease'
     },
+    refreshSyncState() {
+      try {
+        const stats = api.getWriteQueueStats()
+        this.writeQueueState = {
+          count: Number(stats?.count || 0),
+          flushing: Boolean(stats?.flushing),
+          offline: Boolean(stats?.offline)
+        }
+      } catch (_error) {
+        this.writeQueueState = { count: 0, flushing: false, offline: !this.networkOnline }
+      }
+    },
+    refreshWriteQueueItems() {
+      try {
+        const list = api.getWriteQueueItems()
+        this.writeQueueItems = Array.isArray(list) ? list : []
+      } catch (_error) {
+        this.writeQueueItems = []
+      }
+    },
+    openWriteQueueModal() {
+      this.refreshWriteQueueItems()
+      this.showWriteQueueModal = true
+    },
+    closeWriteQueueModal() {
+      this.showWriteQueueModal = false
+    },
+    async retryWriteQueueItem(id) {
+      if (!this.networkOnline || this.writeQueueState.flushing) return
+      try {
+        await api.replayWriteQueueItem(id)
+        this.refreshSyncState()
+        this.refreshWriteQueueItems()
+        this.permissionMessage = '队列项重试成功'
+      } catch (error) {
+        this.permissionMessage = `重试失败：${error?.message || '未知错误'}`
+      }
+    },
+    removeWriteQueueItem(id) {
+      api.removeWriteQueueItem(id)
+      this.refreshSyncState()
+      this.refreshWriteQueueItems()
+    },
+    formatQueueTime(ts) {
+      if (!ts) return '未知时间'
+      const date = new Date(ts)
+      if (Number.isNaN(date.getTime())) return '未知时间'
+      return date.toLocaleString('zh-CN')
+    },
+    async flushWriteQueueNow() {
+      if (!this.networkOnline || this.writeQueueState.flushing || this.writeQueueState.count === 0) return
+      try {
+        const result = await api.flushWriteQueue()
+        this.permissionMessage = `已同步 ${Number(result?.synced || 0)} 条，剩余 ${Number(result?.remaining || 0)} 条`
+        this.refreshSyncState()
+        this.refreshWriteQueueItems()
+      } catch (error) {
+        this.permissionMessage = `同步失败：${error?.message || '未知错误'}`
+      }
+    },
+    clearWriteQueueNow() {
+      if (this.writeQueueState.count === 0 || this.writeQueueState.flushing) return
+      const confirmed = window.confirm('确定清空离线写入队列？此操作不会回滚本地界面修改。')
+      if (!confirmed) return
+      api.clearWriteQueue()
+      this.refreshSyncState()
+      this.refreshWriteQueueItems()
+      this.permissionMessage = '已清空离线写入队列'
+    },
     onCustomColorsToggle() {
       if (this.appearance.useCustomColors) {
         if (!this.appearance.presetId) {
@@ -1257,6 +1408,10 @@ export default {
     }
   },
   async mounted() {
+    this._formAutoSave = createFormAutoSave({
+      getScope: () => (this.isLoggedIn ? `tab:${this.activeTab}` : 'auth')
+    })
+
     this._scrollDownTicking = false
     this._onWindowScroll = () => {
       if (this._scrollDownTicking) return
@@ -1275,6 +1430,31 @@ export default {
     }
     window.addEventListener('scroll', this._onWindowScroll, { passive: true })
     window.addEventListener('resize', this._onWindowResize, { passive: true })
+    this._onNetworkOnline = () => {
+      this.networkOnline = true
+      this.refreshSyncState()
+    }
+    this._onNetworkOffline = () => {
+      this.networkOnline = false
+      this.refreshSyncState()
+    }
+    window.addEventListener('online', this._onNetworkOnline)
+    window.addEventListener('offline', this._onNetworkOffline)
+    this._offWriteQueueChange = api.onWriteQueueChange((state) => {
+      this.writeQueueState = {
+        count: Number(state?.count || 0),
+        flushing: Boolean(state?.flushing),
+        offline: Boolean(state?.offline)
+      }
+      this.networkOnline = !Boolean(state?.offline)
+      if (this.showWriteQueueModal) {
+        this.refreshWriteQueueItems()
+      }
+    })
+    this.refreshSyncState()
+    if (this.networkOnline && this.writeQueueState.count > 0) {
+      api.flushWriteQueue().finally(() => this.refreshSyncState())
+    }
 
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
@@ -1322,6 +1502,7 @@ export default {
       }
       this.syncBodyBackground()
       this.updateScrollDownVisibility()
+      this._formAutoSave?.restoreCurrentScope()
     })
     await this.checkAuthSession()
     if (this.isLoggedIn) {
@@ -1332,6 +1513,7 @@ export default {
         this.activeTab = this.findFirstAccessibleTab()
       }
       this.warmupCommonTabs()
+      this.$nextTick(() => this._formAutoSave?.restoreCurrentScope())
     }
   },
   beforeUnmount() {
@@ -1341,6 +1523,18 @@ export default {
       if (this._onSidebarNavUpdated) {
         window.removeEventListener(getSidebarNavEventName(), this._onSidebarNavUpdated)
       }
+    }
+    if (typeof window !== 'undefined') {
+      if (this._onNetworkOnline) window.removeEventListener('online', this._onNetworkOnline)
+      if (this._onNetworkOffline) window.removeEventListener('offline', this._onNetworkOffline)
+    }
+    if (typeof this._offWriteQueueChange === 'function') {
+      this._offWriteQueueChange()
+      this._offWriteQueueChange = null
+    }
+    if (this._formAutoSave) {
+      this._formAutoSave.destroy()
+      this._formAutoSave = null
     }
   },
   watch: {
@@ -1352,10 +1546,16 @@ export default {
     activeTab(newTabId) {
       this.expandGroupByTab(newTabId)
       this.recordRecentTab(newTabId)
-      this.$nextTick(() => this.updateScrollDownVisibility())
+      this.$nextTick(() => {
+        this.updateScrollDownVisibility()
+        this._formAutoSave?.restoreCurrentScope()
+      })
     },
     isLoggedIn() {
-      this.$nextTick(() => this.updateScrollDownVisibility())
+      this.$nextTick(() => {
+        this.updateScrollDownVisibility()
+        this._formAutoSave?.restoreCurrentScope()
+      })
     }
   }
 }
@@ -1955,6 +2155,186 @@ export default {
   box-shadow: var(--app-soft-shadow);
 }
 
+.sync-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--app-group-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow: var(--app-soft-shadow);
+}
+
+.sync-status-left {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-pill {
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.74em;
+  font-weight: 700;
+}
+
+.sync-pill.offline {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.sync-text {
+  font-size: 0.8em;
+  color: var(--app-text-secondary);
+  font-weight: 600;
+}
+
+.sync-working {
+  font-size: 0.75em;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.sync-status-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.sync-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.74em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sync-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sync-btn.danger {
+  border-color: color-mix(in srgb, #ef4444 35%, var(--app-border));
+  color: #b91c1c;
+}
+
+.queue-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1800;
+}
+
+.queue-modal {
+  width: min(760px, 94vw);
+  max-height: 80vh;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-card);
+  box-shadow: var(--app-soft-shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.queue-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.queue-close-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+
+.queue-modal-body {
+  padding: 10px 12px;
+  overflow: auto;
+}
+
+.queue-empty {
+  color: var(--app-text-muted);
+  font-size: 0.88em;
+  padding: 10px 4px;
+}
+
+.queue-list {
+  display: grid;
+  gap: 10px;
+}
+
+.queue-item {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.queue-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.queue-method {
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  background: var(--app-card);
+}
+
+.queue-endpoint {
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.78em;
+  color: var(--app-text-secondary);
+}
+
+.queue-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.76em;
+  color: var(--app-text-muted);
+}
+
+.queue-item-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
 .user-session {
   margin-left: auto;
   display: inline-flex;
@@ -2181,6 +2561,31 @@ export default {
     gap: 8px;
     margin-bottom: 8px;
   }
+  .sync-status-bar {
+    padding: 8px 10px;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .sync-status-actions {
+    width: 100%;
+  }
+  .sync-btn {
+    flex: 1;
+    text-align: center;
+  }
+  .queue-modal {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .queue-item-actions {
+    width: 100%;
+  }
+  .queue-item-actions .sync-btn {
+    flex: 1;
+  }
   .user-session {
     width: 100%;
     margin-left: 0;
@@ -2220,6 +2625,7 @@ export default {
   .global-theme-bar { padding: 6px 8px; }
   .global-palette-bar { padding: 6px 8px; }
   .permission-bar { padding: 6px 8px; }
+  .sync-status-bar { padding: 6px 8px; }
   .auth-card { padding: 14px; border-radius: 12px; }
   .theme-pill { padding: 5px 8px; gap: 4px; }
   .palette-pill { padding: 5px 8px; gap: 4px; }

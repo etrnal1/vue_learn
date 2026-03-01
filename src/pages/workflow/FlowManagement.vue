@@ -66,6 +66,9 @@
     <div v-if="errorMessage" class="alert">{{ errorMessage }}</div>
     <div v-if="historyError" class="alert">{{ historyError }}</div>
     <div v-if="successMessage" class="alert alert--success">{{ successMessage }}</div>
+    <div v-if="queueStatus.count > 0" class="alert alert--info">
+      {{ queueStatus.offline ? '离线模式' : '待同步' }}：{{ queueStatus.count }} 个写入操作在队列中
+    </div>
     <div v-if="selectedFlow && swapFromIndex !== null" class="alert alert--info">
       已选中第 {{ swapFromIndex + 1 }} 步，点击任意步骤的“交换”按钮可直接互换位置。
     </div>
@@ -220,6 +223,12 @@ export default {
       successTimer: null,
       swapFromIndex: null,
       showAdvancedSearch: false,
+      queueStatus: {
+        count: 0,
+        offline: false,
+        flushing: false
+      },
+      unwatchWriteQueue: null,
       filters: {
         status: '',
         assignee: '',
@@ -323,6 +332,9 @@ export default {
     canRollback(flowId) {
       return this.releaseHistoryFor(flowId).length > 0
     },
+    isQueuedPayload(payload) {
+      return Boolean(payload?.offlineQueued || payload?.queued)
+    },
     async releaseFlow(flow) {
       const history = this.releaseHistoryFor(flow.id)
       const defaultVersion = `v${history.length + 1}`
@@ -349,10 +361,24 @@ export default {
           steps: flow.steps || []
         }
         const record = await api.flows.createRelease(flow.id, { version: formattedVersion, note, payload })
-        const updatedHistory = [...history, record]
+        const isQueued = this.isQueuedPayload(record)
+        const normalizedRecord = isQueued
+          ? {
+              version: formattedVersion,
+              note: note ? `${note}（离线待同步）` : '离线待同步',
+              created_at: Date.now(),
+              payload
+            }
+          : record
+        const updatedHistory = [...history, normalizedRecord]
         this.releaseHistory = { ...this.releaseHistory, [flow.id]: updatedHistory }
         this.errorMessage = ''
-        await this.loadReleaseHistory()
+        if (isQueued) {
+          this.showSuccessMessage(`发布请求已离线入队：${formattedVersion}`)
+        } else {
+          await this.loadReleaseHistory()
+          this.showSuccessMessage(`发布成功：${formattedVersion}`)
+        }
       } catch (error) {
         this.errorMessage = error?.message || '发布失败'
       } finally {
@@ -369,10 +395,15 @@ export default {
       this.actionBusy = flow.id
       try {
         const result = await api.flows.rollbackRelease(flow.id)
-        const updatedHistory = Array.isArray(result?.history) ? result.history : []
-        this.releaseHistory = { ...this.releaseHistory, [flow.id]: updatedHistory }
+        if (this.isQueuedPayload(result)) {
+          this.showSuccessMessage('回滚请求已离线入队，联网后自动执行')
+        } else {
+          const updatedHistory = Array.isArray(result?.history) ? result.history : []
+          this.releaseHistory = { ...this.releaseHistory, [flow.id]: updatedHistory }
+          await this.loadReleaseHistory()
+          this.showSuccessMessage('回滚成功')
+        }
         this.errorMessage = ''
-        await this.loadReleaseHistory()
       } catch (error) {
         this.errorMessage = error?.message || '回滚失败'
       } finally {
@@ -492,7 +523,7 @@ export default {
       this.selectedFlow = { ...this.selectedFlow, steps }
 
       try {
-        await api.flows.update(this.selectedFlow.id, {
+        const result = await api.flows.update(this.selectedFlow.id, {
           name: this.selectedFlow.name,
           description: this.selectedFlow.description,
           icon: this.selectedFlow.icon,
@@ -506,7 +537,11 @@ export default {
             steps: [...steps]
           }
         }
-        this.showSuccessMessage(successText)
+        if (this.isQueuedPayload(result)) {
+          this.showSuccessMessage(`${successText}（离线待同步）`)
+        } else {
+          this.showSuccessMessage(successText)
+        }
       } catch (error) {
         this.selectedFlow = {
           ...this.selectedFlow,
@@ -581,10 +616,21 @@ export default {
     this.showAdvancedSearch = false
   },
   mounted() {
+    this.unwatchWriteQueue = api.onWriteQueueChange((state) => {
+      this.queueStatus = {
+        count: Number(state?.count) || 0,
+        offline: Boolean(state?.offline),
+        flushing: Boolean(state?.flushing)
+      }
+    })
     this.loadFlows()
     this.loadReleaseHistory()
   },
   beforeUnmount() {
+    if (typeof this.unwatchWriteQueue === 'function') {
+      this.unwatchWriteQueue()
+      this.unwatchWriteQueue = null
+    }
     if (this.successTimer) {
       clearTimeout(this.successTimer)
       this.successTimer = null
@@ -1140,6 +1186,46 @@ export default {
   .flow-management__header {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+</style>
+
+<style scoped>
+.flow-management {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1360px;
+  margin: 0 auto;
+}
+.flow-management__header,
+.flow-card,
+.flow-detail,
+.advanced-search-panel {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  box-shadow: var(--app-soft-shadow);
+}
+.flow-management__header {
+  padding: 16px;
+}
+.flow-card__head {
+  border-bottom: 1px solid var(--app-border);
+  padding-bottom: 10px;
+}
+.flow-card__actions .btn,
+.flow-detail__header-actions .btn,
+.step-action-btn {
+  border-radius: 10px;
+}
+.flow-detail__steps li {
+  border-bottom-color: var(--app-border);
+}
+@media (max-width: 900px) {
+  .flow-management {
+    padding: 12px;
+  }
+  .flow-management__header {
+    padding: 12px;
   }
 }
 </style>

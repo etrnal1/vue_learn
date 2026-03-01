@@ -77,6 +77,16 @@
           ></textarea>
         </div>
         <div class="editor-actions">
+          <span class="sync-badge" :class="{ offline: !networkOnline, pending: pendingSyncCount > 0 }">
+            {{ networkOnline ? '在线' : '离线' }} · 待同步 {{ pendingSyncCount }}
+          </span>
+          <button
+            class="btn btn-small"
+            :disabled="!networkOnline || pendingSyncCount === 0 || isFlushingOfflineQueue"
+            @click="flushOfflineQueue(false)"
+          >
+            {{ isFlushingOfflineQueue ? '同步中...' : '立即同步' }}
+          </button>
           <button class="btn btn-success" :disabled="!canSaveFlow || !canEditFlow" @click="saveFlow">
             {{ saving ? '保存中...' : '保存' }}
           </button>
@@ -655,6 +665,9 @@ import ParameterMappingDialog from '../../components/flow-editor/dialogs/Paramet
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 
+const FLOW_OFFLINE_QUEUE_KEY = 'flow_editor_offline_sync_queue_v1'
+const FLOW_DRAFT_PREFIX = 'flow_editor_draft_v1:'
+
 export default {
   name: 'FlowDiagramEditor',
   components: { TraceFlowDemo, TimelineView, RelationView, VueFlow, FlowEditor, ItsmModal, VariableDefinitionDialog, ParameterMappingDialog },
@@ -670,6 +683,9 @@ export default {
       permissionsLoading: false,
       message: null,
       messageTimer: null,
+      offlineQueue: [],
+      networkOnline: typeof navigator !== 'undefined' ? navigator.onLine !== false : true,
+      isFlushingOfflineQueue: false,
       autoSaveTimer: null,
       lastSavedFlow: null,
       isAutoSaving: false,
@@ -770,9 +786,193 @@ export default {
       const steps = this.editingFlow?.steps || []
       if (idx == null || idx < 0 || idx >= steps.length) return null
       return steps[idx]?.id || null
+    },
+    pendingSyncCount() {
+      return Array.isArray(this.offlineQueue) ? this.offlineQueue.length : 0
     }
   },
   methods: {
+    getDraftStorageKey(flowId) {
+      return `${FLOW_DRAFT_PREFIX}${String(flowId || '').trim()}`
+    },
+    loadOfflineQueue() {
+      try {
+        const raw = window.localStorage?.getItem(FLOW_OFFLINE_QUEUE_KEY) || '[]'
+        const parsed = JSON.parse(raw)
+        this.offlineQueue = Array.isArray(parsed) ? parsed : []
+      } catch (error) {
+        this.offlineQueue = []
+      }
+    },
+    saveOfflineQueue() {
+      try {
+        window.localStorage?.setItem(FLOW_OFFLINE_QUEUE_KEY, JSON.stringify(this.offlineQueue || []))
+      } catch (error) {
+        // ignore storage errors
+      }
+    },
+    saveOfflineDraft(flowData) {
+      if (!flowData?.id) return
+      try {
+        window.localStorage?.setItem(this.getDraftStorageKey(flowData.id), JSON.stringify(flowData))
+      } catch (error) {
+        // ignore storage errors
+      }
+    },
+    loadOfflineDraft(flowId) {
+      if (!flowId) return null
+      try {
+        const raw = window.localStorage?.getItem(this.getDraftStorageKey(flowId))
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        return parsed && typeof parsed === 'object' ? parsed : null
+      } catch (error) {
+        return null
+      }
+    },
+    removeOfflineDraft(flowId) {
+      if (!flowId) return
+      try {
+        window.localStorage?.removeItem(this.getDraftStorageKey(flowId))
+      } catch (error) {
+        // ignore storage errors
+      }
+    },
+    isNetworkError(error) {
+      if (!this.networkOnline) return true
+      if (!error) return false
+      const message = String(error?.message || '').toLowerCase()
+      return (
+        error?.name === 'TypeError' ||
+        message.includes('failed to fetch') ||
+        message.includes('networkerror') ||
+        message.includes('network request failed') ||
+        message.includes('load failed')
+      )
+    },
+    isDuplicateFlowError(error) {
+      const message = String(error?.message || '').toLowerCase()
+      return message.includes('duplicate') || message.includes('exists') || message.includes('已存在')
+    },
+    upsertOfflineQueueItem(op, flowData, source = 'manual') {
+      if (!flowData?.id) return
+      const flowId = String(flowData.id)
+      const nextItem = {
+        flowId,
+        op: op === 'create' ? 'create' : 'update',
+        payload: flowData,
+        source,
+        queuedAt: Date.now()
+      }
+      const index = this.offlineQueue.findIndex((item) => String(item?.flowId) === flowId)
+      if (index >= 0) {
+        const previous = this.offlineQueue[index]
+        const merged = {
+          ...previous,
+          ...nextItem,
+          op: previous?.op === 'create' || nextItem.op === 'create' ? 'create' : 'update'
+        }
+        this.offlineQueue.splice(index, 1, merged)
+      } else {
+        this.offlineQueue.push(nextItem)
+      }
+      this.saveOfflineQueue()
+      this.saveOfflineDraft(flowData)
+    },
+    onNetworkOnline() {
+      this.networkOnline = true
+      this.flushOfflineQueue(true)
+    },
+    onNetworkOffline() {
+      this.networkOnline = false
+      this.showAutoSaveMessage('当前离线，流程修改将先保存到本地队列', 'error')
+    },
+    async saveFlowWithOfflineSupport(flowData, options = {}) {
+      const { source = 'manual', closeOnSuccess = false } = options
+      const isNew = !this.flows.some(f => f.id === flowData.id)
+      const op = isNew ? 'create' : 'update'
+
+      if (!this.networkOnline) {
+        this.upsertOfflineQueueItem(op, flowData, source)
+        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
+        this.showAutoSaveMessage('离线状态：已保存到本地，联网后将自动同步', 'success')
+        return { queued: true }
+      }
+
+      try {
+        let result
+        if (op === 'create') {
+          result = await api.flows.create(flowData)
+        } else {
+          result = await api.flows.update(flowData.id, flowData)
+        }
+        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
+        this.offlineQueue = (this.offlineQueue || []).filter((item) => String(item?.flowId) !== String(flowData.id))
+        this.saveOfflineQueue()
+        this.removeOfflineDraft(flowData.id)
+        if (closeOnSuccess) {
+          await this.loadFlows()
+          this.editingFlow = null
+        }
+        return { queued: false, result }
+      } catch (error) {
+        if (this.isNetworkError(error)) {
+          this.networkOnline = false
+          this.upsertOfflineQueueItem(op, flowData, source)
+          this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
+          this.showAutoSaveMessage('网络中断：已转为离线保存，恢复网络后自动入库', 'success')
+          return { queued: true }
+        }
+        throw error
+      }
+    },
+    async flushOfflineQueue(silent = false) {
+      if (!this.networkOnline || this.isFlushingOfflineQueue || this.pendingSyncCount === 0) return
+      this.isFlushingOfflineQueue = true
+      let synced = 0
+      try {
+        const queue = [...this.offlineQueue]
+        for (const item of queue) {
+          const flowId = String(item?.flowId || '')
+          if (!flowId || !item?.payload) continue
+          try {
+            if (item.op === 'create') {
+              try {
+                await api.flows.create(item.payload)
+              } catch (error) {
+                if (this.isDuplicateFlowError(error)) {
+                  await api.flows.update(flowId, item.payload)
+                } else {
+                  throw error
+                }
+              }
+            } else {
+              await api.flows.update(flowId, item.payload)
+            }
+            this.offlineQueue = this.offlineQueue.filter((entry) => String(entry?.flowId) !== flowId)
+            this.saveOfflineQueue()
+            this.removeOfflineDraft(flowId)
+            synced += 1
+          } catch (error) {
+            if (this.isNetworkError(error)) {
+              this.networkOnline = false
+              break
+            }
+            if (!silent) {
+              this.showMessage(`同步失败(${flowId}): ${error?.message || '未知错误'}`, 'error')
+            }
+          }
+        }
+        if (synced > 0) {
+          await this.loadFlows()
+        }
+        if (synced > 0 && !silent) {
+          this.showMessage(`已同步 ${synced} 条离线流程变更`, 'success')
+        }
+      } finally {
+        this.isFlushingOfflineQueue = false
+      }
+    },
     formatDate(value) {
       if (!value) return '未知时间'
       const date = new Date(value)
@@ -1347,17 +1547,24 @@ export default {
           label: edge.label || ''
         }))
 
-        // 调用API保存
-        await api.flows.update(this.editingFlow.id, {
-          steps: updatedSteps,
-          connections: connections
+        const flowData = this.buildFlowPayload({
+          ...this.editingFlow,
+          steps: updatedSteps
         })
+        if (!flowData) {
+          this.showMessage('流程图数据无效，无法保存', 'error')
+          return
+        }
+
+        const saveResult = await this.saveFlowWithOfflineSupport(flowData, { source: 'diagram' })
 
         this.editingFlow.steps = updatedSteps.map((step, index) => this.createStep(step, index))
         this.syncCanvasFromSteps()
-
-        this.showMessage('流程图保存成功', 'success')
-        this.scheduleAutoSave()
+        if (saveResult?.queued) {
+          this.showMessage('离线状态：流程图修改已加入同步队列', 'warning')
+        } else {
+          this.showMessage('流程图保存成功', 'success')
+        }
       } catch (error) {
         console.error('保存流程图失败:', error)
         this.showMessage(`保存失败: ${error.message}`, 'error')
@@ -1612,8 +1819,10 @@ export default {
       }
       try {
         const normalized = this.normalizeFlow(JSON.parse(JSON.stringify(flow)))
-        this.editingFlow = normalized
-        this.lastSavedFlow = JSON.parse(JSON.stringify(normalized))
+        const localDraft = this.loadOfflineDraft(flow.id)
+        const nextFlow = localDraft ? this.normalizeFlow(localDraft) : normalized
+        this.editingFlow = nextFlow
+        this.lastSavedFlow = JSON.parse(JSON.stringify(nextFlow))
         this.editingStepIndex = null
         this.view = 'list'
         this.timelineMounted = false
@@ -1621,6 +1830,9 @@ export default {
         this.canvasInteractionMode = 'node'
         this.syncCanvasFromSteps()
         this.requestCanvasFit()
+        if (localDraft) {
+          this.showMessage('已加载本地离线草稿，联网后将自动同步', 'warning')
+        }
       } catch (error) {
         console.error('进入编辑态失败:', error)
         this.showMessage(`进入编辑失败: ${error?.message || '未知错误'}`, 'error')
@@ -1715,19 +1927,15 @@ export default {
           return
         }
 
-        const isNew = !this.flows.some(f => f.id === flowData.id)
-
-        let result
-        if (isNew) {
-          result = await api.flows.create(flowData)
+        const saveResult = await this.saveFlowWithOfflineSupport(flowData, {
+          source: 'manual',
+          closeOnSuccess: true
+        })
+        if (saveResult?.queued) {
+          this.showMessage('离线状态：流程已暂存，联网后自动入库', 'warning')
         } else {
-          result = await api.flows.update(flowData.id, flowData)
+          this.showMessage('流程已保存', 'success')
         }
-
-        this.showMessage('流程已保存', 'success')
-        await this.loadFlows()
-        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
-        this.editingFlow = null
         recordAudit({ action: 'save_flow', detail: flowData.name, flowId: flowData.id })
       } catch (error) {
         this.showMessage(`保存失败: ${error?.message}`, 'error')
@@ -1864,19 +2072,12 @@ export default {
         const flowData = this.buildFlowPayload(this.editingFlow)
         if (!flowData || flowData.steps.length === 0) return
 
-        const isNew = !this.flows.some(f => f.id === flowData.id)
-        let result
-        if (isNew) {
-          result = await api.flows.create(flowData)
+        const saveResult = await this.saveFlowWithOfflineSupport(flowData, { source: 'auto' })
+        if (saveResult?.queued) {
+          this.showAutoSaveMessage('✓ 已离线保存，联网后自动同步', 'success')
         } else {
-          result = await api.flows.update(flowData.id, flowData)
+          this.showAutoSaveMessage('✓ 已自动保存', 'success')
         }
-
-        // 更新最后保存的状态
-        this.lastSavedFlow = JSON.parse(JSON.stringify(this.editingFlow))
-
-        // 显示自动保存提示（不覆盖手动操作反馈）
-        this.showAutoSaveMessage('✓ 已自动保存', 'success')
       } catch (error) {
         console.error('自动保存失败:', error)
         this.showAutoSaveMessage(`自动保存失败: ${error?.message}`, 'error')
@@ -1926,8 +2127,15 @@ export default {
     if (touchCapable) {
       this.canvasInteractionMode = 'pan'
     }
+    this.networkOnline = navigator.onLine !== false
+    this.loadOfflineQueue()
+    window.addEventListener('online', this.onNetworkOnline)
+    window.addEventListener('offline', this.onNetworkOffline)
     this.loadFlowPermissions()
     this.loadFlows()
+    if (this.networkOnline && this.pendingSyncCount > 0) {
+      this.flushOfflineQueue(true)
+    }
     // 公共模块在进入编辑态时懒加载，避免旧后端接口缺失影响列表页操作
   },
   beforeUnmount() {
@@ -1938,6 +2146,8 @@ export default {
     if (this.messageTimer) {
       clearTimeout(this.messageTimer)
     }
+    window.removeEventListener('online', this.onNetworkOnline)
+    window.removeEventListener('offline', this.onNetworkOffline)
   }
 }
 </script>
@@ -2001,6 +2211,32 @@ export default {
 .editor-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78em;
+  font-weight: 700;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.sync-badge.offline {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.sync-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
 }
 
 .btn-back {

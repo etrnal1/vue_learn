@@ -9,6 +9,10 @@
         ➕ 新建规则
       </button>
     </div>
+    <div v-if="noticeMessage" class="notice-banner">{{ noticeMessage }}</div>
+    <div v-if="queueStatus.count > 0" class="queue-banner">
+      {{ queueStatus.offline ? '离线模式' : '待同步' }}：{{ queueStatus.count }} 个写入操作在队列中
+    </div>
 
     <!-- 流程选择 -->
     <div class="flow-selector">
@@ -232,6 +236,14 @@ export default {
       showLogsModal: false,
       editingRule: null,
       logs: [],
+      noticeMessage: '',
+      noticeTimer: null,
+      queueStatus: {
+        count: 0,
+        offline: false,
+        flushing: false
+      },
+      unwatchWriteQueue: null,
       formData: {
         ruleName: '',
         ruleType: '',
@@ -252,9 +264,37 @@ export default {
     }
   },
   mounted() {
+    this.unwatchWriteQueue = api.onWriteQueueChange((state) => {
+      this.queueStatus = {
+        count: Number(state?.count) || 0,
+        offline: Boolean(state?.offline),
+        flushing: Boolean(state?.flushing)
+      }
+    })
     this.loadFlows()
   },
+  beforeUnmount() {
+    if (typeof this.unwatchWriteQueue === 'function') {
+      this.unwatchWriteQueue()
+      this.unwatchWriteQueue = null
+    }
+    if (this.noticeTimer) {
+      clearTimeout(this.noticeTimer)
+      this.noticeTimer = null
+    }
+  },
   methods: {
+    isQueuedPayload(payload) {
+      return Boolean(payload?.offlineQueued || payload?.queued)
+    },
+    showNotice(message) {
+      this.noticeMessage = String(message || '')
+      if (this.noticeTimer) clearTimeout(this.noticeTimer)
+      this.noticeTimer = setTimeout(() => {
+        this.noticeMessage = ''
+        this.noticeTimer = null
+      }, 2600)
+    },
     async loadFlows() {
       this.loading = true
       try {
@@ -299,24 +339,64 @@ export default {
         }
 
         if (this.editingRule) {
-          await api.flows.updateAutomationRule(this.editingRule.id, payload)
+          const result = await api.flows.updateAutomationRule(this.editingRule.id, payload)
+          if (this.isQueuedPayload(result)) {
+            const target = this.rules.find((rule) => rule.id === this.editingRule.id)
+            if (target) {
+              target.rule_name = payload.ruleName
+              target.rule_type = payload.ruleType
+              target.trigger_type = payload.triggerType
+              target.trigger_config = JSON.stringify(payload.triggerConfig || {})
+              target.action_type = payload.actionType
+              target.action_config = JSON.stringify(payload.actionConfig || {})
+            }
+            this.showNotice('规则更新已离线入队，联网后自动提交')
+            this.closeModal()
+            return
+          }
         } else {
-          await api.flows.createAutomationRule(this.selectedFlowId, payload)
+          const result = await api.flows.createAutomationRule(this.selectedFlowId, payload)
+          if (this.isQueuedPayload(result)) {
+            this.rules.unshift({
+              id: `queued_${Date.now()}`,
+              rule_name: payload.ruleName,
+              rule_type: payload.ruleType,
+              trigger_type: payload.triggerType,
+              trigger_config: JSON.stringify(payload.triggerConfig || {}),
+              action_type: payload.actionType,
+              action_config: JSON.stringify(payload.actionConfig || {}),
+              created_at: Date.now(),
+              created_by_name: '当前用户',
+              is_enabled: true
+            })
+            this.showNotice('规则创建已离线入队，联网后自动提交')
+            this.closeModal()
+            return
+          }
         }
 
         await this.loadRules()
+        this.showNotice(this.editingRule ? '规则更新成功' : '规则创建成功')
         this.closeModal()
       } catch (error) {
         console.error('保存规则失败:', error)
+        this.showNotice(`保存失败：${error?.message || '未知错误'}`)
       }
     },
 
     async toggleRule(ruleId, isEnabled) {
       try {
-        await api.flows.toggleAutomationRule(ruleId, isEnabled)
+        const target = this.rules.find((item) => item.id === ruleId)
+        if (target) target.is_enabled = isEnabled
+        const result = await api.flows.toggleAutomationRule(ruleId, isEnabled)
+        if (this.isQueuedPayload(result)) {
+          this.showNotice('规则状态切换已离线入队，联网后自动提交')
+          return
+        }
         await this.loadRules()
       } catch (error) {
         console.error('切换规则状态失败:', error)
+        this.showNotice(`切换失败：${error?.message || '未知错误'}`)
       }
     },
 
@@ -324,10 +404,16 @@ export default {
       if (!confirm('确定要删除此规则吗？')) return
 
       try {
-        await api.flows.deleteAutomationRule(ruleId)
+        const result = await api.flows.deleteAutomationRule(ruleId)
+        this.rules = this.rules.filter((item) => item.id !== ruleId)
+        if (this.isQueuedPayload(result)) {
+          this.showNotice('删除请求已离线入队，联网后自动执行')
+          return
+        }
         await this.loadRules()
       } catch (error) {
         console.error('删除规则失败:', error)
+        this.showNotice(`删除失败：${error?.message || '未知错误'}`)
       }
     },
 
@@ -347,6 +433,10 @@ export default {
     async executeRule(ruleId, executionId) {
       try {
         const result = await api.flows.executeAutomationRule(ruleId, executionId)
+        if (this.isQueuedPayload(result)) {
+          this.showNotice('手动执行请求已离线入队，联网后自动执行')
+          return
+        }
         alert(result.message || '规则执行成功')
         await this.loadRules()
       } catch (error) {
@@ -500,6 +590,25 @@ export default {
 .flow-selector .app-select {
   flex: 1;
   max-width: 300px;
+}
+
+.notice-banner,
+.queue-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  font-size: 0.9rem;
+}
+
+.notice-banner {
+  background: color-mix(in srgb, #22c55e 10%, var(--app-card));
+  color: #166534;
+}
+
+.queue-banner {
+  background: color-mix(in srgb, #2563eb 10%, var(--app-card));
+  color: var(--app-text);
 }
 
 .state-message {
@@ -825,6 +934,50 @@ export default {
 
   .flow-selector .app-select {
     max-width: 100%;
+  }
+}
+</style>
+
+<style scoped>
+.flow-automation {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.flow-automation .page-header,
+.flow-automation .flow-selector,
+.flow-automation .rule-card,
+.flow-automation .modal {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  box-shadow: var(--app-soft-shadow);
+}
+.flow-automation .page-header,
+.flow-automation .flow-selector {
+  padding: 14px 16px;
+}
+.flow-automation .badge,
+.flow-automation .btn-toggle,
+.flow-automation .btn-icon {
+  border-radius: 999px;
+}
+.flow-automation .btn,
+.flow-automation .app-input,
+.flow-automation .app-select {
+  border-radius: 10px;
+}
+.flow-automation .app-input:focus,
+.flow-automation .app-select:focus {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+@media (max-width: 768px) {
+  .flow-automation {
+    padding: 12px;
+  }
+  .flow-automation .page-header,
+  .flow-automation .flow-selector {
+    padding: 12px;
   }
 }
 </style>

@@ -1,6 +1,12 @@
 // API 辅助函数
 const API_BASE_STORAGE_KEY = 'vue_learning_api_base_url';
 const AUTH_TOKEN_STORAGE_KEY = 'vue_learning_auth_token';
+const API_GET_CACHE_STORAGE_KEY = 'vue_learning_api_get_cache_v1';
+const API_GET_CACHE_MAX_ENTRIES = 180;
+const DEFAULT_GET_CACHE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_GET_TIMEOUT_MS = 12000;
+const API_WRITE_QUEUE_STORAGE_KEY = 'vue_learning_api_write_queue_v1';
+const API_WRITE_QUEUE_MAX_ENTRIES = 300;
 const configuredBaseRaw = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
 function normalizeApiBase(base) {
@@ -28,6 +34,11 @@ const configuredApiBase = normalizeApiBase(configuredBaseRaw);
 const relativeApiBase = '/api';
 let activeApiBase = '';
 let activeAuthToken = '';
+let writeQueue = [];
+let writeQueueLoaded = false;
+let writeQueueFlushing = false;
+const writeQueueListeners = new Set();
+let writeQueueOnlineHandlerBound = false;
 
 function getApiBaseCandidates() {
   const seen = new Set();
@@ -76,6 +87,281 @@ function getActiveAuthToken() {
   return String(activeAuthToken || getRuntimeAuthToken() || '').trim();
 }
 
+function getGetCacheStore() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage?.getItem(API_GET_CACHE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function setGetCacheStore(store) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(API_GET_CACHE_STORAGE_KEY, JSON.stringify(store || {}));
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function compactGetCacheStore(store) {
+  const entries = Object.entries(store || {});
+  if (entries.length <= API_GET_CACHE_MAX_ENTRIES) return store || {};
+  entries.sort((a, b) => Number((b[1] || {}).cachedAt || 0) - Number((a[1] || {}).cachedAt || 0));
+  return Object.fromEntries(entries.slice(0, API_GET_CACHE_MAX_ENTRIES));
+}
+
+function isRuntimeOffline() {
+  if (typeof window === 'undefined') return false;
+  return window.navigator?.onLine === false;
+}
+
+function isLikelyNetworkError(error) {
+  if (!error) return false;
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    error?.name === 'TypeError' ||
+    error?.name === 'AbortError' ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('network request failed') ||
+    message.includes('load failed') ||
+    message.includes('timeout') ||
+    message.includes('请求超时')
+  );
+}
+
+function buildGetCacheKey(endpoint, token) {
+  const tokenSuffix = token ? `auth:${token.slice(0, 16)}` : 'guest';
+  return `${endpoint}::${tokenSuffix}`;
+}
+
+function getCachedGetPayload(cacheKey, { allowExpired = false, ttlMs = DEFAULT_GET_CACHE_TTL_MS } = {}) {
+  const store = getGetCacheStore();
+  const entry = store?.[cacheKey];
+  if (!entry || typeof entry !== 'object') return null;
+  const cachedAt = Number(entry.cachedAt || 0);
+  if (!cachedAt) return null;
+  const isExpired = Date.now() - cachedAt > Math.max(0, Number(ttlMs) || 0);
+  if (!allowExpired && isExpired) return null;
+  return { payload: entry.payload, cachedAt };
+}
+
+function saveCachedGetPayload(cacheKey, payload, apiBase = '') {
+  if (!cacheKey) return;
+  const next = getGetCacheStore();
+  next[cacheKey] = {
+    payload,
+    apiBase,
+    cachedAt: Date.now()
+  };
+  setGetCacheStore(compactGetCacheStore(next));
+}
+
+function notifyWriteQueueChanged() {
+  const snapshot = {
+    count: writeQueue.length,
+    flushing: writeQueueFlushing,
+    offline: isRuntimeOffline()
+  };
+  writeQueueListeners.forEach((handler) => {
+    try {
+      handler(snapshot);
+    } catch (error) {
+      // ignore listener errors
+    }
+  });
+}
+
+function loadWriteQueue() {
+  if (writeQueueLoaded || typeof window === 'undefined') return;
+  writeQueueLoaded = true;
+  try {
+    const raw = window.localStorage?.getItem(API_WRITE_QUEUE_STORAGE_KEY) || '[]';
+    const parsed = JSON.parse(raw);
+    writeQueue = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    writeQueue = [];
+  }
+}
+
+function persistWriteQueue() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (writeQueue.length > API_WRITE_QUEUE_MAX_ENTRIES) {
+      writeQueue = writeQueue.slice(writeQueue.length - API_WRITE_QUEUE_MAX_ENTRIES);
+    }
+    window.localStorage?.setItem(API_WRITE_QUEUE_STORAGE_KEY, JSON.stringify(writeQueue));
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function bindWriteQueueOnlineHandler() {
+  if (writeQueueOnlineHandlerBound || typeof window === 'undefined') return;
+  writeQueueOnlineHandlerBound = true;
+  window.addEventListener('online', () => {
+    void flushWriteQueue();
+  });
+}
+
+function shouldQueueWriteRequest(endpoint = '', method = 'GET', queueOption = true, replaying = false) {
+  if (!queueOption || replaying) return false;
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return false;
+  const normalized = String(endpoint || '');
+  const excludedPrefixes = [
+    '/auth',
+    '/git',
+    '/terminal',
+    '/docker',
+    '/ffmpeg',
+    '/weibo-crawler'
+  ];
+  if (excludedPrefixes.some((prefix) => normalized.startsWith(prefix))) return false;
+  return true;
+}
+
+function parseRequestBodyBody(body) {
+  if (body === undefined || body === null) return null;
+  if (typeof body !== 'string') return null;
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    return null;
+  }
+}
+
+function createQueuedFallbackPayload(entry) {
+  const parsedBody = parseRequestBodyBody(entry.body);
+  if (parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) {
+    return {
+      ...parsedBody,
+      queued: true,
+      offlineQueued: true,
+      queueId: entry.id
+    };
+  }
+  return {
+    queued: true,
+    offlineQueued: true,
+    queueId: entry.id
+  };
+}
+
+function enqueueWriteRequest({
+  endpoint,
+  method,
+  headers = {},
+  body = undefined,
+  timeoutMs = 0
+}) {
+  loadWriteQueue();
+  const now = Date.now();
+  const id = `wq_${now}_${Math.random().toString(36).slice(2, 8)}`;
+  const normalizedHeaders = { ...headers };
+  const normalizedBody = (body === undefined || body === null || typeof body === 'string') ? body : null;
+  const next = {
+    id,
+    endpoint,
+    method,
+    headers: normalizedHeaders,
+    body: normalizedBody,
+    timeoutMs: Number(timeoutMs) > 0 ? Number(timeoutMs) : 0,
+    queuedAt: now
+  };
+  writeQueue.push(next);
+  persistWriteQueue();
+  notifyWriteQueueChanged();
+  return createQueuedFallbackPayload(next);
+}
+
+async function flushWriteQueue() {
+  loadWriteQueue();
+  bindWriteQueueOnlineHandler();
+  if (writeQueueFlushing || writeQueue.length === 0 || isRuntimeOffline()) {
+    return { success: true, synced: 0, remaining: writeQueue.length };
+  }
+  writeQueueFlushing = true;
+  notifyWriteQueueChanged();
+  let synced = 0;
+  try {
+    while (writeQueue.length > 0 && !isRuntimeOffline()) {
+      const item = writeQueue[0];
+      try {
+        await apiRequest(item.endpoint, {
+          method: item.method,
+          headers: item.headers,
+          body: item.body,
+          timeoutMs: item.timeoutMs,
+          queue: false,
+          _fromWriteQueueReplay: true
+        });
+        writeQueue.shift();
+        synced += 1;
+        persistWriteQueue();
+        notifyWriteQueueChanged();
+      } catch (error) {
+        if (isLikelyNetworkError(error)) {
+          break;
+        }
+        // 非网络错误保留队列项，等待用户处理后重试
+        if (writeQueue[0]?.id === item?.id) {
+          writeQueue[0] = {
+            ...writeQueue[0],
+            lastError: String(error?.message || '未知错误'),
+            lastErrorAt: Date.now()
+          };
+          persistWriteQueue();
+          notifyWriteQueueChanged();
+        }
+        console.error('Write queue replay failed:', error);
+        break;
+      }
+    }
+    return {
+      success: true,
+      synced,
+      remaining: writeQueue.length
+    };
+  } finally {
+    writeQueueFlushing = false;
+    notifyWriteQueueChanged();
+  }
+}
+
+async function replayWriteQueueItem(id) {
+  loadWriteQueue();
+  const queueId = String(id || '');
+  const index = writeQueue.findIndex((item) => String(item?.id) === queueId);
+  if (index < 0) return { success: false, reason: 'not_found' };
+  const item = writeQueue[index];
+  await apiRequest(item.endpoint, {
+    method: item.method,
+    headers: item.headers,
+    body: item.body,
+    timeoutMs: item.timeoutMs,
+    queue: false,
+    _fromWriteQueueReplay: true
+  });
+  writeQueue.splice(index, 1);
+  persistWriteQueue();
+  notifyWriteQueueChanged();
+  return { success: true };
+}
+
+function removeWriteQueueItem(id) {
+  loadWriteQueue();
+  const queueId = String(id || '');
+  const next = writeQueue.filter((item) => String(item?.id) !== queueId);
+  writeQueue = next;
+  persistWriteQueue();
+  notifyWriteQueueChanged();
+}
+
 function saveAuthToken(token) {
   const value = String(token || '').trim();
   activeAuthToken = value;
@@ -113,10 +399,27 @@ async function parseErrorFromResponse(response) {
 
 async function apiRequest(endpoint, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
+  const {
+    cache: useCacheOption,
+    cacheTtlMs,
+    preferCache = false,
+    timeoutMs,
+    queue: queueOption = true,
+    _fromWriteQueueReplay = false,
+    ...fetchOptions
+  } = options;
+  loadWriteQueue();
+  bindWriteQueueOnlineHandler();
+  const useGetCache = method === 'GET' && useCacheOption !== false;
+  const useWriteQueue = shouldQueueWriteRequest(endpoint, method, queueOption, _fromWriteQueueReplay);
+  const resolvedCacheTtlMs = Number(cacheTtlMs) > 0 ? Number(cacheTtlMs) : DEFAULT_GET_CACHE_TTL_MS;
+  const resolvedTimeoutMs = Number(timeoutMs) > 0
+    ? Number(timeoutMs)
+    : (method === 'GET' ? DEFAULT_GET_TIMEOUT_MS : 0);
   const canRetryResponseError = method === 'GET' || method === 'HEAD';
   let lastError = null;
   const token = getActiveAuthToken();
-  const optionHeaders = options.headers || {};
+  const optionHeaders = fetchOptions.headers || {};
   const headers = {
     'Content-Type': 'application/json',
     ...optionHeaders
@@ -124,14 +427,42 @@ async function apiRequest(endpoint, options = {}) {
   if (token && !headers.Authorization && !headers.authorization) {
     headers.Authorization = `Bearer ${token}`;
   }
+  const cacheKey = useGetCache ? buildGetCacheKey(endpoint, token) : '';
+  if (useWriteQueue && isRuntimeOffline()) {
+    return enqueueWriteRequest({
+      endpoint,
+      method,
+      headers,
+      body: fetchOptions.body,
+      timeoutMs: resolvedTimeoutMs
+    });
+  }
+
+  if (useGetCache && (preferCache || isRuntimeOffline())) {
+    const cached = getCachedGetPayload(cacheKey, {
+      allowExpired: isRuntimeOffline(),
+      ttlMs: resolvedCacheTtlMs
+    });
+    if (cached) {
+      return cached.payload;
+    }
+  }
 
   for (const base of getApiBaseCandidates()) {
     const url = buildApiUrl(base, endpoint);
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      let timeoutId = null;
+      if (controller && resolvedTimeoutMs > 0) {
+        timeoutId = setTimeout(() => controller.abort(), resolvedTimeoutMs);
+      }
+
       const response = await fetch(url, {
         headers,
-        ...options
+        ...fetchOptions,
+        signal: controller ? controller.signal : fetchOptions.signal
       });
+      if (timeoutId) clearTimeout(timeoutId);
 
       if (!response.ok) {
         const err = await parseErrorFromResponse(response);
@@ -147,10 +478,39 @@ async function apiRequest(endpoint, options = {}) {
         throw err;
       });
       rememberActiveApiBase(base);
+      if (!_fromWriteQueueReplay && !writeQueueFlushing && writeQueue.length > 0 && !isRuntimeOffline()) {
+        void flushWriteQueue();
+      }
+      if (useGetCache) {
+        saveCachedGetPayload(cacheKey, payload, base);
+      }
       return payload;
     } catch (error) {
-      if (error?.name === 'AbortError') throw error;
+      if (error?.name === 'AbortError') {
+        const timeoutError = new Error(`请求超时: ${endpoint}`);
+        timeoutError.cause = error;
+        lastError = timeoutError;
+        continue;
+      }
       lastError = error;
+    }
+  }
+
+  if (useWriteQueue && isLikelyNetworkError(lastError)) {
+    return enqueueWriteRequest({
+      endpoint,
+      method,
+      headers,
+      body: fetchOptions.body,
+      timeoutMs: resolvedTimeoutMs
+    });
+  }
+
+  if (useGetCache) {
+    const fallback = getCachedGetPayload(cacheKey, { allowExpired: true, ttlMs: resolvedCacheTtlMs });
+    if (fallback) {
+      console.warn(`API GET fallback to cache [${endpoint}]`, lastError);
+      return fallback.payload;
     }
   }
 
@@ -179,6 +539,62 @@ export const api = {
     configured: configuredApiBase || '',
     runtime: getRuntimeApiBase() || ''
   }),
+  clearGetCache: () => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage?.removeItem(API_GET_CACHE_STORAGE_KEY);
+    } catch (error) {
+      // ignore storage errors
+    }
+  },
+  getGetCacheStats: () => {
+    const store = getGetCacheStore();
+    return {
+      count: Object.keys(store || {}).length
+    };
+  },
+  getWriteQueueStats: () => {
+    loadWriteQueue();
+    return {
+      count: writeQueue.length,
+      flushing: writeQueueFlushing,
+      offline: isRuntimeOffline()
+    };
+  },
+  getWriteQueueItems: () => {
+    loadWriteQueue();
+    return writeQueue.map((item) => ({
+      id: item.id,
+      endpoint: item.endpoint,
+      method: item.method,
+      queuedAt: item.queuedAt,
+      lastError: item.lastError || '',
+      lastErrorAt: item.lastErrorAt || 0
+    }));
+  },
+  clearWriteQueue: () => {
+    loadWriteQueue();
+    writeQueue = [];
+    persistWriteQueue();
+    notifyWriteQueueChanged();
+  },
+  removeWriteQueueItem: (id) => removeWriteQueueItem(id),
+  replayWriteQueueItem: (id) => replayWriteQueueItem(id),
+  flushWriteQueue: () => flushWriteQueue(),
+  onWriteQueueChange: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    loadWriteQueue();
+    bindWriteQueueOnlineHandler();
+    writeQueueListeners.add(handler);
+    handler({
+      count: writeQueue.length,
+      flushing: writeQueueFlushing,
+      offline: isRuntimeOffline()
+    });
+    return () => {
+      writeQueueListeners.delete(handler);
+    };
+  },
   setAuthToken: (token) => saveAuthToken(token),
   getAuthToken: () => getActiveAuthToken(),
   clearAuthToken: () => saveAuthToken(''),

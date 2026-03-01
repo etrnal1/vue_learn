@@ -2207,3 +2207,92 @@ export default {
   }
 }
 </style>
+
+<style scoped>
+.git-manager {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1320px;
+}
+.git-manager .page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 18px;
+}
+.git-manager .page-header h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.2vw, 1.8rem);
+  letter-spacing: 0.01em;
+}
+.git-manager .subtitle {
+  color: var(--app-text-muted);
+}
+.git-manager .card,
+.git-manager .status-card {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  box-shadow: var(--app-soft-shadow);
+}
+.git-manager .btn {
+  border-radius: 10px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+.git-manager .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(17, 24, 39, 0.1);
+}
+.git-manager .branch-item {
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card);
+}
+.git-manager .branch-item.current {
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.18) inset;
+}
+.git-manager .branch-search-input,
+.git-manager .branch-input,
+.git-manager .commit-message-input,
+.git-manager .remote-select {
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-elevated);
+}
+.git-manager .branch-search-input:focus,
+.git-manager .branch-input:focus,
+.git-manager .commit-message-input:focus,
+.git-manager .remote-select:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+.git-manager .operation-result {
+  border-radius: 12px;
+}
+@media (max-width: 900px) {
+  .git-manager .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 768px) {
+  .git-manager {
+    padding: 12px;
+  }
+  .git-manager .remote-ops-row,
+  .git-manager .commit-tools,
+  .git-manager .branch-filter-tools {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .git-manager .btn,
+  .git-manager .remote-select,
+  .git-manager .branch-search-input,
+  .git-manager .branch-input {
+    width: 100%;
+  }
+}
+</style>

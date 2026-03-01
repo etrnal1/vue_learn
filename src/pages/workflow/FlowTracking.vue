@@ -536,3 +536,45 @@ export default {
   }
 }
 </style>
+
+<style scoped>
+.flow-tracking {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1280px;
+}
+.flow-tracking .tracking-header,
+.flow-tracking .instance-card,
+.flow-tracking .panel-body {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+  box-shadow: var(--app-soft-shadow);
+}
+.flow-tracking .tracking-header {
+  padding: 14px 16px;
+}
+.flow-tracking .tracking-header h2 {
+  font-size: clamp(1.35rem, 2.2vw, 1.7rem);
+}
+.flow-tracking .search-input {
+  border-radius: 10px;
+  background: var(--app-card);
+}
+.flow-tracking .search-input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+.flow-tracking .card-actions .btn {
+  border-radius: 9px;
+}
+.flow-tracking .status-badge {
+  border-radius: 999px;
+}
+@media (max-width: 768px) {
+  .flow-tracking .tracking-header,
+  .flow-tracking .panel-body {
+    padding: 12px;
+  }
+}
+</style>

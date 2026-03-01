@@ -369,6 +369,89 @@ td {
   margin: 0;
 }
 
+/* Enterprise overrides */
+.admin-page {
+  padding: 6px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% -8%, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 94%, #ffffff), var(--app-bg));
+}
+
+.page-head {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--app-card) 96%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.page-head h2 {
+  font-size: 1.05em;
+}
+
+.page-head p {
+  font-size: 0.82em;
+}
+
+.panel {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-card) 97%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.panel h3 {
+  font-size: 0.95em;
+}
+
+.input,
+.btn {
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  background: color-mix(in srgb, var(--app-primary) 6%, transparent);
+}
+
+td {
+  font-size: 12px;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.menu-item {
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.menu-item:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 30%, var(--app-border));
+  background: color-mix(in srgb, var(--app-primary) 7%, transparent);
+}
+
+.status-tag {
+  border: 1px solid transparent;
+}
+
+.status-tag.enabled {
+  border-color: rgba(22, 163, 74, 0.25);
+}
+
+.status-tag.disabled {
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
 @media (max-width: 1040px) {
   .layout-grid {
     grid-template-columns: 1fr;

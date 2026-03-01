@@ -316,3 +316,39 @@ export default {
   }
 }
 </style>
+
+<style scoped>
+.flow-tasks {
+  padding: clamp(16px, 2vw, 24px);
+  max-width: 1180px;
+}
+.flow-tasks .tasks-header {
+  padding: 14px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--app-card-elevated), var(--app-card));
+}
+.flow-tasks .task-item {
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--app-card), var(--app-card-elevated));
+}
+.flow-tasks .task-item:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+}
+.flow-tasks .meta-tag {
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+}
+.flow-tasks .filter-select,
+.flow-tasks .btn {
+  border-radius: 10px;
+}
+@media (max-width: 768px) {
+  .flow-tasks {
+    padding: 12px;
+  }
+  .flow-tasks .tasks-header {
+    padding: 12px;
+  }
+}
+</style>

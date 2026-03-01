@@ -36,7 +36,8 @@
     "mysql2": "^3.6.5",
     "three": "^0.183.1",
     "vue": "^3.3.4",
-    "vue-echarts": "^8.0.1"
+    "vue-echarts": "^8.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",

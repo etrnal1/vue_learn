@@ -2,7 +2,7 @@
   <div class="admin-page">
     <div class="page-head">
       <h2>菜单管理</h2>
-      <p>支持 1 级菜单、2 级菜单维护，并可配置后台左侧导航分组。</p>
+      <p>支持多级菜单维护，并可配置后台左侧导航分组。</p>
     </div>
 
     <form class="panel form-grid" @submit.prevent="saveItem">
@@ -11,7 +11,7 @@
         <span>上级菜单</span>
         <select v-model="form.parentId" class="input">
           <option :value="''">无（一级菜单）</option>
-          <option v-for="item in topMenus" :key="item.id" :value="item.id">{{ item.name }}</option>
+          <option v-for="item in parentOptions" :key="item.id" :value="item.id">{{ item.label }}</option>
         </select>
       </label>
       <label class="field">
@@ -41,6 +41,10 @@
           <option value="disabled">停用</option>
         </select>
       </label>
+      <label class="field">
+        <span>自定义级别</span>
+        <input v-model.number="form.customLevel" type="number" class="input" min="1" placeholder="不填则自动" />
+      </label>
       <div class="actions">
         <button class="btn btn-primary" type="submit">{{ editingId ? '保存修改' : '新增菜单' }}</button>
         <button class="btn" type="button" @click="resetForm">重置</button>
@@ -65,9 +69,9 @@
           </thead>
           <tbody>
             <tr v-for="row in menuRows" :key="row.id">
-              <td>{{ row.level === 1 ? '一级' : '二级' }}</td>
+              <td>{{ displayLevel(row) }}级</td>
               <td>
-                <span :class="['name-text', { child: row.level === 2 }]">{{ row.name }}</span>
+                <span class="name-text" :style="{ paddingLeft: `${Math.max(0, row.level - 1) * 18}px` }">{{ row.name }}</span>
               </td>
               <td>{{ row.path }}</td>
               <td>{{ row.component }}</td>
@@ -198,29 +202,50 @@ export default {
         component: '',
         icon: '',
         order: 1,
-        status: 'enabled'
+        status: 'enabled',
+        customLevel: null
       }
     }
   },
   computed: {
-    topMenus() {
-      return this.menus.filter((item) => !item.parentId).sort(sortMenus)
+    parentOptions() {
+      const disabled = new Set(this.editingId ? this.collectDescendantIds(this.editingId) : [])
+      if (this.editingId) disabled.add(this.editingId)
+      return this.flattenTree()
+        .filter((item) => !disabled.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          label: `${'\u3000'.repeat(Math.max(0, item.level - 1))}${item.name}`
+        }))
     },
     menuRows() {
-      const top = this.topMenus
-      const rows = []
-      top.forEach((parent) => {
-        rows.push({ ...parent, level: 1 })
-        const children = this.menus
-          .filter((item) => item.parentId === parent.id)
-          .sort(sortMenus)
-          .map((item) => ({ ...item, level: 2 }))
-        rows.push(...children)
-      })
-      return rows
+      return this.flattenTree()
     }
   },
   methods: {
+    getChildren(parentId) {
+      return this.menus.filter((item) => normalizeParentId(item.parentId) === normalizeParentId(parentId)).sort(sortMenus)
+    },
+    flattenTree(parentId = null, level = 1, visited = new Set()) {
+      const rows = []
+      const children = this.getChildren(parentId)
+      children.forEach((item) => {
+        if (visited.has(item.id)) return
+        visited.add(item.id)
+        rows.push({ ...item, level })
+        rows.push(...this.flattenTree(item.id, level + 1, visited))
+      })
+      return rows
+    },
+    collectDescendantIds(id, visited = new Set()) {
+      const children = this.getChildren(id)
+      children.forEach((child) => {
+        if (visited.has(child.id)) return
+        visited.add(child.id)
+        this.collectDescendantIds(child.id, visited)
+      })
+      return visited
+    },
     loadData() {
       this.menus = getMenus()
       const config = getSidebarNavConfig()
@@ -248,16 +273,30 @@ export default {
         component: '',
         icon: '',
         order: 1,
-        status: 'enabled'
+        status: 'enabled',
+        customLevel: null
       }
+    },
+    displayLevel(row) {
+      const custom = Number(row.customLevel)
+      if (Number.isFinite(custom) && custom > 0) return custom
+      return Number(row.level || 1)
     },
     saveItem() {
       this.message = ''
       const parentId = normalizeParentId(this.form.parentId)
       if (parentId) {
         const parent = this.menus.find((item) => item.id === parentId)
-        if (!parent || parent.parentId) {
-          this.message = '二级菜单只能挂在一级菜单下'
+        if (!parent) {
+          this.message = '上级菜单不存在'
+          return
+        }
+        if (this.editingId && parentId === this.editingId) {
+          this.message = '上级菜单不能选择自己'
+          return
+        }
+        if (this.editingId && this.collectDescendantIds(this.editingId).has(parentId)) {
+          this.message = '上级菜单不能选择当前菜单的子级'
           return
         }
       }
@@ -273,7 +312,8 @@ export default {
             component: this.form.component,
             icon: this.form.icon,
             order: Number(this.form.order || 1),
-            status: this.form.status
+            status: this.form.status,
+            customLevel: this.form.customLevel ? Number(this.form.customLevel) : null
           }
         })
         this.message = '菜单已更新'
@@ -286,7 +326,8 @@ export default {
           component: this.form.component,
           icon: this.form.icon,
           order: Number(this.form.order || 1),
-          status: this.form.status
+          status: this.form.status,
+          customLevel: this.form.customLevel ? Number(this.form.customLevel) : null
         })
         this.message = '菜单已新增'
       }
@@ -317,13 +358,14 @@ export default {
         component: row.component || '',
         icon: row.icon || '',
         order: Number(row.order || 1),
-        status: row.status || 'enabled'
+        status: row.status || 'enabled',
+        customLevel: row.customLevel ? Number(row.customLevel) : null
       }
     },
     removeItem(row) {
       const hasChildren = this.menus.some((item) => item.parentId === row.id)
       if (hasChildren) {
-        this.message = '请先删除二级菜单后再删除一级菜单'
+        this.message = '请先删除子菜单'
         return
       }
       if (!window.confirm(`确认删除菜单「${row.name}」吗？`)) return
@@ -454,15 +496,8 @@ td {
   margin-top: 2px;
 }
 
-.name-text.child {
-  padding-left: 18px;
-  position: relative;
-}
-
-.name-text.child::before {
-  content: '└';
-  position: absolute;
-  left: 0;
+.name-text {
+  display: inline-block;
 }
 
 .status-tag {
@@ -507,5 +542,81 @@ td {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--app-text-secondary);
+}
+
+/* Enterprise overrides */
+.admin-page {
+  padding: 6px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% -8%, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 94%, #ffffff), var(--app-bg));
+}
+
+.page-head {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--app-card) 96%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.page-head h2 {
+  font-size: 1.05em;
+}
+
+.page-head p {
+  font-size: 0.82em;
+}
+
+.panel {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-card) 97%, #ffffff);
+  box-shadow: var(--app-soft-shadow);
+}
+
+.panel h3 {
+  font-size: 0.95em;
+}
+
+.input,
+.btn {
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+table {
+  background: transparent;
+}
+
+th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+  background: color-mix(in srgb, var(--app-primary) 6%, transparent);
+}
+
+td {
+  font-size: 12px;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.status-tag {
+  border: 1px solid transparent;
+}
+
+.status-tag.enabled {
+  border-color: rgba(22, 163, 74, 0.25);
+}
+
+.status-tag.disabled {
+  border-color: rgba(220, 38, 38, 0.2);
 }
 </style>
