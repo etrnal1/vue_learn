@@ -296,7 +296,8 @@
             <span class="perf-chip">首可见：{{ firstVisiblePerfMs == null ? '—' : `${firstVisiblePerfMs}ms` }}</span>
             <span class="perf-chip">首可交互：{{ initialPagePerfMs == null ? '—' : `${initialPagePerfMs}ms` }}</span>
             <span class="perf-chip">初始化完成：{{ initDonePerfMs == null ? '—' : `${initDonePerfMs}ms` }}</span>
-            <span class="perf-chip">子页面响应：{{ lastTabPerfMs == null ? '—' : `${lastTabPerfMs}ms` }}</span>
+            <span class="perf-chip">子页面首帧：{{ lastTabPerfMs == null ? '—' : `${lastTabPerfMs}ms` }}</span>
+            <span class="perf-chip">子页面就绪：{{ lastTabReadyPerfMs == null ? '—' : `${lastTabReadyPerfMs}ms` }}</span>
             <span v-if="lastTabPerfLabel" class="perf-chip is-muted">{{ lastTabPerfLabel }}</span>
             <button type="button" class="perf-open-btn" @click="openPerfPanel">性能面板</button>
           </div>
@@ -368,6 +369,21 @@
             <span class="perf-chip">最近子页面 p50：{{ perfStats.p50 == null ? '—' : `${perfStats.p50}ms` }}</span>
             <span class="perf-chip">最近子页面 p95：{{ perfStats.p95 == null ? '—' : `${perfStats.p95}ms` }}</span>
             <span class="perf-chip is-muted">样本：{{ perfStats.count }}</span>
+          </div>
+          <div v-if="tabTraceLogs.length > 0" class="trace-list">
+            <div v-for="trace in tabTraceLogs" :key="trace.id" class="trace-item">
+              <div class="trace-head">
+                <code>{{ trace.label }}</code>
+                <span>{{ trace.totalMs }}ms</span>
+              </div>
+              <div class="trace-stage-row">
+                <span class="trace-stage">首帧 {{ trace.firstPaintMs == null ? '—' : `${trace.firstPaintMs}ms` }}</span>
+                <span class="trace-stage">数据 {{ trace.dataReadyMs == null ? '—' : `${trace.dataReadyMs}ms` }}</span>
+                <span class="trace-stage">Chunk {{ trace.asyncChunkMs == null ? '—' : `${trace.asyncChunkMs}ms` }}</span>
+                <span class="trace-stage">请求 {{ trace.requestCount }}</span>
+                <span class="trace-stage">状态 {{ trace.completeReason }}</span>
+              </div>
+            </div>
           </div>
           <div class="perf-panel-actions">
             <button type="button" class="sync-btn" @click="refreshPerfPanel">刷新</button>
@@ -569,6 +585,9 @@ const DEFAULT_PERMISSION_CONFIG = {
     runtimeLogs: ['admin']
   }
 }
+const APP_BOOTSTRAP_CACHE_KEY = 'app_bootstrap_cache_v1'
+const TAB_TRACE_SETTLE_DELAY_MS = 260
+const TAB_TRACE_TIMEOUT_MS = 12000
 
 export default {
   components: {
@@ -734,9 +753,13 @@ export default {
       initDonePerfMs: null,
       pendingTabPerf: null,
       lastTabPerfMs: null,
+      lastTabReadyPerfMs: null,
       lastTabPerfLabel: '',
       showPerfPanel: false,
-      perfPanelLogs: []
+      perfPanelLogs: [],
+      inFlightApiRequests: 0,
+      activeTabTrace: null,
+      tabTraceHistory: []
     }
   },
   computed: {
@@ -917,9 +940,17 @@ export default {
 
       return styleVars
     },
+    tabTraceLogs() {
+      return this.tabTraceHistory
+        .slice(0, 20)
+        .map((item) => ({
+          ...item,
+          label: this.getTabLabel(item.tabId)
+        }))
+    },
     perfStats() {
       const samples = this.perfPanelLogs
-        .filter((item) => item.action === 'subpage_response')
+        .filter((item) => item.action === 'subpage_trace_complete')
         .map((item) => Number(item.durationMs))
         .filter((n) => Number.isFinite(n) && n >= 0)
         .sort((a, b) => a - b)
@@ -943,6 +974,142 @@ export default {
     loadAppUiSettings() {
       this.uiSettings = getAppUiSettings()
     },
+    nowPerf() {
+      return typeof performance !== 'undefined' ? performance.now() : Date.now()
+    },
+    getBootstrapCacheSnapshot() {
+      if (typeof window === 'undefined') return null
+      try {
+        const raw = window.localStorage?.getItem(APP_BOOTSTRAP_CACHE_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        return parsed && typeof parsed === 'object' ? parsed : null
+      } catch (_error) {
+        return null
+      }
+    },
+    saveBootstrapCachePatch(patch = {}) {
+      if (typeof window === 'undefined') return
+      try {
+        const prev = this.getBootstrapCacheSnapshot() || {}
+        const next = {
+          ...prev,
+          ...patch,
+          savedAt: Date.now()
+        }
+        window.localStorage?.setItem(APP_BOOTSTRAP_CACHE_KEY, JSON.stringify(next))
+      } catch (_error) {
+        // ignore storage errors
+      }
+    },
+    applyBootstrapCacheSnapshot() {
+      if (!this.isLoggedIn) return { permissionApplied: false, roleApplied: false, tabAccessApplied: false }
+      const cache = this.getBootstrapCacheSnapshot()
+      if (!cache || typeof cache !== 'object') {
+        return { permissionApplied: false, roleApplied: false, tabAccessApplied: false }
+      }
+
+      let permissionApplied = false
+      let roleApplied = false
+      let tabAccessApplied = false
+
+      if (cache.permissionConfig && typeof cache.permissionConfig === 'object') {
+        this.applyPermissionConfig(cache.permissionConfig)
+        permissionApplied = true
+      }
+      const roleFromCache = String(cache.currentRole || '').trim()
+      if (roleFromCache && this.roles.some((role) => role.id === roleFromCache)) {
+        this.currentRole = roleFromCache
+        roleApplied = true
+      }
+      if (!this.isDebugMode && cache.tabAccess && typeof cache.tabAccess === 'object') {
+        const allowedTabs = Array.isArray(cache.tabAccess.allowedTabs)
+          ? cache.tabAccess.allowedTabs.map((id) => String(id || '').trim()).filter(Boolean)
+          : []
+        this.allowedTabsFromServer = Array.from(new Set(allowedTabs))
+        this.tabAccessSource = String(cache.tabAccess.source || 'role')
+        this.tabAccessReady = Boolean(cache.tabAccess.tabAccessReady)
+        tabAccessApplied = true
+      }
+
+      return { permissionApplied, roleApplied, tabAccessApplied }
+    },
+    clearTabTraceTimers() {
+      if (this._tabTraceSettleTimer) {
+        clearTimeout(this._tabTraceSettleTimer)
+        this._tabTraceSettleTimer = null
+      }
+      if (this._tabTraceTimeoutTimer) {
+        clearTimeout(this._tabTraceTimeoutTimer)
+        this._tabTraceTimeoutTimer = null
+      }
+    },
+    scheduleTraceSettleCheck() {
+      if (!this.activeTabTrace || this.activeTabTrace.completed) return
+      if (this.activeTabTrace.firstPaintAt == null) return
+      if (this.inFlightApiRequests > 0) return
+      if (this._tabTraceSettleTimer) {
+        clearTimeout(this._tabTraceSettleTimer)
+      }
+      const traceId = this.activeTabTrace.id
+      this._tabTraceSettleTimer = setTimeout(() => {
+        if (!this.activeTabTrace || this.activeTabTrace.id !== traceId || this.activeTabTrace.completed) return
+        if (this.inFlightApiRequests > 0) return
+        this.completeActiveTabTrace('settled')
+      }, TAB_TRACE_SETTLE_DELAY_MS)
+    },
+    completeActiveTabTrace(reason = 'done') {
+      const trace = this.activeTabTrace
+      if (!trace || trace.completed) return
+      trace.dataReadyAt = this.nowPerf()
+      trace.completeReason = reason
+      trace.completed = true
+      const totalMs = Math.max(0, Math.round(trace.dataReadyAt - trace.startAt))
+      const firstPaintMs = trace.firstPaintAt == null
+        ? null
+        : Math.max(0, Math.round(trace.firstPaintAt - trace.startAt))
+      const dataReadyMs = Math.max(0, Math.round(trace.dataReadyAt - trace.startAt))
+      const asyncChunkMs = trace.asyncChunkAt == null
+        ? null
+        : Math.max(0, Math.round(trace.asyncChunkAt - trace.startAt))
+      this.lastTabReadyPerfMs = totalMs
+      this.tabTraceHistory = [
+        {
+          id: trace.id,
+          tabId: trace.tabId,
+          startedAt: trace.startAt,
+          totalMs,
+          firstPaintMs,
+          dataReadyMs,
+          asyncChunkMs,
+          requestCount: trace.requestCount,
+          completeReason: reason
+        },
+        ...this.tabTraceHistory
+      ].slice(0, 30)
+      appendPerfLog({
+        module: 'app',
+        action: 'subpage_trace_complete',
+        status: reason === 'timeout' ? 'timeout' : 'ok',
+        durationMs: totalMs,
+        name: trace.tabId,
+        path: trace.tabId,
+        detail: `firstPaint=${firstPaintMs == null ? '-' : `${firstPaintMs}ms`},dataReady=${dataReadyMs}ms,chunk=${asyncChunkMs == null ? '-' : `${asyncChunkMs}ms`},requests=${trace.requestCount},reason=${reason}`
+      })
+      this.activeTabTrace = null
+      this.clearTabTraceTimers()
+    },
+    onApiRequestTrace(event) {
+      this.inFlightApiRequests = Math.max(0, Number(event?.inFlight || 0))
+      const trace = this.activeTabTrace
+      if (trace && !trace.completed && event?.phase === 'start') {
+        const startAt = Number(event?.at || 0)
+        if (startAt >= trace.startAt - 16) {
+          trace.requestCount += 1
+        }
+      }
+      this.scheduleTraceSettleCheck()
+    },
     afterNextPaint() {
       return new Promise((resolve) => {
         this.$nextTick(() => {
@@ -954,7 +1121,7 @@ export default {
     },
     async recordFirstVisiblePerf() {
       if (this.firstVisiblePerfMs != null) return
-      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const endAt = this.nowPerf()
       this.firstVisiblePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
       appendPerfLog({
         module: 'app',
@@ -967,7 +1134,7 @@ export default {
     },
     async recordInitialPagePerf() {
       if (this.initialPagePerfMs != null) return
-      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const endAt = this.nowPerf()
       this.initialPagePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
       appendPerfLog({
         module: 'app',
@@ -980,10 +1147,18 @@ export default {
     },
     async completePostLoginBootstrap() {
       if (!this.isLoggedIn) return
+      const cacheState = this.applyBootstrapCacheSnapshot()
       const tasks = [
-        this.loadPermissionConfig(),
-        this.loadCurrentRole(),
-        this.loadServerTabAccess()
+        this.loadPermissionConfig({
+          requestOptions: { cache: false },
+          fallbackToDefault: !cacheState.permissionApplied
+        }),
+        this.loadCurrentRole({
+          requestOptions: { cache: false }
+        }),
+        this.loadServerTabAccess({
+          requestOptions: { cache: false }
+        })
       ]
       await Promise.allSettled(tasks)
       if (!this.canAccessTab(this.activeTab)) {
@@ -991,7 +1166,7 @@ export default {
       }
       this.warmupCommonTabs()
       this.$nextTick(() => this._formAutoSave?.restoreCurrentScope())
-      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const endAt = this.nowPerf()
       this.initDonePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
       appendPerfLog({
         module: 'app',
@@ -1003,20 +1178,43 @@ export default {
       })
     },
     markTabPerfStart(tabId) {
-      const startAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const startAt = this.nowPerf()
       const loader = tabLoaders[tabId]
+      const traceId = `trace_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      if (this.activeTabTrace && !this.activeTabTrace.completed) {
+        this.completeActiveTabTrace('interrupted')
+      }
+      this.clearTabTraceTimers()
+      this.activeTabTrace = {
+        id: traceId,
+        tabId,
+        startAt,
+        asyncChunkAt: null,
+        firstPaintAt: null,
+        dataReadyAt: null,
+        requestCount: 0,
+        completed: false,
+        completeReason: 'pending'
+      }
+      this._tabTraceTimeoutTimer = setTimeout(() => {
+        if (!this.activeTabTrace || this.activeTabTrace.id !== traceId) return
+        this.completeActiveTabTrace('timeout')
+      }, TAB_TRACE_TIMEOUT_MS)
       this.pendingTabPerf = {
         tabId,
         startAt,
         asyncLoadMs: null
       }
       if (typeof loader === 'function') {
-        const loadStart = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        const loadStart = this.nowPerf()
         loader()
           .then(() => {
             if (!this.pendingTabPerf || this.pendingTabPerf.tabId !== tabId) return
-            const loadEnd = typeof performance !== 'undefined' ? performance.now() : Date.now()
+            const loadEnd = this.nowPerf()
             this.pendingTabPerf.asyncLoadMs = Math.max(0, Math.round(loadEnd - loadStart))
+            if (this.activeTabTrace && this.activeTabTrace.tabId === tabId && !this.activeTabTrace.completed) {
+              this.activeTabTrace.asyncChunkAt = loadEnd
+            }
           })
           .catch(() => {})
       }
@@ -1026,10 +1224,13 @@ export default {
       const snapshot = { ...this.pendingTabPerf }
       await this.afterNextPaint()
       if (!this.pendingTabPerf || this.pendingTabPerf.tabId !== tabId) return
-      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const endAt = this.nowPerf()
       const durationMs = Math.max(0, Math.round(endAt - snapshot.startAt))
       this.lastTabPerfMs = durationMs
       this.lastTabPerfLabel = this.getTabLabel(tabId)
+      if (this.activeTabTrace && this.activeTabTrace.tabId === tabId && !this.activeTabTrace.completed) {
+        this.activeTabTrace.firstPaintAt = endAt
+      }
       appendPerfLog({
         module: 'app',
         action: 'subpage_response',
@@ -1040,6 +1241,7 @@ export default {
         detail: snapshot.asyncLoadMs == null ? '' : `asyncChunk=${snapshot.asyncLoadMs}ms`
       })
       this.pendingTabPerf = null
+      this.scheduleTraceSettleCheck()
     },
     loadSidebarNavConfig() {
       this.sidebarNavConfig = getSidebarNavConfig()
@@ -1248,7 +1450,8 @@ export default {
           item.action === 'initial_first_visible' ||
           item.action === 'initial_interactive' ||
           item.action === 'initial_bootstrap_done' ||
-          item.action === 'subpage_response'
+          item.action === 'subpage_response' ||
+          item.action === 'subpage_trace_complete'
         ))
         .slice(0, 60)
     },
@@ -1266,7 +1469,9 @@ export default {
       this.initialPagePerfMs = null
       this.initDonePerfMs = null
       this.lastTabPerfMs = null
+      this.lastTabReadyPerfMs = null
       this.lastTabPerfLabel = ''
+      this.tabTraceHistory = []
     },
     async retryWriteQueueItem(id) {
       if (!this.networkOnline || this.writeQueueState.flushing) return
@@ -1489,12 +1694,14 @@ export default {
         this.permissionMessage = `切换角色失败：${error?.message || '未知错误'}`
       }
     },
-    async loadCurrentRole() {
+    async loadCurrentRole(options = {}) {
+      const requestOptions = options?.requestOptions || {}
       try {
-        const result = await api.users.getCurrentRole()
+        const result = await api.get('/users/current-role', requestOptions)
         const role = String(result?.role || '').trim()
         if (this.roles.some((item) => item.id === role)) {
           this.currentRole = role
+          this.saveBootstrapCachePatch({ currentRole: role })
         }
       } catch (error) {
         console.warn('加载当前角色失败，使用默认角色', error)
@@ -1536,16 +1743,24 @@ export default {
         this.currentRole = validRoleIds[0] || 'operator'
       }
     },
-    async loadPermissionConfig() {
+    async loadPermissionConfig(options = {}) {
+      const requestOptions = options?.requestOptions || {}
+      const fallbackToDefault = options?.fallbackToDefault !== false
       try {
-        const config = await api.users.getPermissionConfig()
+        const config = await api.get('/users/permission-config', requestOptions)
         this.applyPermissionConfig(config)
+        this.saveBootstrapCachePatch({ permissionConfig: config })
       } catch (error) {
-        console.warn('加载权限配置失败，使用默认配置', error)
-        this.applyPermissionConfig(DEFAULT_PERMISSION_CONFIG)
+        if (fallbackToDefault) {
+          console.warn('加载权限配置失败，使用默认配置', error)
+          this.applyPermissionConfig(DEFAULT_PERMISSION_CONFIG)
+        } else {
+          console.warn('加载权限配置失败，保留当前配置', error)
+        }
       }
     },
-    async loadServerTabAccess() {
+    async loadServerTabAccess(options = {}) {
+      const requestOptions = options?.requestOptions || {}
       if (!this.isLoggedIn || this.isDebugMode) {
         this.tabAccessSource = 'role'
         this.tabAccessReady = false
@@ -1554,13 +1769,20 @@ export default {
       }
 
       try {
-        const result = await api.users.getMyTabAccess()
+        const result = await api.get('/users/my-tab-access', requestOptions)
         const allowedTabs = Array.isArray(result?.allowedTabs)
           ? result.allowedTabs.map((id) => String(id || '').trim()).filter(Boolean)
           : []
         this.allowedTabsFromServer = Array.from(new Set(allowedTabs))
         this.tabAccessSource = String(result?.source || 'role')
         this.tabAccessReady = true
+        this.saveBootstrapCachePatch({
+          tabAccess: {
+            allowedTabs: this.allowedTabsFromServer,
+            source: this.tabAccessSource,
+            tabAccessReady: this.tabAccessReady
+          }
+        })
       } catch (error) {
         console.warn('加载后端菜单权限失败，回退到角色配置', error)
         this.tabAccessSource = 'role'
@@ -1662,6 +1884,8 @@ export default {
         this.refreshWriteQueueItems()
       }
     })
+    this.inFlightApiRequests = Number(api.getRequestTraceState?.().inFlight || 0)
+    this._offApiRequestTrace = api.onRequestTrace?.((event) => this.onApiRequestTrace(event))
     this.refreshSyncState()
     if (this.networkOnline && this.writeQueueState.count > 0) {
       api.flushWriteQueue().finally(() => this.refreshSyncState())
@@ -1739,6 +1963,7 @@ export default {
     }
   },
   beforeUnmount() {
+    this.clearTabTraceTimers()
     this.setBodyScrollLock(false)
     if (typeof window !== 'undefined' && this._onWindowScroll) {
       window.removeEventListener('scroll', this._onWindowScroll)
@@ -1757,6 +1982,10 @@ export default {
     if (typeof this._offWriteQueueChange === 'function') {
       this._offWriteQueueChange()
       this._offWriteQueueChange = null
+    }
+    if (typeof this._offApiRequestTrace === 'function') {
+      this._offApiRequestTrace()
+      this._offApiRequestTrace = null
     }
     if (this._formAutoSave) {
       this._formAutoSave.destroy()
@@ -2550,6 +2779,42 @@ export default {
   display: flex;
   gap: 8px;
   margin: 10px 0;
+}
+
+.trace-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.trace-item {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-elevated);
+  padding: 8px 10px;
+}
+
+.trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.84em;
+}
+
+.trace-stage-row {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trace-stage {
+  font-size: 0.76em;
+  color: var(--app-text-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .perf-log-list {
