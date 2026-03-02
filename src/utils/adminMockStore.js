@@ -3,6 +3,8 @@ const ROLE_KEY = 'admin_roles_v1'
 const DEPT_KEY = 'admin_departments_v1'
 const SIDEBAR_NAV_KEY = 'admin_sidebar_nav_v1'
 const SIDEBAR_NAV_EVENT = 'admin-sidebar-nav-updated'
+const APP_UI_SETTINGS_KEY = 'admin_app_ui_settings_v1'
+const APP_UI_SETTINGS_EVENT = 'admin-app-ui-settings-updated'
 
 const defaultMenus = [
   {
@@ -231,4 +233,39 @@ export function saveSidebarNavConfig(list) {
 
 export function getSidebarNavEventName() {
   return SIDEBAR_NAV_EVENT
+}
+
+const defaultAppUiSettings = {
+  performanceOverlayEnabled: false
+}
+
+function normalizeAppUiSettings(settings) {
+  const source = settings && typeof settings === 'object' ? settings : {}
+  return {
+    performanceOverlayEnabled: Boolean(source.performanceOverlayEnabled)
+  }
+}
+
+export function getAppUiSettings() {
+  if (typeof window === 'undefined') return { ...defaultAppUiSettings }
+  try {
+    const raw = window.localStorage.getItem(APP_UI_SETTINGS_KEY)
+    if (!raw) return { ...defaultAppUiSettings }
+    const parsed = JSON.parse(raw)
+    return normalizeAppUiSettings({ ...defaultAppUiSettings, ...parsed })
+  } catch (_error) {
+    return { ...defaultAppUiSettings }
+  }
+}
+
+export function saveAppUiSettings(settings) {
+  const normalized = normalizeAppUiSettings(settings)
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(APP_UI_SETTINGS_KEY, JSON.stringify(normalized))
+    window.dispatchEvent(new CustomEvent(APP_UI_SETTINGS_EVENT, { detail: normalized }))
+  }
+}
+
+export function getAppUiSettingsEventName() {
+  return APP_UI_SETTINGS_EVENT
 }

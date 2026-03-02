@@ -94,6 +94,18 @@
 
     <section class="panel">
       <div class="panel-head">
+        <h3>界面调试配置</h3>
+        <button class="btn btn-primary" type="button" @click="saveUiSettings">保存界面配置</button>
+      </div>
+      <label class="check-line">
+        <input v-model="uiSettings.performanceOverlayEnabled" type="checkbox" />
+        <span>显示页面响应耗时（含子页面切换）</span>
+      </label>
+      <p v-if="uiMessage" class="message">{{ uiMessage }}</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
         <h3>后台导航分组配置</h3>
         <button class="btn btn-primary" type="button" @click="saveSidebarConfig">保存导航配置</button>
       </div>
@@ -129,9 +141,11 @@
 <script>
 import {
   createRecordId,
+  getAppUiSettings,
   getMenus,
   getSidebarNavConfig,
   saveMenus,
+  saveAppUiSettings,
   saveSidebarNavConfig
 } from '../../utils/adminMockStore.js'
 
@@ -195,6 +209,7 @@ export default {
       editingId: '',
       message: '',
       navMessage: '',
+      uiMessage: '',
       form: {
         parentId: '',
         name: '',
@@ -204,6 +219,9 @@ export default {
         order: 1,
         status: 'enabled',
         customLevel: null
+      },
+      uiSettings: {
+        performanceOverlayEnabled: false
       }
     }
   },
@@ -248,6 +266,7 @@ export default {
     },
     loadData() {
       this.menus = getMenus()
+      this.uiSettings = getAppUiSettings()
       const config = getSidebarNavConfig()
       const map = Object.fromEntries(config.map((item) => [item.id, item]))
       this.navRows = NAV_TAB_OPTIONS.map((tab, index) => {
@@ -348,6 +367,13 @@ export default {
       saveSidebarNavConfig(payload)
       this.navMessage = '导航配置已保存，左侧菜单已实时刷新'
     },
+    saveUiSettings() {
+      saveAppUiSettings(this.uiSettings)
+      this.uiMessage = '界面配置已保存'
+      setTimeout(() => {
+        this.uiMessage = ''
+      }, 1800)
+    },
     editItem(row) {
       this.editingId = row.id
       this.message = ''
@@ -414,6 +440,14 @@ export default {
 
 .panel-head h3 {
   margin: 0;
+}
+
+.check-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--app-text-secondary);
 }
 
 .form-grid {
