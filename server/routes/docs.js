@@ -9,6 +9,8 @@ const router = express.Router()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, '../../')
+const DOCS_DATA_DIR = path.resolve('server/data/docs')
+const DOCS_CUSTOM_BACKUP_FILE = path.join(DOCS_DATA_DIR, 'custom-docs-backup.json')
 const VERSION_REGEX = /^(.*?)(?:[@._ -]v(\d+(?:\.\d+)*))$/i
 const LEARNING_ORDER_HINTS = [
   ['README', 1],
@@ -98,6 +100,63 @@ function createSnippet(content, keyword, size = 120) {
   const prefix = start > 0 ? '...' : ''
   const suffix = end < text.length ? '...' : ''
   return `${prefix}${text.slice(start, end)}${suffix}`
+}
+
+function normalizeCustomDocs(items) {
+  if (!Array.isArray(items)) return []
+  const now = Date.now()
+  const seen = new Set()
+  const normalized = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const title = String(item.title || '').trim()
+    if (!title) continue
+    const id = String(item.id || `custom_${now}_${Math.random().toString(16).slice(2, 8)}`)
+    if (seen.has(id)) continue
+    seen.add(id)
+    const updatedAt = Number(item.updatedAt) || now
+    normalized.push({
+      id,
+      title,
+      type: ['markdown', 'word', 'excel'].includes(String(item.type || ''))
+        ? String(item.type)
+        : 'markdown',
+      versionLabel: String(item.versionLabel || 'v1.0'),
+      content: String(item.content || ''),
+      htmlContent: String(item.htmlContent || ''),
+      excelHeaders: Array.isArray(item.excelHeaders) ? item.excelHeaders.map((v) => String(v || '')) : [],
+      excelRows: Array.isArray(item.excelRows)
+        ? item.excelRows.map((row) => (Array.isArray(row) ? row.map((v) => String(v || '')) : []))
+        : [],
+      attachments: Array.isArray(item.attachments) ? item.attachments : [],
+      images: Array.isArray(item.images) ? item.images : [],
+      createdAt: Number(item.createdAt) || updatedAt,
+      updatedAt
+    })
+  }
+  return normalized.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+}
+
+async function readCustomDocsBackup() {
+  try {
+    const raw = await fsp.readFile(DOCS_CUSTOM_BACKUP_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    return normalizeCustomDocs(parsed?.items || [])
+  } catch (_error) {
+    return []
+  }
+}
+
+async function writeCustomDocsBackup(items) {
+  await fsp.mkdir(DOCS_DATA_DIR, { recursive: true })
+  const normalized = normalizeCustomDocs(items)
+  const payload = {
+    updatedAt: Date.now(),
+    count: normalized.length,
+    items: normalized
+  }
+  await fsp.writeFile(DOCS_CUSTOM_BACKUP_FILE, JSON.stringify(payload, null, 2), 'utf8')
+  return normalized
 }
 
 // 扫描文档目录
@@ -373,6 +432,36 @@ router.get('/search', async (req, res) => {
   } catch (error) {
     console.error('搜索文档失败:', error)
     res.status(500).json({ error: '搜索文档失败' })
+  }
+})
+
+// GET /api/docs/custom-backup - 获取自建文档备份
+router.get('/custom-backup', async (_req, res) => {
+  try {
+    const items = await readCustomDocsBackup()
+    res.json({
+      count: items.length,
+      updatedAt: items[0]?.updatedAt || 0,
+      items
+    })
+  } catch (error) {
+    console.error('读取自建文档备份失败:', error)
+    res.status(500).json({ error: '读取自建文档备份失败' })
+  }
+})
+
+// PUT /api/docs/custom-backup - 保存自建文档备份
+router.put('/custom-backup', async (req, res) => {
+  try {
+    const items = await writeCustomDocsBackup(req.body?.items || [])
+    res.json({
+      count: items.length,
+      updatedAt: Date.now(),
+      items
+    })
+  } catch (error) {
+    console.error('保存自建文档备份失败:', error)
+    res.status(500).json({ error: '保存自建文档备份失败' })
   }
 })
 

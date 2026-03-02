@@ -39,6 +39,23 @@ let writeQueueLoaded = false;
 let writeQueueFlushing = false;
 const writeQueueListeners = new Set();
 let writeQueueOnlineHandlerBound = false;
+let requestTraceSeq = 0;
+let inFlightRequestCount = 0;
+const requestTraceListeners = new Set();
+
+function nowPerfTime() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function emitRequestTrace(event) {
+  requestTraceListeners.forEach((handler) => {
+    try {
+      handler(event);
+    } catch (error) {
+      // ignore listener errors
+    }
+  });
+}
 
 function getApiBaseCandidates() {
   const seen = new Set();
@@ -448,77 +465,103 @@ async function apiRequest(endpoint, options = {}) {
     }
   }
 
-  for (const base of getApiBaseCandidates()) {
-    const url = buildApiUrl(base, endpoint);
-    try {
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      let timeoutId = null;
-      if (controller && resolvedTimeoutMs > 0) {
-        timeoutId = setTimeout(() => controller.abort(), resolvedTimeoutMs);
-      }
-
-      const response = await fetch(url, {
-        headers,
-        ...fetchOptions,
-        signal: controller ? controller.signal : fetchOptions.signal
-      });
-      if (timeoutId) clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const err = await parseErrorFromResponse(response);
-        err.apiBase = base;
-        if (!canRetryResponseError) throw err;
-        lastError = err;
-        continue;
-      }
-
-      const payload = await response.json().catch(() => {
-        const err = new Error('API 返回了非 JSON 响应');
-        err.apiBase = base;
-        throw err;
-      });
-      rememberActiveApiBase(base);
-      if (!_fromWriteQueueReplay && !writeQueueFlushing && writeQueue.length > 0 && !isRuntimeOffline()) {
-        void flushWriteQueue();
-      }
-      if (useGetCache) {
-        saveCachedGetPayload(cacheKey, payload, base);
-      }
-      return payload;
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        const timeoutError = new Error(`请求超时: ${endpoint}`);
-        timeoutError.cause = error;
-        lastError = timeoutError;
-        continue;
-      }
-      lastError = error;
-    }
-  }
-
-  if (useWriteQueue && isLikelyNetworkError(lastError)) {
-    return enqueueWriteRequest({
-      endpoint,
-      method,
-      headers,
-      body: fetchOptions.body,
-      timeoutMs: resolvedTimeoutMs
-    });
-  }
-
-  if (useGetCache) {
-    const fallback = getCachedGetPayload(cacheKey, { allowExpired: true, ttlMs: resolvedCacheTtlMs });
-    if (fallback) {
-      console.warn(`API GET fallback to cache [${endpoint}]`, lastError);
-      return fallback.payload;
-    }
-  }
+  const requestTraceId = `req_${Date.now()}_${++requestTraceSeq}`;
+  const requestStartAt = nowPerfTime();
+  inFlightRequestCount += 1;
+  emitRequestTrace({
+    id: requestTraceId,
+    phase: 'start',
+    endpoint,
+    method,
+    at: requestStartAt,
+    inFlight: inFlightRequestCount
+  });
 
   try {
-    throw lastError || new Error('API 请求失败');
-  } catch (error) {
-    console.error(`API Error [${endpoint}]:`, error);
-    throw error;
+    for (const base of getApiBaseCandidates()) {
+      const url = buildApiUrl(base, endpoint);
+      try {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        let timeoutId = null;
+        if (controller && resolvedTimeoutMs > 0) {
+          timeoutId = setTimeout(() => controller.abort(), resolvedTimeoutMs);
+        }
+
+        const response = await fetch(url, {
+          headers,
+          ...fetchOptions,
+          signal: controller ? controller.signal : fetchOptions.signal
+        });
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const err = await parseErrorFromResponse(response);
+          err.apiBase = base;
+          if (!canRetryResponseError) throw err;
+          lastError = err;
+          continue;
+        }
+
+        const payload = await response.json().catch(() => {
+          const err = new Error('API 返回了非 JSON 响应');
+          err.apiBase = base;
+          throw err;
+        });
+        rememberActiveApiBase(base);
+        if (!_fromWriteQueueReplay && !writeQueueFlushing && writeQueue.length > 0 && !isRuntimeOffline()) {
+          void flushWriteQueue();
+        }
+        if (useGetCache) {
+          saveCachedGetPayload(cacheKey, payload, base);
+        }
+        return payload;
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          const timeoutError = new Error(`请求超时: ${endpoint}`);
+          timeoutError.cause = error;
+          lastError = timeoutError;
+          continue;
+        }
+        lastError = error;
+      }
+    }
+
+    if (useWriteQueue && isLikelyNetworkError(lastError)) {
+      return enqueueWriteRequest({
+        endpoint,
+        method,
+        headers,
+        body: fetchOptions.body,
+        timeoutMs: resolvedTimeoutMs
+      });
+    }
+
+    if (useGetCache) {
+      const fallback = getCachedGetPayload(cacheKey, { allowExpired: true, ttlMs: resolvedCacheTtlMs });
+      if (fallback) {
+        console.warn(`API GET fallback to cache [${endpoint}]`, lastError);
+        return fallback.payload;
+      }
+    }
+
+    try {
+      throw lastError || new Error('API 请求失败');
+    } catch (error) {
+      console.error(`API Error [${endpoint}]:`, error);
+      throw error;
+    }
+  } finally {
+    inFlightRequestCount = Math.max(0, inFlightRequestCount - 1);
+    const endAt = nowPerfTime();
+    emitRequestTrace({
+      id: requestTraceId,
+      phase: 'end',
+      endpoint,
+      method,
+      at: endAt,
+      durationMs: Math.max(0, Math.round(endAt - requestStartAt)),
+      inFlight: inFlightRequestCount
+    });
   }
 }
 
@@ -559,6 +602,21 @@ export const api = {
       count: writeQueue.length,
       flushing: writeQueueFlushing,
       offline: isRuntimeOffline()
+    };
+  },
+  getRequestTraceState: () => ({
+    inFlight: inFlightRequestCount
+  }),
+  onRequestTrace: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    requestTraceListeners.add(handler);
+    handler({
+      phase: 'snapshot',
+      inFlight: inFlightRequestCount,
+      at: nowPerfTime()
+    });
+    return () => {
+      requestTraceListeners.delete(handler);
     };
   },
   getWriteQueueItems: () => {
@@ -614,12 +672,12 @@ export const api = {
 
   // Users
   users: {
-    getAll: () => apiRequest('/users'),
-    getCurrent: () => apiRequest('/users/current'),
-    getCurrentRole: () => apiRequest('/users/current-role'),
+    getAll: (options = {}) => apiRequest('/users', options),
+    getCurrent: (options = {}) => apiRequest('/users/current', options),
+    getCurrentRole: (options = {}) => apiRequest('/users/current-role', options),
     setCurrentRole: (role) => apiRequest('/users/current-role', { method: 'POST', body: JSON.stringify({ role }) }),
-    getPermissionConfig: () => apiRequest('/users/permission-config'),
-    getMyTabAccess: () => apiRequest('/users/my-tab-access'),
+    getPermissionConfig: (options = {}) => apiRequest('/users/permission-config', options),
+    getMyTabAccess: (options = {}) => apiRequest('/users/my-tab-access', options),
     setPermissionConfig: (config) => apiRequest('/users/permission-config', { method: 'PUT', body: JSON.stringify(config) }),
     create: (user) => apiRequest('/users', { method: 'POST', body: JSON.stringify(user) }),
     update: (id, data) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -651,7 +709,7 @@ export const api = {
 
   // Tickets
   tickets: {
-    getAll: () => apiRequest('/tickets'),
+    getAll: (options = {}) => apiRequest('/tickets', options),
     getOne: (id) => apiRequest(`/tickets/${id}`),
     create: (ticket) => apiRequest('/tickets', { method: 'POST', body: JSON.stringify(ticket) }),
     update: (id, data) => apiRequest(`/tickets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -662,7 +720,7 @@ export const api = {
 
   // Service Requests
   requests: {
-    getAll: () => apiRequest('/service-requests'),
+    getAll: (options = {}) => apiRequest('/service-requests', options),
     getOne: (id) => apiRequest(`/service-requests/${id}`),
     create: (request) => apiRequest('/service-requests', { method: 'POST', body: JSON.stringify(request) }),
     update: (id, data) => apiRequest(`/service-requests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -673,7 +731,7 @@ export const api = {
 
   // Articles
   articles: {
-    getAll: () => apiRequest('/articles'),
+    getAll: (options = {}) => apiRequest('/articles', options),
     getOne: (id) => apiRequest(`/articles/${id}`),
     create: (article) => apiRequest('/articles', { method: 'POST', body: JSON.stringify(article) }),
     update: (id, data) => apiRequest(`/articles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -683,7 +741,7 @@ export const api = {
 
   // Flows
   flows: {
-    getAll: () => apiRequest('/flows'),
+    getAll: (options = {}) => apiRequest('/flows', options),
     getMyPermissions: () => apiRequest('/flows/permissions/me'),
     getOne: (id) => apiRequest(`/flows/${id}`),
     create: (flow) => apiRequest('/flows', { method: 'POST', body: JSON.stringify(flow) }),
@@ -801,7 +859,9 @@ export const api = {
   serviceCatalog: {
     getAll: (options = {}) => {
       const query = options.includeInactive ? '?includeInactive=1' : ''
-      return apiRequest(`/service-catalog${query}`)
+      const requestOptions = { ...options }
+      delete requestOptions.includeInactive
+      return apiRequest(`/service-catalog${query}`, requestOptions)
     },
     getOne: (serviceType) => apiRequest(`/service-catalog/${serviceType}`),
     create: (item) => apiRequest('/service-catalog', { method: 'POST', body: JSON.stringify(item) }),
@@ -912,7 +972,7 @@ export const api = {
 
   // Wiki Library
   wiki: {
-    getLibrary: () => apiRequest('/wiki/library'),
+    getLibrary: (options = {}) => apiRequest('/wiki/library', options),
     saveLibrary: (items) => apiRequest('/wiki/library', { method: 'PUT', body: JSON.stringify({ items }) }),
     importDocument: (payload, options = {}) => apiRequest('/wiki/import-document', {
       ...options,
@@ -952,9 +1012,11 @@ export const api = {
 
   // Documentation
   docs: {
-    list: () => apiRequest('/docs/list'),
-    getContent: (filename) => apiRequest(`/docs/content?file=${encodeURIComponent(filename)}`),
+    list: (options = {}) => apiRequest('/docs/list', options),
+    getContent: (filename, options = {}) => apiRequest(`/docs/content?file=${encodeURIComponent(filename)}`, options),
     sync: () => apiRequest('/docs/sync', { method: 'POST' }),
-    search: (query, limit = 30) => apiRequest(`/docs/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`)
+    search: (query, limit = 30, options = {}) => apiRequest(`/docs/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`, options),
+    getCustomBackup: (options = {}) => apiRequest('/docs/custom-backup', options),
+    saveCustomBackup: (items, options = {}) => apiRequest('/docs/custom-backup', { ...options, method: 'PUT', body: JSON.stringify({ items }) })
   }
 };

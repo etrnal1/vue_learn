@@ -261,6 +261,8 @@ import ArticleReaderModule from '../components/article/ArticleReaderModule.vue'
 import { buildInPageMatches, jumpReaderToBottom, jumpReaderToTop, jumpToInPageMatch } from '../utils/readerAssist.js'
 
 const CUSTOM_DOCS_KEY = 'documentation_center_custom_docs_v1'
+const DOCS_LIST_CACHE_KEY = 'documentation_center_docs_list_cache_v1'
+const DOC_CONTENT_CACHE_KEY = 'documentation_center_doc_content_cache_v1'
 
 function createId(prefix = 'doc') {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
@@ -332,6 +334,52 @@ function buildHeadingData(markdown) {
   return headings
 }
 
+function normalizeCustomDocsList(items) {
+  if (!Array.isArray(items)) return []
+  const now = Date.now()
+  const seen = new Set()
+  const out = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const title = String(item.title || '').trim()
+    if (!title) continue
+    const id = String(item.id || `custom_${now}_${Math.random().toString(16).slice(2, 8)}`)
+    if (seen.has(id)) continue
+    seen.add(id)
+    const updatedAt = Number(item.updatedAt) || now
+    out.push({
+      id,
+      title,
+      type: ['markdown', 'word', 'excel'].includes(String(item.type || '')) ? String(item.type) : 'markdown',
+      versionLabel: String(item.versionLabel || 'v1.0'),
+      content: String(item.content || ''),
+      htmlContent: String(item.htmlContent || ''),
+      excelHeaders: Array.isArray(item.excelHeaders) ? item.excelHeaders : [],
+      excelRows: Array.isArray(item.excelRows) ? item.excelRows : [],
+      attachments: Array.isArray(item.attachments) ? item.attachments : [],
+      images: Array.isArray(item.images) ? item.images : [],
+      createdAt: Number(item.createdAt) || updatedAt,
+      updatedAt
+    })
+  }
+  return out.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+}
+
+function mergeCustomDocsPreferNewer(localItems, remoteItems) {
+  const local = normalizeCustomDocsList(localItems)
+  const remote = normalizeCustomDocsList(remoteItems)
+  const map = new Map()
+  for (const item of [...remote, ...local]) {
+    const prev = map.get(item.id)
+    if (!prev) {
+      map.set(item.id, item)
+      continue
+    }
+    map.set(item.id, (Number(item.updatedAt) || 0) >= (Number(prev.updatedAt) || 0) ? item : prev)
+  }
+  return normalizeCustomDocsList([...map.values()])
+}
+
 export default {
   name: 'DocumentationCenter',
   components: {
@@ -372,6 +420,7 @@ export default {
 
     let searchTimer = null
     let stopQueueWatch = null
+    let backupTimer = null
 
     function formatSize(bytes) {
       if (!bytes) return '0 B'
@@ -483,9 +532,140 @@ export default {
       return Boolean(payload?.offlineQueued || payload?.queued)
     }
 
+    function saveDocsListCache(payload) {
+      try {
+        localStorage.setItem(DOCS_LIST_CACHE_KEY, JSON.stringify({
+          savedAt: Date.now(),
+          files: payload?.files || [],
+          groups: payload?.groups || [],
+          summary: payload?.summary || null
+        }))
+      } catch (error) {
+        console.warn('保存文档列表缓存失败:', error)
+      }
+    }
+
+    function loadDocsListCache() {
+      try {
+        const raw = localStorage.getItem(DOCS_LIST_CACHE_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed !== 'object') return null
+        return {
+          files: Array.isArray(parsed.files) ? parsed.files : [],
+          groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+          summary: parsed.summary || null
+        }
+      } catch (_error) {
+        return null
+      }
+    }
+
+    function saveDocContentCache(filename, payload) {
+      const key = String(filename || '').trim()
+      if (!key) return
+      try {
+        const raw = localStorage.getItem(DOC_CONTENT_CACHE_KEY)
+        const store = raw ? JSON.parse(raw) : {}
+        const next = store && typeof store === 'object' ? store : {}
+        next[key] = {
+          savedAt: Date.now(),
+          payload
+        }
+        const entries = Object.entries(next)
+          .sort((a, b) => Number((b[1] || {}).savedAt || 0) - Number((a[1] || {}).savedAt || 0))
+          .slice(0, 60)
+        localStorage.setItem(DOC_CONTENT_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)))
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    function loadDocContentCache(filename) {
+      const key = String(filename || '').trim()
+      if (!key) return null
+      try {
+        const raw = localStorage.getItem(DOC_CONTENT_CACHE_KEY)
+        if (!raw) return null
+        const store = JSON.parse(raw)
+        const hit = store?.[key]
+        return hit?.payload || null
+      } catch (_error) {
+        return null
+      }
+    }
+
+    function applyDocsListPayload(payload) {
+      docsList.value = payload?.files || []
+      docGroups.value = payload?.groups || []
+      summary.value = payload?.summary || null
+    }
+
+    function applyDocContentPayload(payload) {
+      selectedDocContent.value = payload?.content || ''
+      selectedDocTitle.value = payload?.title || selectedDocName.value?.replace('.md', '') || ''
+      selectedDocVersionLabel.value = payload?.versionLabel || 'latest'
+      if (payload?.docId) {
+        selectedDocId.value = payload.docId
+      }
+      tableOfContents.value = buildHeadingData(payload?.content || '')
+    }
+
+    async function syncCustomDocsBackupNow({ silent = true } = {}) {
+      try {
+        const result = await api.docs.saveCustomBackup(customDocs.value)
+        if (isQueuedPayload(result)) {
+          if (!silent) {
+            customMessage.value = '离线状态：自建文档备份已加入同步队列'
+          }
+          return
+        }
+      } catch (error) {
+        if (!silent) {
+          customMessage.value = `备份失败：${error?.message || '未知错误'}`
+        }
+      }
+    }
+
+    function scheduleCustomDocsBackup(delay = 1200, { silent = true } = {}) {
+      if (backupTimer) {
+        clearTimeout(backupTimer)
+      }
+      backupTimer = setTimeout(() => {
+        backupTimer = null
+        void syncCustomDocsBackupNow({ silent })
+      }, delay)
+    }
+
+    async function loadCustomDocsBackupInBackground() {
+      try {
+        const response = await api.docs.getCustomBackup({ preferCache: true })
+        const remoteItems = Array.isArray(response?.items) ? response.items : []
+        const merged = mergeCustomDocsPreferNewer(customDocs.value, remoteItems)
+        const changed = JSON.stringify(merged) !== JSON.stringify(normalizeCustomDocsList(customDocs.value))
+        if (changed) {
+          customDocs.value = merged
+          localStorage.setItem(CUSTOM_DOCS_KEY, JSON.stringify(merged))
+        }
+        await api.docs.getCustomBackup({ cache: false }).then((fresh) => {
+          const freshItems = Array.isArray(fresh?.items) ? fresh.items : []
+          const nextMerged = mergeCustomDocsPreferNewer(merged, freshItems)
+          if (JSON.stringify(nextMerged) !== JSON.stringify(merged)) {
+            customDocs.value = nextMerged
+            localStorage.setItem(CUSTOM_DOCS_KEY, JSON.stringify(nextMerged))
+          }
+        }).catch(() => {})
+      } catch (_error) {
+        // keep local-only mode
+      }
+    }
+
     function saveCustomDocs() {
       try {
-        localStorage.setItem(CUSTOM_DOCS_KEY, JSON.stringify(customDocs.value))
+        const normalized = normalizeCustomDocsList(customDocs.value)
+        customDocs.value = normalized
+        localStorage.setItem(CUSTOM_DOCS_KEY, JSON.stringify(normalized))
+        scheduleCustomDocsBackup()
       } catch (error) {
         console.error('保存自建文档失败:', error)
       }
@@ -496,7 +676,7 @@ export default {
         const raw = localStorage.getItem(CUSTOM_DOCS_KEY)
         if (!raw) return
         const parsed = JSON.parse(raw)
-        customDocs.value = Array.isArray(parsed) ? parsed : []
+        customDocs.value = normalizeCustomDocsList(parsed)
       } catch (error) {
         console.error('加载自建文档失败:', error)
         customDocs.value = []
@@ -512,11 +692,15 @@ export default {
 
     async function loadDocsList() {
       loading.value = true
+      const cached = loadDocsListCache()
+      if (cached) {
+        applyDocsListPayload(cached)
+        loading.value = false
+      }
       try {
-        const response = await api.docs.list()
-        docsList.value = response.files || []
-        docGroups.value = response.groups || []
-        summary.value = response.summary || null
+        const response = await api.docs.list({ preferCache: !cached })
+        applyDocsListPayload(response)
+        saveDocsListCache(response)
 
         if (!selectedDocName.value && !selectedCustomDocId.value && (response.groups || []).length > 0) {
           const firstGroup = response.groups[0]
@@ -531,6 +715,13 @@ export default {
       } finally {
         loading.value = false
       }
+
+      api.docs.list({ cache: false })
+        .then((fresh) => {
+          applyDocsListPayload(fresh)
+          saveDocsListCache(fresh)
+        })
+        .catch(() => {})
     }
 
     async function handleSelectItem(item) {
@@ -556,26 +747,36 @@ export default {
     async function loadDocContent() {
       if (!selectedDocName.value) return
 
-      contentLoading.value = true
       contentError.value = null
+      const filename = String(selectedDocName.value || '')
+      const cached = loadDocContentCache(filename)
+      if (cached) {
+        applyDocContentPayload(cached)
+        contentLoading.value = false
+      } else {
+        contentLoading.value = true
+      }
 
       try {
-        const response = await api.docs.getContent(selectedDocName.value)
-        selectedDocContent.value = response.content || ''
-        selectedDocTitle.value = response.title || selectedDocName.value.replace('.md', '')
-        selectedDocVersionLabel.value = response.versionLabel || 'latest'
-
-        if (response.docId) {
-          selectedDocId.value = response.docId
-        }
-
-        tableOfContents.value = buildHeadingData(response.content)
+        const response = await api.docs.getContent(filename, { preferCache: !cached })
+        applyDocContentPayload(response)
+        saveDocContentCache(filename, response)
       } catch (error) {
         console.error('加载文档内容失败:', error)
-        contentError.value = error.message || '加载失败'
+        if (!cached) {
+          contentError.value = error.message || '加载失败'
+        }
       } finally {
         contentLoading.value = false
       }
+
+      api.docs.getContent(filename, { cache: false })
+        .then((fresh) => {
+          if (String(selectedDocName.value || '') !== filename) return
+          applyDocContentPayload(fresh)
+          saveDocContentCache(filename, fresh)
+        })
+        .catch(() => {})
     }
 
     function ensureCustomDocSelected() {
@@ -863,8 +1064,14 @@ export default {
 
       searching.value = true
       try {
-        const response = await api.docs.search(keyword, 60)
+        const response = await api.docs.search(keyword, 60, { preferCache: true })
         searchResults.value = response.matches || []
+        api.docs.search(keyword, 60, { cache: false })
+          .then((fresh) => {
+            if (String(searchQuery.value || '').trim() !== keyword) return
+            searchResults.value = fresh.matches || []
+          })
+          .catch(() => {})
       } catch (error) {
         console.error('搜索失败:', error)
       } finally {
@@ -880,9 +1087,8 @@ export default {
           customMessage.value = '当前离线，已加入同步队列，恢复网络后自动执行'
           return
         }
-        docsList.value = response.files || []
-        docGroups.value = response.groups || []
-        summary.value = response.summary || null
+        applyDocsListPayload(response)
+        saveDocsListCache(response)
 
         if (searchQuery.value.trim()) {
           await searchDocuments(searchQuery.value)
@@ -968,6 +1174,7 @@ export default {
         }
       })
       loadCustomDocs()
+      void loadCustomDocsBackupInBackground()
       loadDocsList()
     })
 
@@ -975,6 +1182,10 @@ export default {
       if (searchTimer) {
         clearTimeout(searchTimer)
         searchTimer = null
+      }
+      if (backupTimer) {
+        clearTimeout(backupTimer)
+        backupTimer = null
       }
       if (typeof stopQueueWatch === 'function') {
         stopQueueWatch()
