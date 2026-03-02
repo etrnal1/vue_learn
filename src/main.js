@@ -31,7 +31,10 @@ window.addEventListener('unhandledrejection', (event) => {
 const app = createApp(App)
 app.mount('#app')
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+const ENABLE_SW_IN_DEV = String(import.meta.env.VITE_SW_IN_DEV || '').toLowerCase() === 'true'
+const SHOULD_REGISTER_SW = import.meta.env.PROD || ENABLE_SW_IN_DEV
+
+if ('serviceWorker' in navigator && SHOULD_REGISTER_SW) {
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js')
