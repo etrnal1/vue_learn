@@ -292,6 +292,14 @@
             </div>
           </div>
           <h2 class="content-title">{{ activeTabTitle }}</h2>
+          <div v-if="uiSettings.performanceOverlayEnabled" class="perf-strip">
+            <span class="perf-chip">首可见：{{ firstVisiblePerfMs == null ? '—' : `${firstVisiblePerfMs}ms` }}</span>
+            <span class="perf-chip">首可交互：{{ initialPagePerfMs == null ? '—' : `${initialPagePerfMs}ms` }}</span>
+            <span class="perf-chip">初始化完成：{{ initDonePerfMs == null ? '—' : `${initDonePerfMs}ms` }}</span>
+            <span class="perf-chip">子页面响应：{{ lastTabPerfMs == null ? '—' : `${lastTabPerfMs}ms` }}</span>
+            <span v-if="lastTabPerfLabel" class="perf-chip is-muted">{{ lastTabPerfLabel }}</span>
+            <button type="button" class="perf-open-btn" @click="openPerfPanel">性能面板</button>
+          </div>
           <div v-if="recentTabs.length > 0" class="recent-row">
             <span class="recent-label">最近访问</span>
             <button
@@ -349,6 +357,38 @@
         </div>
       </div>
     </div>
+    <div v-if="showPerfPanel" class="queue-modal-mask" @click="closePerfPanel">
+      <div class="queue-modal perf-modal" @click.stop>
+        <div class="queue-modal-head">
+          <strong>页面性能面板</strong>
+          <button type="button" class="queue-close-btn" @click="closePerfPanel">关闭</button>
+        </div>
+        <div class="queue-modal-body">
+          <div class="perf-metrics">
+            <span class="perf-chip">最近子页面 p50：{{ perfStats.p50 == null ? '—' : `${perfStats.p50}ms` }}</span>
+            <span class="perf-chip">最近子页面 p95：{{ perfStats.p95 == null ? '—' : `${perfStats.p95}ms` }}</span>
+            <span class="perf-chip is-muted">样本：{{ perfStats.count }}</span>
+          </div>
+          <div class="perf-panel-actions">
+            <button type="button" class="sync-btn" @click="refreshPerfPanel">刷新</button>
+            <button type="button" class="sync-btn danger" @click="clearPerfPanelLogs">清空日志</button>
+          </div>
+          <div v-if="perfPanelLogs.length === 0" class="queue-empty">暂无性能日志</div>
+          <div v-else class="perf-log-list">
+            <div v-for="item in perfPanelLogs" :key="item.id" class="perf-log-item">
+              <div class="perf-log-head">
+                <code>{{ item.action }}</code>
+                <span>{{ item.durationMs == null ? '—' : `${item.durationMs}ms` }}</span>
+              </div>
+              <div class="perf-log-meta">
+                <span>{{ item.name || item.path || 'unknown' }}</span>
+                <span>{{ formatQueueTime(item.timestamp) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     </template>
 
     <button
@@ -369,8 +409,14 @@ import { KeepAlive, defineAsyncComponent } from 'vue'
 import Header from './components/Header.vue'
 import HomePage from './pages/HomePage.vue'
 import { api } from './utils/api.js'
-import { getSidebarNavConfig, getSidebarNavEventName } from './utils/adminMockStore.js'
+import {
+  getAppUiSettings,
+  getAppUiSettingsEventName,
+  getSidebarNavConfig,
+  getSidebarNavEventName
+} from './utils/adminMockStore.js'
 import { createFormAutoSave } from './utils/formAutoSave.js'
+import { appendPerfLog, clearPerfLogs, getPerfLogs } from './utils/perfLogs.js'
 const IS_DEBUG_MODE = import.meta.env.MODE !== 'production' || import.meta.env.VITE_DEBUG_MODE === 'true'
 const DEBUG_ONLY_TAB_IDS = new Set(['logs', 'authLogs'])
 
@@ -678,7 +724,19 @@ export default {
         { id: 'graphite', name: '深石墨', primary: '#1F2937', text: '#0B1220', bg: '#E5E7EB' },
         { id: 'midnight', name: '深夜蓝', primary: '#1D4ED8', text: '#E5EDFF', bg: '#0B1220' }
       ],
-      prefetchedTabs: {}
+      prefetchedTabs: {},
+      uiSettings: {
+        performanceOverlayEnabled: false
+      },
+      appPerfStartAt: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      firstVisiblePerfMs: null,
+      initialPagePerfMs: null,
+      initDonePerfMs: null,
+      pendingTabPerf: null,
+      lastTabPerfMs: null,
+      lastTabPerfLabel: '',
+      showPerfPanel: false,
+      perfPanelLogs: []
     }
   },
   computed: {
@@ -858,12 +916,130 @@ export default {
         : `0 10px 28px ${this.withAlpha('#1c1c1e', 0.08)}`
 
       return styleVars
+    },
+    perfStats() {
+      const samples = this.perfPanelLogs
+        .filter((item) => item.action === 'subpage_response')
+        .map((item) => Number(item.durationMs))
+        .filter((n) => Number.isFinite(n) && n >= 0)
+        .sort((a, b) => a - b)
+      const pick = (p) => {
+        if (!samples.length) return null
+        const idx = Math.min(samples.length - 1, Math.max(0, Math.ceil(samples.length * p) - 1))
+        return Math.round(samples[idx])
+      }
+      return {
+        count: samples.length,
+        p50: pick(0.5),
+        p95: pick(0.95)
+      }
     }
   },
   methods: {
     setBodyScrollLock(locked) {
       if (typeof document === 'undefined') return
       document.body.style.overflow = locked ? 'hidden' : ''
+    },
+    loadAppUiSettings() {
+      this.uiSettings = getAppUiSettings()
+    },
+    afterNextPaint() {
+      return new Promise((resolve) => {
+        this.$nextTick(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve())
+          })
+        })
+      })
+    },
+    async recordFirstVisiblePerf() {
+      if (this.firstVisiblePerfMs != null) return
+      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      this.firstVisiblePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
+      appendPerfLog({
+        module: 'app',
+        action: 'initial_first_visible',
+        status: 'ok',
+        durationMs: this.firstVisiblePerfMs,
+        name: this.activeTab,
+        path: this.activeTab
+      })
+    },
+    async recordInitialPagePerf() {
+      if (this.initialPagePerfMs != null) return
+      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      this.initialPagePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
+      appendPerfLog({
+        module: 'app',
+        action: 'initial_interactive',
+        status: 'ok',
+        durationMs: this.initialPagePerfMs,
+        name: this.activeTab,
+        path: this.activeTab
+      })
+    },
+    async completePostLoginBootstrap() {
+      if (!this.isLoggedIn) return
+      const tasks = [
+        this.loadPermissionConfig(),
+        this.loadCurrentRole(),
+        this.loadServerTabAccess()
+      ]
+      await Promise.allSettled(tasks)
+      if (!this.canAccessTab(this.activeTab)) {
+        this.activeTab = this.findFirstAccessibleTab()
+      }
+      this.warmupCommonTabs()
+      this.$nextTick(() => this._formAutoSave?.restoreCurrentScope())
+      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      this.initDonePerfMs = Math.max(0, Math.round(endAt - this.appPerfStartAt))
+      appendPerfLog({
+        module: 'app',
+        action: 'initial_bootstrap_done',
+        status: 'ok',
+        durationMs: this.initDonePerfMs,
+        name: this.activeTab,
+        path: this.activeTab
+      })
+    },
+    markTabPerfStart(tabId) {
+      const startAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const loader = tabLoaders[tabId]
+      this.pendingTabPerf = {
+        tabId,
+        startAt,
+        asyncLoadMs: null
+      }
+      if (typeof loader === 'function') {
+        const loadStart = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        loader()
+          .then(() => {
+            if (!this.pendingTabPerf || this.pendingTabPerf.tabId !== tabId) return
+            const loadEnd = typeof performance !== 'undefined' ? performance.now() : Date.now()
+            this.pendingTabPerf.asyncLoadMs = Math.max(0, Math.round(loadEnd - loadStart))
+          })
+          .catch(() => {})
+      }
+    },
+    async finishTabPerf(tabId) {
+      if (!this.pendingTabPerf || this.pendingTabPerf.tabId !== tabId) return
+      const snapshot = { ...this.pendingTabPerf }
+      await this.afterNextPaint()
+      if (!this.pendingTabPerf || this.pendingTabPerf.tabId !== tabId) return
+      const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const durationMs = Math.max(0, Math.round(endAt - snapshot.startAt))
+      this.lastTabPerfMs = durationMs
+      this.lastTabPerfLabel = this.getTabLabel(tabId)
+      appendPerfLog({
+        module: 'app',
+        action: 'subpage_response',
+        status: 'ok',
+        durationMs,
+        name: tabId,
+        path: tabId,
+        detail: snapshot.asyncLoadMs == null ? '' : `asyncChunk=${snapshot.asyncLoadMs}ms`
+      })
+      this.pendingTabPerf = null
     },
     loadSidebarNavConfig() {
       this.sidebarNavConfig = getSidebarNavConfig()
@@ -1065,6 +1241,33 @@ export default {
     closeWriteQueueModal() {
       this.showWriteQueueModal = false
     },
+    refreshPerfPanel() {
+      const logs = getPerfLogs()
+      this.perfPanelLogs = logs
+        .filter((item) => item && item.module === 'app' && (
+          item.action === 'initial_first_visible' ||
+          item.action === 'initial_interactive' ||
+          item.action === 'initial_bootstrap_done' ||
+          item.action === 'subpage_response'
+        ))
+        .slice(0, 60)
+    },
+    openPerfPanel() {
+      this.refreshPerfPanel()
+      this.showPerfPanel = true
+    },
+    closePerfPanel() {
+      this.showPerfPanel = false
+    },
+    clearPerfPanelLogs() {
+      clearPerfLogs()
+      this.refreshPerfPanel()
+      this.firstVisiblePerfMs = null
+      this.initialPagePerfMs = null
+      this.initDonePerfMs = null
+      this.lastTabPerfMs = null
+      this.lastTabPerfLabel = ''
+    },
     async retryWriteQueueItem(id) {
       if (!this.networkOnline || this.writeQueueState.flushing) return
       try {
@@ -1207,6 +1410,10 @@ export default {
       if (!this.canAccessTab(tabId)) {
         this.permissionMessage = `当前角色无权限访问「${this.getTabLabel(tabId)}」`
         return
+      }
+      const isSwitching = this.activeTab !== tabId
+      if (isSwitching) {
+        this.markTabPerfStart(tabId)
       }
       this.permissionMessage = ''
       this.activeTab = tabId
@@ -1462,6 +1669,7 @@ export default {
 
     const saved = localStorage.getItem('app_theme')
     if (saved) this.currentTheme = saved
+    this.loadAppUiSettings()
     this.loadSidebarNavConfig()
     this._onSidebarNavUpdated = (event) => {
       if (Array.isArray(event?.detail) && event.detail.length > 0) {
@@ -1471,6 +1679,17 @@ export default {
       this.loadSidebarNavConfig()
     }
     window.addEventListener(getSidebarNavEventName(), this._onSidebarNavUpdated)
+    this._onAppUiSettingsUpdated = (event) => {
+      if (event?.detail && typeof event.detail === 'object') {
+        this.uiSettings = {
+          ...this.uiSettings,
+          ...event.detail
+        }
+        return
+      }
+      this.loadAppUiSettings()
+    }
+    window.addEventListener(getAppUiSettingsEventName(), this._onAppUiSettingsUpdated)
     this.refreshViewportState()
     const savedSidebarCollapsed = localStorage.getItem('app_sidebar_collapsed')
     this.sidebarCollapsed = savedSidebarCollapsed === '1'
@@ -1508,16 +1727,15 @@ export default {
       this.updateScrollDownVisibility()
       this._formAutoSave?.restoreCurrentScope()
     })
+    await this.afterNextPaint()
+    await this.recordFirstVisiblePerf()
     await this.checkAuthSession()
+    await this.afterNextPaint()
+    await this.recordInitialPagePerf()
     if (this.isLoggedIn) {
-      await this.loadPermissionConfig()
-      await this.loadCurrentRole()
-      await this.loadServerTabAccess()
-      if (!this.canAccessTab(this.activeTab)) {
-        this.activeTab = this.findFirstAccessibleTab()
-      }
-      this.warmupCommonTabs()
-      this.$nextTick(() => this._formAutoSave?.restoreCurrentScope())
+      this.completePostLoginBootstrap()
+    } else {
+      this.initDonePerfMs = this.initialPagePerfMs
     }
   },
   beforeUnmount() {
@@ -1527,6 +1745,9 @@ export default {
       window.removeEventListener('resize', this._onWindowResize)
       if (this._onSidebarNavUpdated) {
         window.removeEventListener(getSidebarNavEventName(), this._onSidebarNavUpdated)
+      }
+      if (this._onAppUiSettingsUpdated) {
+        window.removeEventListener(getAppUiSettingsEventName(), this._onAppUiSettingsUpdated)
       }
     }
     if (typeof window !== 'undefined') {
@@ -1546,6 +1767,11 @@ export default {
     mobileMenuOpen(value) {
       this.setBodyScrollLock(Boolean(this.isCompactViewport && value))
     },
+    'uiSettings.performanceOverlayEnabled'(enabled) {
+      if (!enabled) {
+        this.showPerfPanel = false
+      }
+    },
     currentTheme() {
       this.$nextTick(() => {
         this.syncBodyBackground()
@@ -1554,6 +1780,7 @@ export default {
     activeTab(newTabId) {
       this.expandGroupByTab(newTabId)
       this.recordRecentTab(newTabId)
+      this.finishTabPerf(newTabId)
       this.$nextTick(() => {
         this.updateScrollDownVisibility()
         this._formAutoSave?.restoreCurrentScope()
@@ -1802,6 +2029,44 @@ export default {
   color: var(--app-text);
 }
 
+.perf-strip {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.perf-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 24%, var(--app-border));
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.74em;
+  color: var(--app-text-secondary);
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+
+.perf-chip.is-muted {
+  border-color: var(--app-border);
+  background: var(--app-card-elevated);
+}
+
+.perf-open-btn {
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-card-elevated);
+  color: var(--app-text-secondary);
+  padding: 2px 9px;
+  font-size: 0.74em;
+  cursor: pointer;
+}
+
+.perf-open-btn:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+  color: var(--app-primary);
+}
+
 .search-box {
   position: relative;
   width: min(360px, 44vw);
@@ -1930,6 +2195,9 @@ export default {
   }
   .content-head {
     padding: 10px 12px;
+  }
+  .perf-chip {
+    font-size: 0.72em;
   }
   .search-box {
     width: min(52vw, 300px);
@@ -2266,6 +2534,52 @@ export default {
   box-shadow: var(--app-soft-shadow);
   display: flex;
   flex-direction: column;
+}
+
+.perf-modal {
+  max-width: min(760px, 96vw);
+}
+
+.perf-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.perf-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.perf-log-list {
+  display: grid;
+  gap: 8px;
+}
+
+.perf-log-item {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--app-card-elevated);
+}
+
+.perf-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.84em;
+}
+
+.perf-log-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78em;
+  color: var(--app-text-muted);
 }
 
 .queue-modal-head {
