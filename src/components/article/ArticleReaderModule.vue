@@ -42,8 +42,8 @@ export default {
 }
 
 .reader-module {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) auto auto auto auto auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px;
@@ -58,21 +58,26 @@ export default {
 }
 
 .reader-input {
-  width: 100%;
+  flex: 1 1 260px;
+  min-width: 180px;
+  width: auto;
 }
 
 .reader-meta {
+  flex: 0 0 auto;
   font-size: 0.8em;
   color: var(--app-text-muted, #64748b);
   white-space: nowrap;
 }
 
+.reader-module .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 880px) {
   .reader-module {
-    grid-template-columns: 1fr 1fr;
-  }
-  .reader-meta {
-    grid-column: 1 / -1;
+    padding: 7px;
   }
 }
 </style>

@@ -861,6 +861,10 @@ export default {
     }
   },
   methods: {
+    setBodyScrollLock(locked) {
+      if (typeof document === 'undefined') return
+      document.body.style.overflow = locked ? 'hidden' : ''
+    },
     loadSidebarNavConfig() {
       this.sidebarNavConfig = getSidebarNavConfig()
     },
@@ -1517,6 +1521,7 @@ export default {
     }
   },
   beforeUnmount() {
+    this.setBodyScrollLock(false)
     if (typeof window !== 'undefined' && this._onWindowScroll) {
       window.removeEventListener('scroll', this._onWindowScroll)
       window.removeEventListener('resize', this._onWindowResize)
@@ -1538,6 +1543,9 @@ export default {
     }
   },
   watch: {
+    mobileMenuOpen(value) {
+      this.setBodyScrollLock(Boolean(this.isCompactViewport && value))
+    },
     currentTheme() {
       this.$nextTick(() => {
         this.syncBodyBackground()
@@ -1881,15 +1889,22 @@ export default {
   }
   .side-menu {
     position: fixed;
-    inset: 0 auto 0 0;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
     width: min(82vw, 320px);
-    max-height: 100vh;
+    max-height: 100dvh;
+    height: 100dvh;
     border-radius: 0 16px 16px 0;
-    transform: translateX(-104%);
+    transform: translate3d(-104%, 0, 0);
     transition: transform 0.22s ease;
+    will-change: transform;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .side-menu.open {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   .side-mobile-head {
     display: flex;

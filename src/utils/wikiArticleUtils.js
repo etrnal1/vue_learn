@@ -184,7 +184,8 @@ function tryWrapByQuoteInRoot(root, ann) {
       const note = document.createElement('span')
       const noteText = String(ann.note || '').trim()
       note.className = `ann-inline-note${noteText ? '' : ' is-empty'}`
-      note.textContent = noteText || '批注'
+      note.textContent = noteText ? '注' : '亮'
+      if (noteText) note.title = noteText
 
       wrap.appendChild(mark)
       wrap.appendChild(note)
