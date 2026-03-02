@@ -454,7 +454,7 @@ export default {
         // 加载用户
         let users = []
         try {
-          users = await api.users.getAll()
+          users = await api.users.getAll({ preferCache: true })
         } catch (e) {
           console.warn('加载用户列表失败:', e)
           users = []
@@ -478,7 +478,7 @@ export default {
         // 加载当前用户
         let currentUser = null
         try {
-          currentUser = await api.users.getCurrent()
+          currentUser = await api.users.getCurrent({ preferCache: true })
         } catch (e) {
           console.warn('加载当前用户失败:', e)
         }
@@ -496,7 +496,7 @@ export default {
 
         // 加载工单（列表API不返回comments，需要补充默认值）
         try {
-          const tickets = await api.tickets.getAll()
+          const tickets = await api.tickets.getAll({ preferCache: true })
           this.tickets = Array.isArray(tickets) ? tickets.map(t => ({ comments: [], ...t })) : []
         } catch (e) {
           console.warn('加载工单失败:', e)
@@ -505,7 +505,7 @@ export default {
 
         // 加载服务请求
         try {
-          const requests = await api.requests.getAll()
+          const requests = await api.requests.getAll({ preferCache: true })
           this.serviceRequests = Array.isArray(requests) ? requests.map(r => ({ comments: [], ...r })) : []
         } catch (e) {
           console.warn('加载服务请求失败:', e)
@@ -514,7 +514,7 @@ export default {
 
         // 加载服务目录
         try {
-          const catalog = await api.serviceCatalog.getAll({ includeInactive: true })
+          const catalog = await api.serviceCatalog.getAll({ includeInactive: true, preferCache: true })
           this.serviceCatalog = Array.isArray(catalog) && catalog.length > 0
             ? catalog.map(this.normalizeCatalogItem)
             : [...DEFAULT_SERVICE_CATALOG]
@@ -525,7 +525,7 @@ export default {
 
         // 加载文章
         try {
-          const articles = await api.articles.getAll()
+          const articles = await api.articles.getAll({ preferCache: true })
           this.articles = Array.isArray(articles) ? articles : []
         } catch (e) {
           console.warn('加载文章失败:', e)
@@ -534,13 +534,14 @@ export default {
 
         // 加载流程
         try {
-          const flows = await api.flows.getAll()
+          const flows = await api.flows.getAll({ preferCache: true })
           this.flows = Array.isArray(flows) ? flows : []
         } catch (e) {
           console.warn('加载流程失败:', e)
           this.flows = []
         }
 
+        this.refreshFromServerLatest()
       } catch (e) {
         console.error('Failed to load ITSM data:', e)
         // 发生错误时使用默认数据
@@ -551,6 +552,45 @@ export default {
         this.articles = []
         this.flows = []
         this.serviceCatalog = [...DEFAULT_SERVICE_CATALOG]
+      }
+    },
+    async refreshFromServerLatest() {
+      try {
+        const [users, currentUser, tickets, requests, catalog, articles, flows] = await Promise.allSettled([
+          api.users.getAll({ cache: false }),
+          api.users.getCurrent({ cache: false }),
+          api.tickets.getAll({ cache: false }),
+          api.requests.getAll({ cache: false }),
+          api.serviceCatalog.getAll({ includeInactive: true, cache: false }),
+          api.articles.getAll({ cache: false }),
+          api.flows.getAll({ cache: false })
+        ])
+
+        if (users.status === 'fulfilled' && Array.isArray(users.value) && users.value.length > 0) {
+          this.users = users.value
+        }
+        if (currentUser.status === 'fulfilled' && currentUser.value) {
+          this.currentUser = currentUser.value
+        }
+        if (tickets.status === 'fulfilled') {
+          this.tickets = Array.isArray(tickets.value) ? tickets.value.map((t) => ({ comments: [], ...t })) : []
+        }
+        if (requests.status === 'fulfilled') {
+          this.serviceRequests = Array.isArray(requests.value) ? requests.value.map((r) => ({ comments: [], ...r })) : []
+        }
+        if (catalog.status === 'fulfilled') {
+          this.serviceCatalog = Array.isArray(catalog.value) && catalog.value.length > 0
+            ? catalog.value.map(this.normalizeCatalogItem)
+            : [...DEFAULT_SERVICE_CATALOG]
+        }
+        if (articles.status === 'fulfilled') {
+          this.articles = Array.isArray(articles.value) ? articles.value : []
+        }
+        if (flows.status === 'fulfilled') {
+          this.flows = Array.isArray(flows.value) ? flows.value : []
+        }
+      } catch (error) {
+        console.warn('后台刷新 ITSM 最新数据失败:', error)
       }
     },
     async importData(data) {
