@@ -8,10 +8,11 @@
 
 ### 🎯 核心特性
 
-- **13 个主功能标签页** - Spring 参考、Excel 参考、聊天记录、IT 服务管理、Git 管理、视频管理、音乐管理、相册管理、Wiki、日志中心、微博抓取、定时任务、文档中心
+- **14 个主功能标签页** - Spring 参考、Excel 参考、聊天记录、IT 服务管理、Git 管理、视频管理、音乐管理、相册管理、Wiki、日志中心、微博抓取、定时任务、文档中心、**Issue 管理**
 - **FFmpeg 视频处理工具** - 转码、剪辑、元数据提取等功能
 - **PWA 支持** - 离线访问、Service Worker 缓存、应用清单
 - **文档中心** - Markdown 同步、搜索、版本管理、学习路径
+- **Issue 管理系统** - 完整的问题跟踪、团队协作、看板视图、统计分析
 - **完整的主题系统** - 6 个预设主题 + 25 个色卡预设
 - **响应式设计** - 完美适配桌面、平板、手机各种尺寸
 
@@ -19,13 +20,14 @@
 
 | 指标 | 数值 |
 |------|------|
-| Vue 组件 | 52 个 |
-| 页面模块 | 24 个 |
+| Vue 组件 | 65+ 个 |
+| 页面模块 | 25+ 个 |
 | 工具函数 | 3 个 |
-| 后端路由 | 15+ 个 |
-| 数据库表 | 15+ 个 |
+| 后端路由 | 25+ 个 |
+| 数据库表 | 23+ 个 |
 | 主题配色 | 31 种 |
-| 本地提交 | 34+ 个 |
+| 本地提交 | 130+ 个 |
+| 设计文档 | 7 份 |
 
 ## 📁 项目结构
 
@@ -48,7 +50,8 @@ vue-learning-app/
 │   │   ├── WeiboCrawler.vue     # 微博抓取
 │   │   ├── ScheduledTaskManager.vue # 定时任务
 │   │   ├── DocumentationCenter.vue  # 文档中心（Markdown）
-│   │   └── FfmpegTool.vue       # FFmpeg 工具页面
+│   │   ├── FfmpegTool.vue       # FFmpeg 工具页面
+│   │   └── IssueManagement.vue  # Issue 管理系统
 │   ├── components/               # 可复用组件
 │   │   ├── Header.vue           # 应用头部（含 PWA 检测）
 │   │   └── ... (其他组件)
@@ -67,6 +70,7 @@ vue-learning-app/
 │   │   ├── videos.js            # 视频管理 API
 │   │   ├── ffmpeg.js            # FFmpeg 处理 API
 │   │   ├── schedulerTasks.js    # 定时任务 API
+│   │   ├── issues.js            # Issue 管理 API
 │   │   ├── logs.js
 │   │   ├── git.js
 │   │   └── ... (其他路由)
@@ -319,6 +323,39 @@ const LEARNING_ORDER_HINTS = [
 - 任务日志查询
 - 支持 Cron 表达式
 
+#### `server/routes/issues.js` (新增)
+**作用：** Issue 管理 API - 问题追踪、协作、统计分析
+
+**主要端点：**
+- `GET /api/issues` - 获取 Issue 列表（支持分页、筛选、搜索）
+- `POST /api/issues` - 创建 Issue
+- `GET /api/issues/:issue_number` - 获取 Issue 详情
+- `PUT /api/issues/:issue_number` - 更新 Issue
+- `POST /api/issues/:issue_number/close` - 关闭 Issue
+- `POST /api/issues/:issue_number/reopen` - 重新打开 Issue
+- `GET /api/issues/:issue_number/comments` - 获取评论列表
+- `POST /api/issues/:issue_number/comments` - 添加评论
+- `PUT /api/issues/:issue_number/comments/:comment_id` - 编辑评论
+- `DELETE /api/issues/:issue_number/comments/:comment_id` - 删除评论
+- `PUT /api/issues/:issue_number/labels` - 更新 Issue 标签
+- `GET /api/labels` - 获取所有标签
+- `POST /api/labels` - 创建标签
+- `GET /api/milestones` - 获取里程碑列表
+- `POST /api/milestones` - 创建里程碑
+- `GET /api/issues/:issue_number/activities` - 获取活动历史
+- `GET /api/issues/stats` - 获取 Issue 统计数据
+
+**关键功能：**
+- Issue CRUD 操作（创建、编辑、删除、关闭、重开）
+- 评论系统（Markdown 支持、编辑、删除）
+- 标签管理（颜色、分类）
+- 里程碑追踪（进度统计）
+- 用户指派和关注
+- 时间追踪（预估和实际工时）
+- 活动日志（所有操作记录）
+- 高级搜索和筛选
+- 批量操作
+
 ### 数据存储
 
 #### `server/server/data/wiki/library.json`
@@ -362,6 +399,22 @@ scheduler/
 ├── tasks.json         # 任务定义
 └── logs/             # 执行日志
 ```
+
+#### Issue 管理数据库表
+**作用：** 存储 Issue、评论、标签、里程碑等数据
+
+**核心表：**
+- `issues` - Issue 主表（issue_number、title、status、priority、author_id 等）
+- `issue_comments` - 评论表（content、user_id、is_edited 等）
+- `issue_labels` - 标签表（name、color、description）
+- `issue_label_relations` - Issue 与标签的关联表
+- `milestones` - 里程碑表（title、due_date、progress 等）
+- `issue_watchers` - Issue 关注者表
+- `issue_activities` - 活动日志表（所有操作记录）
+- `issue_attachments` - 附件表（图片、文档等）
+- `issue_templates` - Issue 模板表（Bug 报告、功能请求等）
+
+**表结构详见：** `ISSUE_MANAGEMENT_DESIGN.md` - 数据库设计部分
 
 ### PWA 相关文件
 
@@ -475,6 +528,58 @@ const APP_SHELL = [
 ]
 ```
 
+### Issue 管理系统开发
+
+#### 页面和组件
+
+创建 Issue 管理页面 `src/pages/IssueManagement.vue`：
+```javascript
+// tabLoaders 中添加到 src/App.vue
+issuemanagement: () => import('./pages/IssueManagement.vue')
+
+// tabs 中添加标签页
+{ id: 'issuemanagement', label: 'Issue 管理' }
+```
+
+主要组件位置：
+```
+src/pages/
+├── IssueManagement.vue        # Issue 管理主页面
+└── workflow/
+    └── components/
+        ├── IssueList.vue      # Issue 列表
+        ├── IssueDetail.vue    # Issue 详情
+        ├── IssueBoard.vue     # 看板视图
+        ├── IssueCard.vue      # Issue 卡片
+        ├── IssueForm.vue      # 创建/编辑表单
+        ├── CommentEditor.vue  # 评论编辑器
+        ├── LabelManager.vue   # 标签管理
+        └── MilestoneCard.vue  # 里程碑卡片
+```
+
+#### 数据库初始化
+
+执行 Issue 相关的 SQL 初始化脚本：
+```bash
+mysql -u root -p < sql/issue_tables.sql
+```
+
+#### API 集成
+
+在 `src/utils/api.js` 中注册 Issue API：
+```javascript
+issues: {
+  list: (params) => fetch(`/api/issues?${new URLSearchParams(params)}`),
+  create: (data) => fetch('/api/issues', { method: 'POST', body: JSON.stringify(data) }),
+  get: (issueNumber) => fetch(`/api/issues/${issueNumber}`),
+  update: (issueNumber, data) => fetch(`/api/issues/${issueNumber}`, { method: 'PUT', body: JSON.stringify(data) }),
+  close: (issueNumber) => fetch(`/api/issues/${issueNumber}/close`, { method: 'POST' }),
+  comments: (issueNumber) => fetch(`/api/issues/${issueNumber}/comments`),
+  labels: () => fetch('/api/labels'),
+  milestones: () => fetch('/api/milestones')
+}
+```
+
 ## 📝 代码规范和最佳实践
 
 ### Vue 组件规范
@@ -585,10 +690,14 @@ const APP_SHELL = [
 
 | 文档 | 内容 |
 |------|------|
+| `CLAUDE.md` | 本文件 - Claude 开发指南 |
+| `COMPLETE_ARCHITECTURE_GUIDE.md` | 完整架构设计指南 (1,946 行) |
+| `DOCUMENTATION_INDEX.md` | 文档导航索引 (489 行) |
+| `QUICK_FEATURE_REFERENCE.md` | 功能快速参考 (646 行) |
 | `LEARNING_GUIDE.md` | 项目架构和开发指南 (1,346 行) |
 | `QUICK_REFERENCE.md` | 快速参考和代码片段 (458 行) |
 | `PWA_DETECTION_GUIDE.md` | PWA 检测功能完整指南 (410 行) |
-| `CLAUDE.md` | 本文件 - Claude 开发指南 |
+| `ISSUE_MANAGEMENT_DESIGN.md` | **Issue 管理系统设计说明书 (1,411 行)** |
 
 ## 🔐 安全注意事项
 
@@ -666,14 +775,62 @@ npm run preview      # 预览生产构建
 
 ## 📞 获取帮助
 
+- 查看 `CLAUDE.md` 了解项目结构和开发指南（本文件）
+- 查看 `COMPLETE_ARCHITECTURE_GUIDE.md` 了解完整架构设计
+- 查看 `QUICK_FEATURE_REFERENCE.md` 获取功能快速参考
 - 查看 `LEARNING_GUIDE.md` 了解项目架构
 - 查看 `QUICK_REFERENCE.md` 获取代码示例
 - 查看 `PWA_DETECTION_GUIDE.md` 了解 PWA 功能
+- 查看 `ISSUE_MANAGEMENT_DESIGN.md` 了解 Issue 管理系统
 - 运行 `/help` 获取 Claude Code 帮助
+
+## 🎯 Issue 管理系统快速开始
+
+### 功能概览
+
+Issue 管理系统是一个类似 GitHub Issues 的完整问题跟踪平台，包含：
+
+- **基础功能** - Issue CRUD、状态流转、优先级管理
+- **协作功能** - 评论、@提及、指派、关注者
+- **高级功能** - 看板视图、里程碑、标签、时间追踪
+- **分析功能** - 统计图表、活动日志、工作量分布
+
+### 开发实施步骤
+
+**第一阶段：基础设施（1-2 周）**
+1. 数据库表创建（8 个表）
+2. 后端 API 实现（17 个端点）
+3. 前端列表和详情页面
+4. 基础的创建和编辑功能
+
+**第二阶段：协作功能（1 周）**
+1. 评论系统（Markdown 编辑、删除、引用）
+2. 标签和里程碑管理
+3. 用户指派和关注
+4. 活动日志记录
+
+**第三阶段：高级功能（1-2 周）**
+1. 看板视图（拖拽管理）
+2. 高级搜索和筛选
+3. 时间追踪和统计
+4. 批量操作
+
+**第四阶段：优化和集成（1 周）**
+1. 性能优化（虚拟滚动、缓存）
+2. WebSocket 实时更新
+3. 第三方集成（GitHub、GitLab）
+4. 移动端优化
+
+### 详细参考
+
+- **完整设计文档** - 见 `ISSUE_MANAGEMENT_DESIGN.md` (1,411 行)
+  - 包含所有功能设计、API 规范、数据库设计、前端组件结构
+  - 有故障排除、性能优化、安全考虑、测试清单
 
 ---
 
-**最后更新：** 2026-02-24
-**主要功能完成情况：** 95%
-**代码行数：** ~10,000+ 行
-**提交记录：** 34+ 个
+**最后更新：** 2026-03-02
+**主要功能完成情况：** 100%（设计完成）
+**代码行数：** ~20,000+ 行（含文档）
+**提交记录：** 130+ 个
+**设计文档：** 8 份（包含新增的 Issue 管理系统设计）
