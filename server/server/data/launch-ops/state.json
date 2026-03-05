@@ -1,0 +1,79 @@
+{
+  "updatedAt": 1772641263115,
+  "tasks": [
+    {
+      "id": "launch_1772641263074_bootstrap_1",
+      "name": "启动开发环境",
+      "category": "Launch",
+      "command": "open -a iTerm",
+      "impact": "拉起终端并准备开发会话",
+      "rollback": "关闭 iTerm 应用",
+      "riskLevel": "low",
+      "cooldownMs": 60000,
+      "cooldownSec": 60,
+      "status": "ready",
+      "lastRun": "",
+      "createdAt": 1772641263074,
+      "updatedAt": 1772641263074,
+      "createdBy": "system",
+      "runCount": 0,
+      "successCount": 0,
+      "failCount": 0,
+      "lastResult": null,
+      "lastOutput": ""
+    },
+    {
+      "id": "launch_1772641263074_bootstrap_2",
+      "name": "同步代码仓库",
+      "category": "Sync",
+      "command": "git status",
+      "impact": "检查本地仓库状态",
+      "rollback": "无需回滚",
+      "riskLevel": "medium",
+      "cooldownMs": 120000,
+      "cooldownSec": 120,
+      "status": "ready",
+      "lastRun": "",
+      "createdAt": 1772641263074,
+      "updatedAt": 1772641263074,
+      "createdBy": "system",
+      "runCount": 0,
+      "successCount": 0,
+      "failCount": 0,
+      "lastResult": null,
+      "lastOutput": ""
+    }
+  ],
+  "thread": [
+    {
+      "id": "th_1772641263075_1b2f59",
+      "author": "launch-bot",
+      "content": "已初始化默认 Launch 任务（系统自动创建）",
+      "level": "info",
+      "time": "00:21:03",
+      "createdAt": 1772641263114
+    }
+  ],
+  "relatedTasks": [
+    {
+      "id": "rel_1772641263115_57d1da",
+      "launchTaskId": "launch_1772641263074_bootstrap_2",
+      "title": "初始化：同步代码仓库",
+      "owner": "system",
+      "priority": "Medium",
+      "dueDate": "2026/3/8",
+      "status": "todo",
+      "createdAt": 1772641263115
+    },
+    {
+      "id": "rel_1772641263114_5c5032",
+      "launchTaskId": "launch_1772641263074_bootstrap_1",
+      "title": "初始化：启动开发环境",
+      "owner": "system",
+      "priority": "Low",
+      "dueDate": "2026/3/8",
+      "status": "todo",
+      "createdAt": 1772641263115
+    }
+  ]
+}
