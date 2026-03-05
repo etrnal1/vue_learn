@@ -34,6 +34,8 @@ import systemMonitorRouter from './routes/systemMonitor.js';
 import dockerRouter from './routes/docker.js';
 import terminalRouter from './routes/terminal.js';
 import databaseRouter from './routes/database.js';
+import pipelinesRouter from './routes/pipelines.js';
+import modulesRouter from './routes/modules.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -145,6 +147,8 @@ app.use('/api/system-monitor', systemMonitorRouter);
 app.use('/api/docker', dockerRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/database', databaseRouter);
+app.use(pipelinesRouter);
+app.use(modulesRouter);
 
 // 404 处理
 app.use((req, res) => {

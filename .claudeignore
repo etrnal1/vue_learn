@@ -1,0 +1,17 @@
+.git
+node_modules
+dist
+build
+coverage
+*.log
+*.zip
+*.tar
+*.gz
+*.7z
+*.mp4
+*.mp3
+*.png
+*.jpg
+*.jpeg
+*.pdf
+public/git-log.json
