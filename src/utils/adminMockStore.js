@@ -111,6 +111,7 @@ const defaultDepartments = [
 
 const defaultSidebarNav = [
   { id: 'home', groupKey: 'workbench', groupTitle: '工作台', groupIcon: '🏠', groupOrder: 1, tabOrder: 1 },
+  { id: 'launchOps', groupKey: 'workbench', groupTitle: '工作台', groupIcon: '🏠', groupOrder: 1, tabOrder: 2 },
   { id: 'spring', groupKey: 'learning', groupTitle: '学习与文档', groupIcon: '📚', groupOrder: 2, tabOrder: 1 },
   { id: 'excel', groupKey: 'learning', groupTitle: '学习与文档', groupIcon: '📚', groupOrder: 2, tabOrder: 2 },
   { id: 'wiki', groupKey: 'learning', groupTitle: '学习与文档', groupIcon: '📚', groupOrder: 2, tabOrder: 3 },
@@ -215,7 +216,13 @@ function normalizeSidebarList(list) {
   const normalized = source
     .map((item) => normalizeSidebarItem(item))
     .filter((item, index, arr) => item && arr.findIndex((entry) => entry.id === item.id) === index)
-  return normalized.length > 0 ? normalized : structuredClone(defaultSidebarNav)
+  const base = normalized.length > 0 ? normalized : []
+  const existingIds = new Set(base.map((item) => item.id))
+  const missingDefaults = defaultSidebarNav
+    .map((item) => normalizeSidebarItem(item))
+    .filter((item) => item && !existingIds.has(item.id))
+  const merged = [...base, ...missingDefaults]
+  return merged.length > 0 ? merged : structuredClone(defaultSidebarNav)
 }
 
 export function getSidebarNavConfig() {

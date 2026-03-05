@@ -461,6 +461,7 @@ const tabLoaders = {
   docs: () => import('./pages/DocumentationCenter.vue'),
   ffmpeg: () => import('./pages/FfmpegTool.vue'),
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
+  launchOps: () => import('./pages/OpsWorkbench.vue'),
   docker: () => import('./pages/DockerVisualizer.vue'),
   terminal: () => import('./pages/TerminalConsole.vue'),
   authLogs: () => import('./pages/AuthLogCenter.vue'),
@@ -518,6 +519,7 @@ const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 const DocumentationCenter = createAsyncPage(tabLoaders.docs)
 const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
+const OpsWorkbench = createAsyncPage(tabLoaders.launchOps)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
 const AuthLogCenter = createAsyncPage(tabLoaders.authLogs)
@@ -562,6 +564,7 @@ const DEFAULT_PERMISSION_CONFIG = {
     docs: ['admin', 'operator', 'viewer'],
     ffmpeg: ['admin', 'operator'],
     monitor: ['admin', 'operator'],
+    launchOps: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
     database: ['admin'],
@@ -660,6 +663,7 @@ export default {
         { id: 'docs', label: '📚 文档中心', roles: ['admin', 'operator', 'viewer'] },
         { id: 'ffmpeg', label: 'FFmpeg 工具', roles: ['admin', 'operator'] },
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
+        { id: 'launchOps', label: 'macOS Launch 工作台', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
         { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
         { id: 'database', label: '🗄️ 数据库', roles: ['admin'] },
@@ -879,6 +883,7 @@ export default {
         docs: DocumentationCenter,
         ffmpeg: FfmpegTool,
         monitor: SystemMonitorDashboard,
+        launchOps: OpsWorkbench,
         docker: DockerVisualizer,
         terminal: TerminalConsole,
         database: DatabaseConsole,

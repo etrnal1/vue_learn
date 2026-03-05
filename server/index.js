@@ -31,6 +31,7 @@ import runtimeLogsRouter from './routes/runtimeLogs.js';
 import docsRouter from './routes/docs.js';
 import ffmpegRouter from './routes/ffmpeg.js';
 import systemMonitorRouter from './routes/systemMonitor.js';
+import launchOpsRouter from './routes/launchOps.js';
 import dockerRouter from './routes/docker.js';
 import terminalRouter from './routes/terminal.js';
 import databaseRouter from './routes/database.js';
@@ -142,6 +143,7 @@ app.use('/api/runtime-logs', runtimeLogsRouter);
 app.use('/api/docs', docsRouter);
 app.use('/api/ffmpeg', ffmpegRouter);
 app.use('/api/system-monitor', systemMonitorRouter);
+app.use('/api/launch-ops', launchOpsRouter);
 app.use('/api/docker', dockerRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/database', databaseRouter);
@@ -218,6 +220,7 @@ async function startServer() {
     }
     console.log(`  - /api/ffmpeg`);
     console.log(`  - /api/system-monitor`);
+    console.log(`  - /api/launch-ops`);
     console.log(`  - /api/docker`);
     console.log(`  - /api/terminal`);
     console.log(`  - /api/database`);

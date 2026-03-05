@@ -992,6 +992,19 @@ export const api = {
     getStatus: () => apiRequest('/system-monitor/status')
   },
 
+  // Launch Ops Workbench
+  launchOps: {
+    getOverview: () => apiRequest('/launch-ops/overview'),
+    getMonitor: () => apiRequest('/launch-ops/monitor'),
+    getTasks: () => apiRequest('/launch-ops/tasks'),
+    getThread: () => apiRequest('/launch-ops/thread'),
+    postThread: (content) => apiRequest('/launch-ops/thread', { method: 'POST', body: JSON.stringify({ content }) }),
+    createTask: (payload) => apiRequest('/launch-ops/tasks', { method: 'POST', body: JSON.stringify(payload) }),
+    updateTask: (id, payload) => apiRequest(`/launch-ops/tasks/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    removeTask: (id) => apiRequest(`/launch-ops/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    runTask: (id, payload = {}) => apiRequest(`/launch-ops/tasks/${encodeURIComponent(id)}/run`, { method: 'POST', body: JSON.stringify(payload) })
+  },
+
   // Terminal Console
   terminal: {
     createSession: (payload = {}) => apiRequest('/terminal/sessions', { method: 'POST', body: JSON.stringify(payload) }),

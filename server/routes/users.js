@@ -32,6 +32,7 @@ const DEFAULT_PERMISSION_CONFIG = {
     docs: ['admin', 'operator', 'viewer'],
     ffmpeg: ['admin', 'operator'],
     monitor: ['admin', 'operator'],
+    launchOps: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
     database: ['admin'],

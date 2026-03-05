@@ -166,6 +166,7 @@ const NAV_TAB_OPTIONS = [
   { id: 'docs', label: '文档中心' },
   { id: 'ffmpeg', label: 'FFmpeg 工具' },
   { id: 'monitor', label: '设备状态大屏' },
+  { id: 'launchOps', label: 'macOS Launch 工作台' },
   { id: 'docker', label: 'Docker 管理' },
   { id: 'terminal', label: '本机终端' },
   { id: 'database', label: '数据库' },
