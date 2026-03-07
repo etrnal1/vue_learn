@@ -1,0 +1,89 @@
+{
+  "runId": "run_1772802193586_izgplj",
+  "pipelineId": "sample_user_etl",
+  "pipelineName": "用户数据清洗流水线",
+  "status": "success",
+  "error": "",
+  "output": {
+    "saved": true,
+    "sink": "memory",
+    "writtenAt": "2026-03-06T13:03:13.586Z",
+    "payload": {
+      "records": [
+        {
+          "user_id": 1,
+          "full_name": "Alice",
+          "email_address": "alice@example.com",
+          "active": true
+        },
+        {
+          "user_id": 3,
+          "full_name": "Carol",
+          "email_address": "carol@example.com",
+          "active": true
+        }
+      ],
+      "metrics": {
+        "count": 2,
+        "activeCount": 2,
+        "activeRate": 1
+      }
+    }
+  },
+  "stepResults": [
+    {
+      "stepId": "source_users",
+      "stepName": "加载样例数据",
+      "status": "success",
+      "durationMs": 0
+    },
+    {
+      "stepId": "validate_users",
+      "stepName": "校验字段",
+      "status": "success",
+      "durationMs": 0
+    },
+    {
+      "stepId": "transform_users",
+      "stepName": "转换字段",
+      "status": "success",
+      "durationMs": 0
+    },
+    {
+      "stepId": "filter_active",
+      "stepName": "过滤启用用户",
+      "status": "success",
+      "durationMs": 0
+    },
+    {
+      "stepId": "summary",
+      "stepName": "统计汇总",
+      "status": "success",
+      "durationMs": 0
+    },
+    {
+      "stepId": "sink_memory",
+      "stepName": "落库模拟",
+      "status": "success",
+      "durationMs": 0
+    }
+  ],
+  "logs": [
+    "[2026-03-06T13:03:13.586Z] 开始执行: 用户数据清洗流水线",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 加载样例数据",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 加载样例数据 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 校验字段",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 校验字段 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 转换字段",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 转换字段 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 过滤启用用户",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 过滤启用用户 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 统计汇总",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 统计汇总 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行步骤: 落库模拟",
+    "[2026-03-06T13:03:13.586Z] 步骤成功: 落库模拟 (0ms)",
+    "[2026-03-06T13:03:13.586Z] 执行完成"
+  ],
+  "startedAt": "2026-03-06T13:03:13.586Z",
+  "finishedAt": "2026-03-06T13:03:13.586Z"
+}

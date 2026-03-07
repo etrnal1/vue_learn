@@ -1,0 +1,77 @@
+{
+  "id": "sample_user_etl",
+  "name": "用户数据清洗流水线",
+  "version": "0.1.0",
+  "processors": [
+    {
+      "id": "source_users",
+      "type": "SourceProcessor",
+      "name": "加载样例数据",
+      "config": {
+        "source": "inline-users"
+      }
+    },
+    {
+      "id": "validate_users",
+      "type": "ValidationProcessor",
+      "name": "校验字段",
+      "config": {
+        "required": [
+          "id",
+          "name",
+          "email"
+        ]
+      }
+    },
+    {
+      "id": "transform_users",
+      "type": "TransformProcessor",
+      "name": "转换字段",
+      "config": {
+        "mapTo": [
+          "user_id",
+          "full_name",
+          "email_address",
+          "active"
+        ]
+      }
+    },
+    {
+      "id": "filter_active",
+      "type": "FilterProcessor",
+      "name": "过滤启用用户",
+      "config": {
+        "field": "active",
+        "equals": true
+      }
+    },
+    {
+      "id": "summary",
+      "type": "SummaryProcessor",
+      "name": "统计汇总",
+      "config": {
+        "metrics": [
+          "count",
+          "activeRate"
+        ]
+      }
+    },
+    {
+      "id": "sink_memory",
+      "type": "SinkProcessor",
+      "name": "落库模拟",
+      "config": {
+        "sink": "memory"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "sequential",
+    "timeout": 60000,
+    "retryPolicy": {
+      "maxRetries": 1
+    }
+  },
+  "updatedAt": "2026-03-06T12:56:37.507Z",
+  "createdAt": "2026-03-06T12:56:37.507Z"
+}
