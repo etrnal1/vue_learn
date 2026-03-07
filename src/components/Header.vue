@@ -1,21 +1,32 @@
 <template>
-  <div class="header">
-    <h1>✨ Vue 3 学习参考中心</h1>
-    <p>全功能学习平台 - Spring、Excel、最佳实践</p>
-    <div class="build-info">
-      <span class="chip">v{{ appVersion }}</span>
-      <span class="chip">构建时间 {{ buildTimeText }}</span>
-      <button class="chip status-chip" :class="statusClass" @click="toggleStatusDetail">{{ statusText }}</button>
-      <span v-if="pwaInfo.installed" class="chip pwa-chip" :title="pwaStatusDetail">📱 PWA 已安装</span>
-      <span v-else-if="pwaInfo.isPWACapable" class="chip pwa-chip-capable" :title="pwaStatusDetail">📱 PWA 就绪</span>
+  <div>
+    <!-- 顶栏 Header -->
+    <div class="header">
+      <!-- 左侧：Logo + 标题 -->
+      <div class="header-left">
+        <span class="header-logo">✨ Vue 3 中心</span>
+      </div>
+
+      <!-- 右侧：信息 chips + 设置按钮 -->
+      <div class="header-right">
+        <span class="chip status-chip" :class="statusClass" @click="toggleStatusDetail" :title="statusText">{{ statusText }}</span>
+        <span v-if="pwaInfo.installed" class="chip pwa-chip" @click="togglePWADetail" :title="pwaStatusDetail">📱 PWA</span>
+        <span v-else-if="pwaInfo.isPWACapable" class="chip pwa-chip-capable" @click="togglePWADetail" :title="pwaStatusDetail">📱 可装</span>
+        <button class="header-btn" :title="showStatusDetail || showPWADetail ? '关闭' : '设置'" @click="toggleSettings">⚙️</button>
+      </div>
     </div>
-    <div v-if="showStatusDetail" class="status-detail">
-      <div>最近检查：{{ lastCheckedText }}</div>
-      <div>接口：`/api/health`</div>
-      <div v-if="lastError">错误：{{ lastError }}</div>
-    </div>
-    <div v-if="showPWADetail && (pwaInfo.installed || pwaInfo.isPWACapable)" class="pwa-detail">
-      <div>{{ pwaDetailLines }}</div>
+
+    <!-- 展开式设置面板 -->
+    <div v-if="showStatusDetail || showPWADetail" class="header-panel">
+      <div v-if="showStatusDetail" class="status-detail">
+        <div><strong>后端检查</strong></div>
+        <div>最近：{{ lastCheckedText }}</div>
+        <div v-if="lastError">错误：{{ lastError }}</div>
+      </div>
+      <div v-if="showPWADetail && (pwaInfo.installed || pwaInfo.isPWACapable)" class="pwa-detail">
+        <div><strong>PWA 信息</strong></div>
+        <div style="white-space: pre-wrap; font-size: 0.85em">{{ pwaDetailLines }}</div>
+      </div>
     </div>
   </div>
 </template>
@@ -31,6 +42,7 @@ export default {
       backendStatus: 'checking',
       healthTimer: null,
       showStatusDetail: false,
+      showPWADetail: false,
       lastCheckedAt: null,
       lastError: '',
       pwaInfo: {
@@ -40,34 +52,29 @@ export default {
         standalone: false,
         hasServiceWorker: false,
         isPWACapable: false
-      },
-      showPWADetail: false
+      }
     }
   },
   computed: {
-    appVersion() {
-      return typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'
-    },
-    buildTimeText() {
-      if (typeof __BUILD_TIME__ !== 'string') return '未知'
-      const date = new Date(__BUILD_TIME__)
-      if (Number.isNaN(date.getTime())) return __BUILD_TIME__
-      return date.toLocaleString('zh-CN', { hour12: false })
-    },
     statusText() {
-      if (this.backendStatus === 'ok') return '后端正常'
-      if (this.backendStatus === 'error') return '后端异常'
-      return '后端检测中'
+      if (this.backendStatus === 'ok') return '✓ 连接'
+      if (this.backendStatus === 'error') return '✗ 离线'
+      return '⋯ 检测中'
     },
     statusClass() {
       return `status-${this.backendStatus}`
     },
     lastCheckedText() {
-      if (!this.lastCheckedAt) return '尚未完成'
-      return new Date(this.lastCheckedAt).toLocaleString('zh-CN', { hour12: false })
+      if (!this.lastCheckedAt) return '未检查'
+      const date = new Date(this.lastCheckedAt)
+      const now = Date.now()
+      const diff = now - this.lastCheckedAt
+      if (diff < 60000) return '刚刚'
+      if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
+      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     },
     pwaStatusDetail() {
-      return getPWAStatusDetail(this.pwaInfo).replace(/\n/g, ' | ')
+      return getPWAStatusDetail(this.pwaInfo).replace(/\n/g, ' • ')
     },
     pwaDetailLines() {
       return getPWAStatusDetail(this.pwaInfo)
@@ -76,11 +83,8 @@ export default {
   mounted() {
     this.checkBackendHealth()
     this.healthTimer = setInterval(this.checkBackendHealth, 30000)
-
-    // 检测 PWA 状态
     this.pwaInfo = detectPWA()
 
-    // 监听 PWA 安装事件
     if (typeof window !== 'undefined') {
       window.addEventListener('appinstalled', () => {
         this.pwaInfo.installed = true
@@ -96,9 +100,14 @@ export default {
   methods: {
     toggleStatusDetail() {
       this.showStatusDetail = !this.showStatusDetail
-      if (this.showStatusDetail) {
-        this.showPWADetail = false
-      }
+      this.showPWADetail = false
+    },
+    togglePWADetail() {
+      this.showPWADetail = !this.showPWADetail
+      this.showStatusDetail = false
+    },
+    toggleSettings() {
+      this.showStatusDetail = !this.showStatusDetail
     },
     async checkBackendHealth() {
       const controller = new AbortController()
@@ -114,7 +123,7 @@ export default {
         this.lastError = response.ok ? '' : `HTTP ${response.status}`
       } catch (error) {
         this.backendStatus = 'error'
-        this.lastError = error?.name === 'AbortError' ? '请求超时' : (error?.message || '网络异常')
+        this.lastError = error?.name === 'AbortError' ? '超时' : (error?.message || '网络异常')
       } finally {
         this.lastCheckedAt = Date.now()
         clearTimeout(timeout)
@@ -126,133 +135,208 @@ export default {
 
 <style scoped>
 .header {
-  background: linear-gradient(165deg, #0a84ff 0%, #0066cc 100%);
-  color: white;
-  padding: 42px 32px;
-  border-radius: 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 18px 38px rgba(0, 102, 204, 0.28);
-  text-align: left;
-}
-
-.header h1 {
-  font-size: 2.35em;
-  line-height: 1.15;
-  margin-bottom: 8px;
-  letter-spacing: -0.02em;
-}
-
-.header p {
-  font-size: 1.06em;
-  opacity: 0.9;
-}
-
-.build-info {
-  margin-top: 14px;
+  background: var(--app-card, #ffffff);
+  border-bottom: 1px solid var(--app-border, #d1d1d6);
+  padding: 0 20px;
+  height: 56px;
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 1500;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-logo {
+  font-size: 0.95em;
+  font-weight: 700;
+  color: var(--app-text, #1c1c1e);
+  white-space: nowrap;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 6px 11px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  font-size: 0.8em;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: var(--app-bg, #f2f2f7);
+  border: 1px solid var(--app-border, #d1d1d6);
+  font-size: 0.75em;
   font-weight: 600;
+  color: var(--app-text-muted, #8e8e93);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.status-chip.status-ok {
-  background: rgba(16, 185, 129, 0.25);
-  border-color: rgba(16, 185, 129, 0.45);
-}
-
-.status-chip.status-error {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: rgba(239, 68, 68, 0.45);
-}
-
-.status-chip.status-checking {
-  background: rgba(245, 158, 11, 0.25);
-  border-color: rgba(245, 158, 11, 0.45);
+.chip:hover {
+  background: var(--app-card-elevated, #fbfbfd);
+  border-color: var(--app-primary, #007aff);
+  color: var(--app-primary, #007aff);
 }
 
 .status-chip {
   cursor: pointer;
 }
 
-.status-detail {
-  margin-top: 10px;
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  font-size: 0.78em;
-  text-align: left;
+.status-chip.status-ok {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.status-chip.status-ok:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.status-chip.status-error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.status-chip.status-error:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.status-chip.status-checking {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.status-chip.status-checking:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
 }
 
 .pwa-chip {
-  background: rgba(34, 197, 94, 0.25);
-  border-color: rgba(34, 197, 94, 0.45);
-  cursor: pointer;
-  transition: all 0.2s ease;
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
 }
 
 .pwa-chip:hover {
-  background: rgba(34, 197, 94, 0.35);
-  border-color: rgba(34, 197, 94, 0.65);
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.5);
 }
 
 .pwa-chip-capable {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(59, 130, 246, 0.45);
-  cursor: pointer;
-  transition: all 0.2s ease;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
 }
 
 .pwa-chip-capable:hover {
-  background: rgba(59, 130, 246, 0.35);
-  border-color: rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
 }
 
+.header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--app-bg, #f2f2f7);
+  border: 1px solid var(--app-border, #d1d1d6);
+  border-radius: 8px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--app-text-muted, #8e8e93);
+}
+
+.header-btn:hover {
+  background: var(--app-primary, #007aff);
+  border-color: var(--app-primary, #007aff);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.header-btn:active {
+  transform: translateY(0);
+}
+
+/* 展开式面板 */
+.header-panel {
+  background: var(--app-card, #ffffff);
+  border-bottom: 1px solid var(--app-border, #d1d1d6);
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-detail,
 .pwa-detail {
-  margin-top: 10px;
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  font-size: 0.78em;
-  text-align: left;
-  white-space: pre-wrap;
+  border-radius: 8px;
+  background: var(--app-bg, #f2f2f7);
+  border: 1px solid var(--app-border, #d1d1d6);
+  font-size: 0.8em;
+  color: var(--app-text-secondary, #3a3a3c);
 }
 
+.status-detail strong,
+.pwa-detail strong {
+  color: var(--app-text, #1c1c1e);
+  margin-bottom: 2px;
+}
+
+/* 响应式 */
 @media (max-width: 768px) {
-  .header h1 {
-    font-size: 1.7em;
-  }
-
-  .header p {
-    font-size: 0.93em;
-  }
-
   .header {
-    padding: 30px 20px;
-    border-radius: 18px;
-    margin-bottom: 12px;
+    padding: 0 12px;
+    height: 52px;
+  }
+
+  .header-logo {
+    font-size: 0.9em;
   }
 
   .chip {
-    font-size: 0.72em;
+    font-size: 0.7em;
+    padding: 3px 8px;
+  }
+
+  .header-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.9em;
   }
 }
 </style>

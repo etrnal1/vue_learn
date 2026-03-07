@@ -11,8 +11,11 @@ body {
     --app-space-xs: 6px;
     --app-space-sm: 10px;
     --app-space-md: 14px;
-    --app-space-lg: 18px;
+    --app-space-lg: 16px;
     --app-space-xl: 24px;
+    --app-radius-sm: 6px;
+    --app-radius-md: 8px;
+    --app-radius-lg: 12px;
 }
 
 * {
@@ -48,16 +51,16 @@ select {
 /* Shared UI primitives (avoid per-page style drift) */
 .app-card {
     border: 1px solid var(--app-border);
-    border-radius: 14px;
+    border-radius: var(--app-radius-lg);
     background: var(--app-card);
-    box-shadow: var(--app-soft-shadow);
+    box-shadow: 0 4px 12px var(--app-shadow-light);
 }
 
 .app-panel {
     border: 1px solid var(--app-border);
-    border-radius: 14px;
-    background: linear-gradient(180deg, var(--app-card-elevated, var(--app-card)), var(--app-card));
-    box-shadow: var(--app-soft-shadow);
+    border-radius: var(--app-radius-lg);
+    background: var(--app-card);
+    box-shadow: 0 4px 12px var(--app-shadow-light);
 }
 
 .app-stack {
@@ -69,11 +72,11 @@ select {
 .app-select,
 .app-textarea {
     border: 1px solid var(--app-border);
-    border-radius: 12px;
+    border-radius: var(--app-radius-md);
     background: var(--app-card);
     color: var(--app-text);
-    padding: 10px 12px;
-    font-size: 0.95rem;
+    padding: 8px 10px;
+    font-size: 0.9rem;
 }
 
 .app-textarea {
@@ -96,11 +99,12 @@ select {
     justify-content: center;
     gap: 6px;
     border: 1px solid var(--app-border);
-    border-radius: 12px;
+    border-radius: var(--app-radius-md);
     background: var(--app-card-elevated, var(--app-card));
     color: var(--app-text-secondary, var(--app-text));
-    padding: 10px 12px;
-    font-weight: 800;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 0.9em;
     cursor: pointer;
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
