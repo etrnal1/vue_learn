@@ -35,6 +35,7 @@ import launchOpsRouter from './routes/launchOps.js';
 import dockerRouter from './routes/docker.js';
 import terminalRouter from './routes/terminal.js';
 import databaseRouter from './routes/database.js';
+import streamingEngineRouter from './routes/streamingEngine.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -147,6 +148,7 @@ app.use('/api/launch-ops', launchOpsRouter);
 app.use('/api/docker', dockerRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/database', databaseRouter);
+app.use('/api/streaming-engine', streamingEngineRouter);
 
 // 404 处理
 app.use((req, res) => {
@@ -224,6 +226,7 @@ async function startServer() {
     console.log(`  - /api/docker`);
     console.log(`  - /api/terminal`);
     console.log(`  - /api/database`);
+    console.log(`  - /api/streaming-engine`);
     console.log(`\n按 Ctrl+C 停止服务器\n`);
   });
 

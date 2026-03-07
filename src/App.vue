@@ -482,7 +482,9 @@ const tabLoaders = {
   flowInstances: () => import('./pages/workflow/FlowInstances.vue'),
   flowWorkItems: () => import('./pages/workflow/FlowWorkItems.vue'),
   flowManagement: () => import('./pages/workflow/FlowManagement.vue'),
-  flowAutomation: () => import('./pages/workflow/FlowAutomation.vue')
+  flowAutomation: () => import('./pages/workflow/FlowAutomation.vue'),
+  streamingEngine: () => import('./pages/streaming-engine/PipelineEditor.vue'),
+  evopsych: () => import('./pages/EvoPsychPage.vue')
 }
 
 function createAsyncPage(loader) {
@@ -541,6 +543,8 @@ const FlowInstances = createAsyncPage(tabLoaders.flowInstances)
 const FlowWorkItems = createAsyncPage(tabLoaders.flowWorkItems)
 const FlowManagement = createAsyncPage(tabLoaders.flowManagement)
 const FlowAutomation = createAsyncPage(tabLoaders.flowAutomation)
+const StreamingEngineEditor = createAsyncPage(tabLoaders.streamingEngine)
+const EvoPsychPage = createAsyncPage(tabLoaders.evopsych)
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
     { id: 'admin', label: '管理员' },
@@ -584,8 +588,10 @@ const DEFAULT_PERMISSION_CONFIG = {
     flowWorkItems: ['admin', 'operator'],
     flowManagement: ['admin', 'operator'],
     flowAutomation: ['admin', 'operator'],
+    streamingEngine: ['admin', 'operator'],
     authLogs: ['admin', 'operator'],
-    runtimeLogs: ['admin']
+    runtimeLogs: ['admin'],
+    evopsych: ['admin', 'operator', 'viewer']
   }
 }
 const APP_BOOTSTRAP_CACHE_KEY = 'app_bootstrap_cache_v1'
@@ -606,6 +612,7 @@ export default {
     MusicManager,
     AlbumManager,
     WikiCenter,
+    EvoPsychPage,
     LogCenter,
     WeiboCrawler,
     ScheduledTaskManager,
@@ -657,6 +664,7 @@ export default {
         { id: 'music', label: '音乐管理', roles: ['admin', 'operator'] },
         { id: 'album', label: '相册管理', roles: ['admin', 'operator'] },
         { id: 'wiki', label: '维基百科', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'evopsych', label: '🧬 进化心理学', roles: ['admin', 'operator', 'viewer'] },
         { id: 'logs', label: '日志中心', roles: ['admin'] },
         { id: 'weibo', label: '微博抓取', roles: ['admin', 'operator'] },
         { id: 'scheduler', label: '定时任务', roles: ['admin'] },
@@ -683,6 +691,7 @@ export default {
         { id: 'flowWorkItems', label: '流程工作项管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowManagement', label: '流程管理', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
         { id: 'flowAutomation', label: '流程自动化', roles: ['admin', 'operator'], menuGroup: 'workflow', hidden: true },
+        { id: 'streamingEngine', label: '流式引擎', roles: ['admin', 'operator'], menuGroup: 'workflow' },
         { id: 'authLogs', label: '🔐 认证日志', roles: ['admin', 'operator'] },
         { id: 'runtimeLogs', label: '📊 实时日志', roles: ['admin'] }
       ],
@@ -877,6 +886,7 @@ export default {
         music: MusicManager,
         album: AlbumManager,
         wiki: WikiCenter,
+        evopsych: EvoPsychPage,
         logs: LogCenter,
         weibo: WeiboCrawler,
         scheduler: ScheduledTaskManager,
@@ -903,6 +913,7 @@ export default {
         flowWorkItems: FlowWorkItems,
         flowManagement: FlowManagement,
         flowAutomation: FlowAutomation,
+        streamingEngine: StreamingEngineEditor,
         authLogs: AuthLogCenter,
         runtimeLogs: RuntimeLogsViewer
       }
@@ -2032,11 +2043,15 @@ export default {
 
 <style scoped>
 .app {
-  max-width: 1320px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 14px 16px 18px;
   transition: color 0.2s ease;
   color: var(--app-text);
   font-size: calc(16px * var(--app-font-scale, 1));
+  box-sizing: border-box;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 88%, #ffffff) 0%, var(--app-bg) 100%);
 }
 
 .scroll-down-fab {
@@ -2104,22 +2119,22 @@ export default {
 
 .main-layout {
   display: flex;
-  gap: 14px;
+  gap: 18px;
   align-items: flex-start;
 }
 
 .side-menu {
-  width: 240px;
-  flex: 0 0 240px;
+  width: 258px;
+  flex: 0 0 258px;
   position: sticky;
-  top: 10px;
-  max-height: calc(100vh - 20px);
+  top: 14px;
+  max-height: calc(100vh - 28px);
   overflow: auto;
-  padding: 12px;
+  padding: 14px 12px;
   border: 1px solid var(--app-border);
-  border-radius: 16px;
-  background: var(--app-group-bg);
-  box-shadow: var(--app-soft-shadow);
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--app-shadow-light) 56%, transparent);
   z-index: 1300;
 }
 
@@ -2170,7 +2185,7 @@ export default {
 }
 
 .side-group-body {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .side-btn {
@@ -2179,14 +2194,15 @@ export default {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 10px;
-  margin-bottom: 8px;
+  padding: 10px 11px;
+  margin-bottom: 7px;
   border-radius: 12px;
   border: 1px solid var(--app-border);
-  background: var(--app-card);
+  background: color-mix(in srgb, var(--app-card) 86%, #ffffff);
   color: var(--app-text-secondary);
   cursor: pointer;
   text-align: left;
+  font-size: 0.86em;
 }
 
 .side-btn-icon {
@@ -2222,14 +2238,16 @@ export default {
   min-width: 0;
   flex: 1 1 auto;
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  align-content: start;
 }
 
 .content-head {
   border: 1px solid var(--app-border);
-  border-radius: 14px;
-  background: var(--app-card);
-  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-card) 92%, #ffffff) 0%, var(--app-card-elevated) 100%);
+  padding: 16px 18px;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--app-shadow-light) 44%, transparent);
 }
 
 .content-head-top {
@@ -2243,7 +2261,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.78em;
+  font-size: 0.8em;
   color: var(--app-text-muted);
 }
 
@@ -2258,9 +2276,25 @@ export default {
 }
 
 .content-title {
-  margin: 6px 0 0;
-  font-size: 1.12em;
+  margin: 10px 0 0;
+  font-size: 1.42em;
+  font-weight: 700;
   color: var(--app-text);
+}
+
+@media (min-width: 1280px) {
+  .app {
+    padding: 16px 20px 20px;
+  }
+
+  .main-layout {
+    gap: 22px;
+  }
+
+  .side-menu {
+    width: 272px;
+    flex-basis: 272px;
+  }
 }
 
 .perf-strip {
@@ -2303,16 +2337,16 @@ export default {
 
 .search-box {
   position: relative;
-  width: min(360px, 44vw);
+  width: min(420px, 42vw);
 }
 
 .search-input {
   width: 100%;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--app-card-elevated);
   color: var(--app-text);
-  padding: 7px 10px;
+  padding: 9px 12px;
 }
 
 .search-panel {
@@ -2383,8 +2417,14 @@ export default {
 }
 
 @media (max-width: 900px) {
+  .app {
+    padding: 10px 10px 14px;
+  }
   .main-layout {
     display: block;
+  }
+  .main-content {
+    width: 100%;
   }
   .side-menu {
     position: fixed;
@@ -2449,12 +2489,12 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 14px;
-  padding: 8px 12px;
-  background: var(--app-group-bg);
-  border-radius: 16px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
+  border-radius: 14px;
   border: 1px solid var(--app-border);
-  box-shadow: var(--app-soft-shadow);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-shadow-light) 34%, transparent);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -2637,12 +2677,12 @@ export default {
   flex-wrap: wrap;
   gap: 10px 14px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding: 10px 12px;
-  background: var(--app-group-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
   border: 1px solid var(--app-border);
   border-radius: 14px;
-  box-shadow: var(--app-soft-shadow);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-shadow-light) 34%, transparent);
 }
 
 .global-palette-bar {
@@ -2651,10 +2691,10 @@ export default {
   gap: 10px;
   margin-bottom: 10px;
   padding: 8px 12px;
-  background: var(--app-group-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
   border: 1px solid var(--app-border);
   border-radius: 14px;
-  box-shadow: var(--app-soft-shadow);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-shadow-light) 34%, transparent);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -2666,10 +2706,10 @@ export default {
   gap: 10px;
   margin-bottom: 10px;
   padding: 8px 12px;
-  background: var(--app-group-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
   border: 1px solid var(--app-border);
   border-radius: 14px;
-  box-shadow: var(--app-soft-shadow);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-shadow-light) 34%, transparent);
 }
 
 .sync-status-bar {
@@ -2679,10 +2719,10 @@ export default {
   gap: 10px;
   margin-bottom: 10px;
   padding: 8px 12px;
-  background: var(--app-group-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-group-bg) 90%, #ffffff) 0%, var(--app-card) 100%);
   border: 1px solid var(--app-border);
   border-radius: 14px;
-  box-shadow: var(--app-soft-shadow);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-shadow-light) 34%, transparent);
 }
 
 .sync-status-left {
