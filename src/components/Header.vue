@@ -2,8 +2,9 @@
   <div>
     <!-- 顶栏 Header -->
     <div class="header">
-      <!-- 左侧：Logo + 标题 -->
+      <!-- 左侧：Hamburger + Logo + 标题 -->
       <div class="header-left">
+        <button class="hamburger-btn" @click="$emit('toggle-menu')" aria-label="打开菜单">☰</button>
         <span class="header-logo">✨ Vue 3 中心</span>
       </div>
 
@@ -37,6 +38,7 @@ import { detectPWA, getPWAStatusDetail } from '../utils/pwa.js'
 
 export default {
   name: 'Header',
+  emits: ['toggle-menu'],
   data() {
     return {
       backendStatus: 'checking',
@@ -151,9 +153,37 @@ export default {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
+}
+
+.hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--app-bg, #f2f2f7);
+  border: 1px solid var(--app-border, #d1d1d6);
+  border-radius: 8px;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--app-text, #1c1c1e);
+  flex-shrink: 0;
+}
+
+.hamburger-btn:hover {
+  background: var(--app-primary, #007aff);
+  border-color: var(--app-primary, #007aff);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.hamburger-btn:active {
+  transform: translateY(0);
 }
 
 .header-logo {
@@ -318,10 +348,22 @@ export default {
 }
 
 /* 响应式 */
+@media (max-width: 900px) {
+  .hamburger-btn {
+    display: flex;
+  }
+}
+
 @media (max-width: 768px) {
   .header {
     padding: 0 12px;
     height: 52px;
+  }
+
+  .hamburger-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 1em;
   }
 
   .header-logo {

@@ -1,6 +1,6 @@
 <template>
   <div class="app" :data-theme="currentTheme" :style="appStyleVars">
-    <Header />
+    <Header @toggle-menu="toggleSidebarDrawer" />
     <div v-if="!authReady" class="auth-loading">登录状态检查中...</div>
     <div v-else-if="!isLoggedIn" class="auth-card">
       <h2 class="auth-title">{{ authMode === 'login' ? '账号登录' : '账号注册' }}</h2>
@@ -2054,6 +2054,18 @@ export default {
   background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 88%, #ffffff) 0%, var(--app-bg) 100%);
 }
 
+@media (max-width: 900px) {
+  .app {
+    padding: 8px 10px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 6px 8px 14px;
+  }
+}
+
 .scroll-down-fab {
   position: fixed;
   right: 16px;
@@ -2087,15 +2099,7 @@ export default {
 }
 
 .menu-toggle-btn {
-  border: 1px solid var(--app-border);
-  background: var(--app-card-elevated);
-  color: var(--app-text-secondary);
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 0.74em;
-  font-weight: 700;
-  cursor: pointer;
-  display: none;
+  display: none !important;
 }
 
 .sidebar-collapse-btn {
@@ -2113,9 +2117,6 @@ export default {
   border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
 }
 
-.menu-toggle-btn:hover {
-  border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
-}
 
 .main-layout {
   display: flex;
@@ -2429,13 +2430,13 @@ export default {
   }
   .side-menu {
     position: fixed;
-    top: 0;
+    top: 52px;
     left: 0;
     right: auto;
     bottom: 0;
     width: min(82vw, 320px);
-    max-height: 100dvh;
-    height: 100dvh;
+    max-height: calc(100dvh - 52px);
+    height: calc(100dvh - 52px);
     border-radius: 0 16px 16px 0;
     transform: translate3d(-104%, 0, 0);
     transition: transform 0.22s ease;
@@ -2463,10 +2464,34 @@ export default {
     padding: 5px 8px;
   }
   .menu-toggle-btn {
-    display: inline-flex;
+    display: none;
   }
   .sidebar-collapse-btn {
     display: none;
+  }
+  .permission-bar {
+    padding: 6px 12px;
+    gap: 6px;
+  }
+  .role-options {
+    display: none;
+  }
+  .sync-status-bar {
+    padding: 4px 12px;
+    font-size: 0.8em;
+    gap: 6px;
+  }
+  .sync-btn {
+    padding: 4px 8px;
+    font-size: 0.78em;
+  }
+  .side-btn {
+    min-height: 44px;
+    padding: 10px;
+  }
+  .side-section + .side-section {
+    margin-top: 8px;
+    padding-top: 8px;
   }
   .content-head {
     padding: 10px 12px;

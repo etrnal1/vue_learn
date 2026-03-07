@@ -183,10 +183,10 @@ select {
 
 @media (max-width: 768px) {
     body {
-        padding-top: max(10px, calc(var(--safe-area-top) + 6px));
-        padding-right: max(10px, calc(var(--safe-area-right) + 6px));
+        padding-top: 0;
+        padding-right: max(8px, calc(var(--safe-area-right) + 4px));
         padding-bottom: max(10px, calc(var(--safe-area-bottom) + 10px));
-        padding-left: max(10px, calc(var(--safe-area-left) + 6px));
+        padding-left: max(8px, calc(var(--safe-area-left) + 4px));
     }
 }
 
