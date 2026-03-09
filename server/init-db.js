@@ -275,9 +275,26 @@ async function initDatabase() {
 	        position_y INT NULL,
 	        INDEX idx_flow (flow_id),
 	        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
-	      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-	    `);
-	    console.log('✅ 表 flow_steps 已创建');
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 flow_steps 已创建');
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS power_monitor_records (
+        id VARCHAR(64) PRIMARY KEY,
+        source ENUM('auto', 'manual') NOT NULL DEFAULT 'auto',
+        timestamp_ms BIGINT NOT NULL,
+        watts DECIMAL(10,2) NOT NULL,
+        sample_seconds INT NOT NULL DEFAULT 60,
+        duration_minutes INT NOT NULL DEFAULT 1,
+        note VARCHAR(500),
+        meta JSON,
+        created_at BIGINT NOT NULL,
+        INDEX idx_power_source_time (source, timestamp_ms),
+        INDEX idx_power_timestamp (timestamp_ms)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ 表 power_monitor_records 已创建');
 
 	    // 历史版本兼容：duration 早期为 INT，后来用于“预计耗时”展示（如：2小时/秒级），改为 VARCHAR(100)
 	    try {

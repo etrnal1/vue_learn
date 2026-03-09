@@ -989,7 +989,28 @@ export const api = {
 
   // System Monitor
   systemMonitor: {
-    getStatus: () => apiRequest('/system-monitor/status')
+    getStatus: () => apiRequest('/system-monitor/status'),
+    getPower: (historyLimit = 180, params = {}) => {
+      const query = new URLSearchParams({ historyLimit: String(historyLimit) })
+      if (params.startMs != null) query.set('startMs', String(params.startMs))
+      if (params.endMs != null) query.set('endMs', String(params.endMs))
+      if (params.keyword) query.set('keyword', String(params.keyword))
+      return apiRequest(`/system-monitor/power?${query.toString()}`)
+    },
+    listPowerRecords: (params = {}) => {
+      const query = new URLSearchParams()
+      if (params.limit != null) query.set('limit', String(params.limit))
+      if (params.startMs != null) query.set('startMs', String(params.startMs))
+      if (params.endMs != null) query.set('endMs', String(params.endMs))
+      if (params.keyword) query.set('keyword', String(params.keyword))
+      if (params.source) query.set('source', String(params.source))
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return apiRequest(`/system-monitor/power-records${suffix}`)
+    },
+    createPowerRecord: (payload) => apiRequest('/system-monitor/power-records', { method: 'POST', body: JSON.stringify(payload) }),
+    deletePowerRecord: (id) => apiRequest(`/system-monitor/power-records/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearPowerRecords: () => apiRequest('/system-monitor/power-records', { method: 'DELETE' }),
+    getPowermetrics: () => apiRequest('/system-monitor/powermetrics')
   },
 
   // Launch Ops Workbench
