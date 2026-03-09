@@ -119,6 +119,8 @@ const defaultSidebarNav = [
   { id: 'itsm', groupKey: 'business', groupTitle: '业务系统', groupIcon: '🧩', groupOrder: 3, tabOrder: 1 },
   { id: 'scheduler', groupKey: 'business', groupTitle: '业务系统', groupIcon: '🧩', groupOrder: 3, tabOrder: 2 },
   { id: 'monitor', groupKey: 'business', groupTitle: '业务系统', groupIcon: '🧩', groupOrder: 3, tabOrder: 3 },
+  { id: 'macMiniPower', groupKey: 'business', groupTitle: '业务系统', groupIcon: '🧩', groupOrder: 3, tabOrder: 4 },
+  { id: 'powerMetricsCompare', groupKey: 'business', groupTitle: '业务系统', groupIcon: '🧩', groupOrder: 3, tabOrder: 5 },
   { id: 'chat', groupKey: 'content', groupTitle: '内容管理', groupIcon: '🗂️', groupOrder: 4, tabOrder: 1 },
   { id: 'video', groupKey: 'content', groupTitle: '内容管理', groupIcon: '🗂️', groupOrder: 4, tabOrder: 2 },
   { id: 'music', groupKey: 'content', groupTitle: '内容管理', groupIcon: '🗂️', groupOrder: 4, tabOrder: 3 },

@@ -461,6 +461,8 @@ const tabLoaders = {
   docs: () => import('./pages/DocumentationCenter.vue'),
   ffmpeg: () => import('./pages/FfmpegTool.vue'),
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
+  macMiniPower: () => import('./pages/MacMiniPowerDashboard.vue'),
+  powerMetricsCompare: () => import('./pages/PowerMetricsComparison.vue'),
   launchOps: () => import('./pages/OpsWorkbench.vue'),
   docker: () => import('./pages/DockerVisualizer.vue'),
   terminal: () => import('./pages/TerminalConsole.vue'),
@@ -521,6 +523,8 @@ const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 const DocumentationCenter = createAsyncPage(tabLoaders.docs)
 const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
+const MacMiniPowerDashboard = createAsyncPage(tabLoaders.macMiniPower)
+const PowerMetricsComparison = createAsyncPage(tabLoaders.powerMetricsCompare)
 const OpsWorkbench = createAsyncPage(tabLoaders.launchOps)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
@@ -568,6 +572,8 @@ const DEFAULT_PERMISSION_CONFIG = {
     docs: ['admin', 'operator', 'viewer'],
     ffmpeg: ['admin', 'operator'],
     monitor: ['admin', 'operator'],
+    macMiniPower: ['admin', 'operator', 'viewer'],
+    powerMetricsCompare: ['admin', 'operator', 'viewer'],
     launchOps: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
@@ -671,6 +677,8 @@ export default {
         { id: 'docs', label: '📚 文档中心', roles: ['admin', 'operator', 'viewer'] },
         { id: 'ffmpeg', label: 'FFmpeg 工具', roles: ['admin', 'operator'] },
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
+        { id: 'macMiniPower', label: 'Mac mini 功耗统计', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'powerMetricsCompare', label: 'powermetrics 对比', roles: ['admin', 'operator', 'viewer'] },
         { id: 'launchOps', label: 'macOS Launch 工作台', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
         { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
@@ -893,6 +901,8 @@ export default {
         docs: DocumentationCenter,
         ffmpeg: FfmpegTool,
         monitor: SystemMonitorDashboard,
+        macMiniPower: MacMiniPowerDashboard,
+        powerMetricsCompare: PowerMetricsComparison,
         launchOps: OpsWorkbench,
         docker: DockerVisualizer,
         terminal: TerminalConsole,
