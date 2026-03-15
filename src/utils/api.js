@@ -1017,6 +1017,7 @@ export const api = {
   launchOps: {
     getOverview: () => apiRequest('/launch-ops/overview'),
     getMonitor: () => apiRequest('/launch-ops/monitor'),
+    getHostServices: (force = false) => apiRequest(`/launch-ops/host-services${force ? '?force=true' : ''}`),
     getTasks: () => apiRequest('/launch-ops/tasks'),
     getThread: () => apiRequest('/launch-ops/thread'),
     postThread: (content) => apiRequest('/launch-ops/thread', { method: 'POST', body: JSON.stringify({ content }) }),

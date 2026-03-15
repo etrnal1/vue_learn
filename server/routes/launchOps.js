@@ -16,9 +16,14 @@ const MAX_OUTPUT = 2000;
 const MAX_TASKS = 500;
 const MAX_RELATED = 800;
 const ALLOWED_PREFIX = new Set(['open', 'npm', 'pnpm', 'yarn', 'node', 'git', 'brew', 'osascript', 'launchctl']);
+const HOST_SERVICE_SCAN_TTL_MS = 15 * 1000;
 
 let loaded = false;
 let previousCpuSnapshot = readCpuSnapshot();
+let hostServiceSnapshot = {
+  expiresAt: 0,
+  payload: null
+};
 const state = {
   tasks: [],
   thread: [],
@@ -316,6 +321,443 @@ function buildServiceHealth(monitor) {
   ];
 }
 
+async function runSystemCommand(binary, args = []) {
+  try {
+    const result = await execFileAsync(binary, args, {
+      cwd: process.cwd(),
+      timeout: 12000,
+      maxBuffer: 1024 * 1024,
+      env: process.env
+    });
+    return {
+      ok: true,
+      stdout: String(result?.stdout || ''),
+      stderr: String(result?.stderr || '')
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      stdout: String(error?.stdout || ''),
+      stderr: String(error?.stderr || error?.message || '')
+    };
+  }
+}
+
+function parseBrewServices(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\s+/).filter(Boolean);
+      const name = parts[0] || '';
+      const status = parts[1] || 'unknown';
+      const user = parts[2] && !parts[2].startsWith('~/') && !parts[2].startsWith('/') ? parts[2] : '';
+      const plistPath = parts.slice(user ? 3 : 2).join(' ');
+      return {
+        id: `brew_${name}`,
+        name,
+        status,
+        user,
+        plistPath,
+        isStarted: status === 'started',
+        startupMode: plistPath.includes('LaunchDaemons') ? 'boot' : (plistPath ? 'login' : 'manual')
+      };
+    })
+    .filter((item) => item.name);
+}
+
+function parseLaunchctlList(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\s+/).filter(Boolean);
+      const [pidValue = '-', statusValue = '0', ...labelParts] = parts;
+      const label = labelParts.join(' ');
+      const pid = pidValue === '-' ? 0 : Number(pidValue || 0);
+      const status = Number(statusValue || 0);
+      return {
+        id: `launch_${label}`,
+        pid: Number.isFinite(pid) ? pid : 0,
+        status: Number.isFinite(status) ? status : 0,
+        label,
+        isApple: label.startsWith('com.apple.'),
+        isApplication: label.startsWith('application.')
+      };
+    })
+    .filter((item) => item.label);
+}
+
+function parseListeningPorts(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\S+)\s+(\d+)\s+(\S+).*TCP\s+(.+)\s+\(LISTEN\)$/);
+      if (!match) return null;
+      const [, command, pidValue, user, endpoint] = match;
+      const portMatch = endpoint.match(/.*:(\d+)$/);
+      const host = portMatch ? endpoint.slice(0, Math.max(0, endpoint.length - portMatch[0].length + 1)).replace(/:$/, '') : endpoint;
+      return {
+        command,
+        pid: Number(pidValue || 0),
+        user,
+        endpoint,
+        host,
+        port: Number(portMatch?.[1] || 0),
+        localOnly: /^(127\.0\.0\.1|localhost|\[::1\])/.test(endpoint)
+      };
+    })
+    .filter(Boolean);
+}
+
+function parseProcessList(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+      if (!match) return null;
+      const [, pidValue, ppidValue, user, command, args] = match;
+      return {
+        pid: Number(pidValue || 0),
+        ppid: Number(ppidValue || 0),
+        user,
+        command,
+        args: String(args || '').trim()
+      };
+    })
+    .filter(Boolean);
+}
+
+function parseTmuxSessions(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^([^:]+):\s+(\d+) windows?/i);
+      if (!match) {
+        return {
+          id: `tmux_${line}`,
+          name: line,
+          windows: 0,
+          raw: line
+        };
+      }
+      return {
+        id: `tmux_${match[1]}`,
+        name: match[1],
+        windows: Number(match[2] || 0),
+        raw: line
+      };
+    });
+}
+
+function buildListeningGroups(entries) {
+  const grouped = new Map();
+  entries.forEach((item) => {
+    const key = `${item.pid}:${item.command}`;
+    const current = grouped.get(key) || {
+      pid: item.pid,
+      command: item.command,
+      user: item.user,
+      ports: [],
+      localOnly: true
+    };
+    current.ports.push(item.port);
+    current.localOnly = current.localOnly && item.localOnly;
+    grouped.set(key, current);
+  });
+  return Array.from(grouped.values()).map((item) => ({
+    ...item,
+    ports: item.ports
+      .filter((port) => Number.isFinite(port) && port > 0)
+      .sort((a, b) => a - b)
+  }));
+}
+
+function deriveProcessDisplayName(processInfo = {}, listeningInfo = {}) {
+  const command = String(processInfo.command || listeningInfo.command || 'service').split('/').pop();
+  const args = String(processInfo.args || '');
+  if (command === 'node') {
+    if (/vite/i.test(args)) return 'Node / Vite 服务';
+    if (/codex/i.test(args)) return 'Node / Codex 相关服务';
+    return 'Node 服务';
+  }
+  if (command === 'python' || command === 'python3') return 'Python 服务';
+  if (command === 'mysqld') return 'MySQL';
+  return command;
+}
+
+function matchBrewService(brewServices, processInfo = {}, launchInfo = null) {
+  const command = String(processInfo.command || '').toLowerCase();
+  const args = String(processInfo.args || '').toLowerCase();
+  const label = String(launchInfo?.label || '').toLowerCase();
+  return brewServices.find((item) => {
+    const brewName = String(item.name || '').toLowerCase();
+    const brewLabel = `homebrew.mxcl.${brewName}`;
+    if (!brewName) return false;
+    if (label === brewLabel) return true;
+    if (command === brewName) return true;
+    if (command.includes(brewName)) return true;
+    if (args.includes(`/${brewName}`) || args.includes(` ${brewName} `)) return true;
+    return false;
+  }) || null;
+}
+
+function createObservedCommand(processInfo = {}) {
+  const args = String(processInfo.args || '').trim();
+  if (!args) return '';
+  return args.length > 240 ? `${args.slice(0, 237)}...` : args;
+}
+
+function buildHostServiceRecommendations(services, uid) {
+  const manualServices = services.filter((item) => item.manager === 'manual');
+  const managedServices = services.filter((item) => item.manager !== 'manual');
+
+  const recommendations = manualServices.map((item) => ({
+    id: `rec_${item.id}`,
+    name: item.name,
+    reason: item.ports.length > 0 ? '正在监听端口，但未被 launchctl / brew services 托管。' : '当前是手动会话进程，重启后不会自动恢复。',
+    action: item.command.includes('vite') || item.command.includes('node')
+      ? '建议优先封装为 LaunchAgent，或先加入本页面的一键启动任务。'
+      : '建议补一个 LaunchAgent/Daemon，或者整理成 brew service。',
+    suggestedCommand: item.command || `launchctl bootstrap gui/${uid} ~/Library/LaunchAgents/${item.commandName}.plist`
+  }));
+
+  const findings = [];
+  if (managedServices.length > 0) {
+    findings.push({
+      id: 'managed',
+      level: 'good',
+      title: '已有可随重启恢复的服务',
+      detail: `当前识别到 ${managedServices.length} 个已被托管的服务，重启后可通过 brew services 或 launchctl 恢复。`
+    });
+  }
+  if (manualServices.length > 0) {
+    findings.push({
+      id: 'manual',
+      level: 'warn',
+      title: '存在手动启动的会话服务',
+      detail: `当前有 ${manualServices.length} 个服务更像是前台会话进程，重启后默认不会自动拉起。`
+    });
+  }
+  if (managedServices.length > 0 && managedServices.every((item) => item.localOnly)) {
+    findings.push({
+      id: 'local-only',
+      level: 'info',
+      title: '大多数端口仅本机可见',
+      detail: '这说明当前服务更多偏本机开发/运维用途，后续可按需区分“登录启动”和“开机启动”。'
+    });
+  }
+
+  return { recommendations, findings };
+}
+
+function buildStartupPlan(services) {
+  const managedServices = services.filter((item) => item.manager !== 'manual');
+  const manualServices = services.filter((item) => item.manager === 'manual');
+  return {
+    feasible: true,
+    summary: manualServices.length > 0
+      ? '可以。Homebrew 服务继续交给 brew services，自定义 Node/Python 进程建议补 LaunchAgent，再把常用命令放进 Launch 工作台做一键恢复。'
+      : '可以。当前大部分关键服务已经具备登录后自动恢复能力，只需要把剩余零散命令整理进启动任务。',
+    approaches: [
+      {
+        id: 'brew-services',
+        title: 'Homebrew 服务',
+        desc: '适合 mysql、gitea 这类长期驻留服务，使用 brew services 管理。'
+      },
+      {
+        id: 'launch-agent',
+        title: 'LaunchAgent / LaunchDaemon',
+        desc: '适合 Node、Python、本地脚本和 GUI 登录后自动启动场景。'
+      },
+      {
+        id: 'launch-workbench',
+        title: '应用内一键拉起',
+        desc: '把常用恢复命令沉淀成 Launch 任务，登录后手动一键恢复开发环境。'
+      },
+      {
+        id: 'tmux-restore',
+        title: 'tmux 恢复脚本',
+        desc: '适合恢复 session/window/pane 结构并重跑命令；更适合开发工作台，不适合替代正式服务托管。'
+      }
+    ],
+    managedIds: managedServices.map((item) => item.id),
+    manualIds: manualServices.map((item) => item.id)
+  };
+}
+
+function buildTmuxPlan(tmuxSessions = [], uid) {
+  const hasTmux = Array.isArray(tmuxSessions) && tmuxSessions.length > 0;
+  return {
+    installed: true,
+    detected: hasTmux,
+    sessionCount: tmuxSessions.length,
+    sessions: tmuxSessions,
+    summary: hasTmux
+      ? `当前识别到 ${tmuxSessions.length} 个 tmux session。重启后不能恢复原进程现场，但可以通过恢复脚本重新建 session 并重跑命令。`
+      : '当前未识别到 tmux session。若你计划用 tmux 托管开发服务，建议同时准备恢复脚本。',
+    restoreScriptExample: [
+      '#!/bin/bash',
+      'tmux has-session -t dev 2>/dev/null && exit 0',
+      'tmux new-session -d -s dev -n app',
+      'tmux send-keys -t dev:app "cd /Users/mac/vue-learning-app && npm run dev" C-m',
+      'tmux new-window -t dev -n api',
+      'tmux send-keys -t dev:api "cd /Users/mac/vue-learning-app/server && npm run dev" C-m'
+    ].join('\n'),
+    launchAgentHint: `launchctl bootstrap gui/${uid} ~/Library/LaunchAgents/com.mac.tmux-restore.plist`,
+    note: '建议把 tmux 用于恢复交互式工作台；长期常驻服务仍优先使用 brew services 或 LaunchAgent。'
+  };
+}
+
+async function scanHostServices(force = false) {
+  const currentTs = Date.now();
+  if (!force && hostServiceSnapshot.payload && hostServiceSnapshot.expiresAt > currentTs) {
+    return hostServiceSnapshot.payload;
+  }
+
+  const uid = typeof process.getuid === 'function' ? process.getuid() : Number(os.userInfo?.().uid || 0);
+  const [brewResult, launchResult, lsofResult, psResult, tmuxResult] = await Promise.all([
+    runSystemCommand('brew', ['services', 'list']),
+    runSystemCommand('launchctl', ['list']),
+    runSystemCommand('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']),
+    runSystemCommand('ps', ['-axo', 'pid=,ppid=,user=,comm=,args=']),
+    runSystemCommand('tmux', ['ls'])
+  ]);
+
+  const brewServices = parseBrewServices(brewResult.stdout);
+  const launchServices = parseLaunchctlList(launchResult.stdout)
+    .filter((item) => !item.isApple)
+    .slice(0, 400);
+  const listeningEntries = parseListeningPorts(lsofResult.stdout);
+  const listeningGroups = buildListeningGroups(listeningEntries);
+  const processes = parseProcessList(psResult.stdout);
+  const tmuxSessions = tmuxResult.ok ? parseTmuxSessions(tmuxResult.stdout) : [];
+  const processesByPid = new Map(processes.map((item) => [item.pid, item]));
+  const launchByPid = new Map(launchServices.filter((item) => item.pid > 0).map((item) => [item.pid, item]));
+
+  const services = listeningGroups.map((item) => {
+    const processInfo = processesByPid.get(item.pid) || {};
+    const launchInfo = launchByPid.get(item.pid) || null;
+    const brewInfo = matchBrewService(brewServices, processInfo, launchInfo);
+    const manager = brewInfo ? 'brew' : (launchInfo ? 'launchctl' : 'manual');
+    const startupMode = brewInfo?.startupMode || (launchInfo ? 'login' : 'manual');
+    const label = brewInfo ? `homebrew.mxcl.${brewInfo.name}` : String(launchInfo?.label || '');
+    const name = brewInfo?.name || deriveProcessDisplayName(processInfo, item);
+    const command = createObservedCommand(processInfo);
+    return {
+      id: `svc_${item.pid}_${item.command}`,
+      pid: item.pid,
+      name,
+      commandName: String(processInfo.command || item.command || '').split('/').pop(),
+      command,
+      user: processInfo.user || item.user,
+      ports: item.ports,
+      localOnly: item.localOnly,
+      manager,
+      startupMode,
+      rebootReady: manager !== 'manual',
+      status: 'running',
+      label,
+      restartCommand: brewInfo
+        ? `brew services restart ${brewInfo.name}`
+        : (label ? `launchctl kickstart -k gui/${uid}/${label}` : command),
+      autostartCommand: brewInfo
+        ? `brew services start ${brewInfo.name}`
+        : (label ? `launchctl print gui/${uid}/${label}` : `为 ${name} 创建 LaunchAgent`)
+    };
+  });
+
+  brewServices
+    .filter((item) => item.isStarted)
+    .forEach((item) => {
+      if (services.some((service) => service.name.toLowerCase() === item.name.toLowerCase())) return;
+      services.push({
+        id: `svc_brew_${item.name}`,
+        pid: 0,
+        name: item.name,
+        commandName: item.name,
+        command: '',
+        user: item.user || os.userInfo().username,
+        ports: [],
+        localOnly: true,
+        manager: 'brew',
+        startupMode: item.startupMode,
+        rebootReady: true,
+        status: item.status,
+        label: `homebrew.mxcl.${item.name}`,
+        restartCommand: `brew services restart ${item.name}`,
+        autostartCommand: `brew services start ${item.name}`
+      });
+    });
+
+  const sortedServices = services.sort((a, b) => {
+    if (a.rebootReady !== b.rebootReady) return a.rebootReady ? -1 : 1;
+    if (b.ports.length !== a.ports.length) return b.ports.length - a.ports.length;
+    return String(a.name).localeCompare(String(b.name), 'zh-CN');
+  });
+
+  const { recommendations, findings } = buildHostServiceRecommendations(sortedServices, uid);
+  if (tmuxSessions.length > 0) {
+    findings.push({
+      id: 'tmux-detected',
+      level: 'info',
+      title: '检测到 tmux 会话',
+      detail: `当前识别到 ${tmuxSessions.length} 个 tmux session。适合恢复工作台，但建议通过脚本重新建会话并重跑命令。`
+    });
+  }
+  const summary = {
+    scannedAt: currentTs,
+    host: os.hostname(),
+    platform: `${os.type()} ${os.release()}`,
+    totalServices: sortedServices.length,
+    listeningServices: sortedServices.filter((item) => item.ports.length > 0).length,
+    managedServices: sortedServices.filter((item) => item.manager !== 'manual').length,
+    manualServices: sortedServices.filter((item) => item.manager === 'manual').length,
+    rebootReadyServices: sortedServices.filter((item) => item.rebootReady).length,
+    brewStartedServices: brewServices.filter((item) => item.isStarted).length,
+    launchctlLabels: launchServices.length,
+    tmuxSessions: tmuxSessions.length
+  };
+
+  const payload = {
+    source: 'server',
+    summary,
+    findings,
+    recommendations,
+    startupPlan: buildStartupPlan(sortedServices),
+    tmux: buildTmuxPlan(tmuxSessions, uid),
+    services: sortedServices,
+    brewServices,
+    launchServices: launchServices
+      .filter((item) => item.label && !item.isApplication)
+      .slice(0, 80),
+    raw: {
+      brewAvailable: brewResult.ok,
+      launchctlAvailable: launchResult.ok,
+      lsofAvailable: lsofResult.ok,
+      psAvailable: psResult.ok,
+      tmuxAvailable: tmuxResult.ok
+    }
+  };
+
+  hostServiceSnapshot = {
+    expiresAt: currentTs + HOST_SERVICE_SCAN_TTL_MS,
+    payload
+  };
+  return payload;
+}
+
 async function runLaunchTask(task) {
   const command = String(task.command || '').trim();
   const [binary, ...args] = command.split(/\s+/).filter(Boolean);
@@ -389,6 +831,13 @@ router.get('/monitor', async (_req, res) => {
     serviceHealth: buildServiceHealth(monitor),
     source: 'server'
   });
+});
+
+router.get('/host-services', async (req, res) => {
+  await ensureLoaded();
+  const force = String(req.query?.force || '').trim() === 'true';
+  const payload = await scanHostServices(force);
+  res.json(payload);
 });
 
 router.get('/tasks', async (_req, res) => {
