@@ -1,5 +1,11 @@
 <template>
   <div class="app" :data-theme="currentTheme" :style="appStyleVars">
+    <template v-if="publicKbMode">
+      <div class="public-kb-shell">
+        <component :is="currentAsyncComponent" :key="activeTab" />
+      </div>
+    </template>
+    <template v-else>
     <Header @toggle-menu="toggleSidebarDrawer" />
     <div v-if="!authReady" class="auth-loading">登录状态检查中...</div>
     <div v-else-if="!isLoggedIn" class="auth-card">
@@ -417,6 +423,7 @@
     >
       ↓
     </button>
+    </template>
   </div>
 </template>
 
@@ -459,10 +466,12 @@ const tabLoaders = {
   weibo: () => import('./pages/WeiboCrawler.vue'),
   scheduler: () => import('./pages/ScheduledTaskManager.vue'),
   docs: () => import('./pages/DocumentationCenter.vue'),
+  kbPwaDesign: () => import('./pages/KnowledgeBasePwaDesign.vue'),
   ffmpeg: () => import('./pages/FfmpegTool.vue'),
   monitor: () => import('./pages/SystemMonitorDashboard.vue'),
   macMiniPower: () => import('./pages/MacMiniPowerDashboard.vue'),
   powerMetricsCompare: () => import('./pages/PowerMetricsComparison.vue'),
+  hostServices: () => import('./pages/HostServicesDashboard.vue'),
   launchOps: () => import('./pages/OpsWorkbench.vue'),
   docker: () => import('./pages/DockerVisualizer.vue'),
   terminal: () => import('./pages/TerminalConsole.vue'),
@@ -521,10 +530,12 @@ const LogCenter = createAsyncPage(tabLoaders.logs)
 const WeiboCrawler = createAsyncPage(tabLoaders.weibo)
 const ScheduledTaskManager = createAsyncPage(tabLoaders.scheduler)
 const DocumentationCenter = createAsyncPage(tabLoaders.docs)
+const KnowledgeBasePwaDesign = createAsyncPage(tabLoaders.kbPwaDesign)
 const FfmpegTool = createAsyncPage(tabLoaders.ffmpeg)
 const SystemMonitorDashboard = createAsyncPage(tabLoaders.monitor)
 const MacMiniPowerDashboard = createAsyncPage(tabLoaders.macMiniPower)
 const PowerMetricsComparison = createAsyncPage(tabLoaders.powerMetricsCompare)
+const HostServicesDashboard = createAsyncPage(tabLoaders.hostServices)
 const OpsWorkbench = createAsyncPage(tabLoaders.launchOps)
 const DockerVisualizer = createAsyncPage(tabLoaders.docker)
 const TerminalConsole = createAsyncPage(tabLoaders.terminal)
@@ -570,10 +581,12 @@ const DEFAULT_PERMISSION_CONFIG = {
     weibo: ['admin', 'operator'],
     scheduler: ['admin'],
     docs: ['admin', 'operator', 'viewer'],
+    kbPwaDesign: ['admin', 'operator', 'viewer'],
     ffmpeg: ['admin', 'operator'],
     monitor: ['admin', 'operator'],
     macMiniPower: ['admin', 'operator', 'viewer'],
     powerMetricsCompare: ['admin', 'operator', 'viewer'],
+    hostServices: ['admin', 'operator'],
     launchOps: ['admin', 'operator'],
     docker: ['admin'],
     terminal: ['admin'],
@@ -635,6 +648,7 @@ export default {
   data() {
     return {
       activeTab: 'home',
+      publicKbMode: false,
       isDebugMode: IS_DEBUG_MODE,
       authReady: false,
       authBusy: false,
@@ -675,10 +689,12 @@ export default {
         { id: 'weibo', label: '微博抓取', roles: ['admin', 'operator'] },
         { id: 'scheduler', label: '定时任务', roles: ['admin'] },
         { id: 'docs', label: '📚 文档中心', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'kbPwaDesign', label: '知识库 PWA 设计', roles: ['admin', 'operator', 'viewer'] },
         { id: 'ffmpeg', label: 'FFmpeg 工具', roles: ['admin', 'operator'] },
         { id: 'monitor', label: '设备状态大屏', roles: ['admin', 'operator'] },
         { id: 'macMiniPower', label: 'Mac mini 功耗统计', roles: ['admin', 'operator', 'viewer'] },
         { id: 'powerMetricsCompare', label: 'powermetrics 对比', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'hostServices', label: '主机服务总览', roles: ['admin', 'operator'] },
         { id: 'launchOps', label: 'macOS Launch 工作台', roles: ['admin', 'operator'] },
         { id: 'docker', label: '🐳 Docker 管理', roles: ['admin'] },
         { id: 'terminal', label: '⌨️ 本机终端', roles: ['admin'] },
@@ -899,10 +915,12 @@ export default {
         weibo: WeiboCrawler,
         scheduler: ScheduledTaskManager,
         docs: DocumentationCenter,
+        kbPwaDesign: KnowledgeBasePwaDesign,
         ffmpeg: FfmpegTool,
         monitor: SystemMonitorDashboard,
         macMiniPower: MacMiniPowerDashboard,
         powerMetricsCompare: PowerMetricsComparison,
+        hostServices: HostServicesDashboard,
         launchOps: OpsWorkbench,
         docker: DockerVisualizer,
         terminal: TerminalConsole,
@@ -1864,6 +1882,14 @@ export default {
       if (typeof window === 'undefined') return
       const amount = Math.max(260, Math.floor(window.innerHeight * 0.75))
       window.scrollBy({ top: amount, left: 0, behavior: 'smooth' })
+    },
+    detectPublicKbMode() {
+      if (typeof window === 'undefined') return false
+      const params = new URLSearchParams(window.location.search)
+      const isPublic = ['1', 'true', 'yes'].includes(String(params.get('public') || '').toLowerCase())
+      const directKb = params.get('publicTab') === 'kbPwaDesign' || params.get('kb') === '1'
+      const sharedTab = isPublic && params.get('tab') === 'kbPwaDesign'
+      return directKb || sharedTab
     }
   },
   async mounted() {
@@ -1979,6 +2005,21 @@ export default {
     })
     await this.afterNextPaint()
     await this.recordFirstVisiblePerf()
+    if (this.detectPublicKbMode()) {
+      this.publicKbMode = true
+      this.activeTab = 'kbPwaDesign'
+      this.authReady = true
+      this.isLoggedIn = true
+      this.currentUser = {
+        id: 'public-kb',
+        name: 'Knowledge Base',
+        role: 'viewer'
+      }
+      await this.afterNextPaint()
+      await this.recordInitialPagePerf()
+      this.initDonePerfMs = this.initialPagePerfMs
+      return
+    }
     await this.checkAuthSession()
     await this.afterNextPaint()
     await this.recordInitialPagePerf()
@@ -2062,6 +2103,10 @@ export default {
   font-size: calc(16px * var(--app-font-scale, 1));
   box-sizing: border-box;
   background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 88%, #ffffff) 0%, var(--app-bg) 100%);
+}
+
+.public-kb-shell {
+  width: 100%;
 }
 
 @media (max-width: 900px) {
