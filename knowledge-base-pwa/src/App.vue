@@ -1,0 +1,543 @@
+<template>
+  <div class="kb-page">
+    <!-- 全局导航 -->
+    <nav class="app-nav">
+      <button
+        v-for="tab in appTabs"
+        :key="tab.id"
+        type="button"
+        class="nav-tab"
+        :class="{ active: activeTab === tab.id }"
+        @click="activeTab = tab.id"
+      >
+        {{ tab.icon }} {{ tab.label }}
+      </button>
+    </nav>
+
+    <template v-if="activeTab === 'kb'">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Offline-first</p>
+        <h1>本地知识库 PWA</h1>
+        <p class="hero-text">独立工作区版本。支持本地导入、离线阅读、列表管理和全文搜索。</p>
+      </div>
+      <div class="hero-actions">
+        <button type="button" class="btn btn-primary" @click="openFilePicker">导入文档</button>
+        <button type="button" class="btn" @click="requestPersistentStorage">申请持久化</button>
+      </div>
+    </section>
+
+    <section class="toolbar panel">
+      <div class="toolbar-group">
+        <input v-model.trim="listKeyword" class="input" placeholder="列表搜索：文件名 / 内容关键词" />
+        <input v-model.trim="searchKeyword" class="input" placeholder="全文搜索：正文 / 单元格" />
+      </div>
+      <div class="toolbar-group">
+        <select v-model="typeFilter" class="input select">
+          <option value="all">全部</option>
+          <option value="docx">Word</option>
+          <option value="xlsx">Excel</option>
+        </select>
+        <button type="button" class="btn" @click="reloadDocs">刷新</button>
+        <button type="button" class="btn btn-danger" :disabled="docs.length === 0" @click="clearAllDocs">清空全部</button>
+      </div>
+    </section>
+
+    <section class="stats">
+      <article class="stat panel">
+        <span>文档总数</span>
+        <strong>{{ docs.length }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>Word</span>
+        <strong>{{ docCounts.docx }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>Excel</span>
+        <strong>{{ docCounts.xlsx }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>存储状态</span>
+        <strong>{{ storageInfo.persisted ? '已持久化' : '未持久化' }}</strong>
+      </article>
+    </section>
+
+    <section class="layout">
+      <aside class="panel sidebar">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Documents</p>
+            <h2>文档列表</h2>
+          </div>
+          <span class="pill">{{ filteredDocs.length }}</span>
+        </div>
+
+        <div v-if="filteredDocs.length === 0" class="empty">
+          <strong>还没有文档</strong>
+          <p>点击“导入文档”，选择 `.docx` 或 `.xlsx`。</p>
+        </div>
+
+        <div v-else class="doc-list">
+          <button
+            v-for="doc in filteredDocs"
+            :key="doc.id"
+            type="button"
+            class="doc-item"
+            :class="{ active: activeDocId === doc.id }"
+            @click="openDoc(doc)"
+          >
+            <div class="doc-icon" :class="doc.type">{{ doc.type === 'docx' ? 'W' : 'X' }}</div>
+            <div class="doc-meta">
+              <strong>{{ doc.name }}</strong>
+              <p>{{ getDocPreview(doc) }}</p>
+              <span>{{ doc.type.toUpperCase() }} · {{ formatBytes(doc.size) }}</span>
+            </div>
+          </button>
+        </div>
+      </aside>
+
+      <main class="content-stack">
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Management</p>
+              <h2>文档管理</h2>
+            </div>
+          </div>
+          <div v-if="filteredDocs.length === 0" class="empty compact">
+            <strong>暂无文档</strong>
+            <p>导入后这里会显示完整管理表格。</p>
+          </div>
+          <div v-else class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>文件名</th>
+                  <th>类型</th>
+                  <th>大小</th>
+                  <th>导入时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="doc in filteredDocs" :key="`row-${doc.id}`">
+                  <td>{{ doc.name }}</td>
+                  <td>{{ doc.type.toUpperCase() }}</td>
+                  <td>{{ formatBytes(doc.size) }}</td>
+                  <td>{{ formatDate(doc.createdAt) }}</td>
+                  <td class="row-actions">
+                    <button type="button" class="mini-btn" @click="openDoc(doc)">打开</button>
+                    <button type="button" class="mini-btn danger" @click="deleteDoc(doc)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Search</p>
+              <h2>全文搜索</h2>
+            </div>
+            <span class="pill">{{ searchResults.length }} 结果</span>
+          </div>
+          <div v-if="searchResults.length === 0" class="empty compact">
+            <strong>{{ searchKeyword ? '没有匹配结果' : '输入关键词开始搜索' }}</strong>
+            <p>搜索范围覆盖文件名、Word 正文和 Excel 单元格内容。</p>
+          </div>
+          <div v-else class="search-list">
+            <button
+              v-for="result in searchResults"
+              :key="`${result.doc.id}-${result.index}`"
+              type="button"
+              class="search-item"
+              @click="openSearchResult(result)"
+            >
+              <div>
+                <strong>{{ result.doc.name }}</strong>
+                <p>{{ result.snippet }}</p>
+              </div>
+              <span>{{ result.doc.type.toUpperCase() }}</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Reader</p>
+              <h2>{{ activeDoc ? activeDoc.name : '文档阅读' }}</h2>
+            </div>
+            <span class="pill">{{ storageInfo.usageText }} / {{ storageInfo.quotaText }}</span>
+          </div>
+
+          <div v-if="importQueue.length > 0" class="queue-list">
+            <div v-for="item in importQueue" :key="item.key" class="queue-item">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <p>{{ item.detail }}</p>
+              </div>
+              <span class="queue-state" :class="item.state">{{ item.status }}</span>
+            </div>
+          </div>
+
+          <div v-if="!activeDoc" class="empty compact">
+            <strong>还没有选中文档</strong>
+            <p>从左侧选择一个文档开始阅读。</p>
+          </div>
+
+          <div v-else-if="activeDoc.type === 'docx'" class="reader-block">
+            <div v-if="activeDoc.parseWarnings?.length" class="warning">
+              {{ activeDoc.parseWarnings.join('；') }}
+            </div>
+            <article class="docx-content" v-html="activeDoc.contentHtml"></article>
+          </div>
+
+          <div v-else class="reader-block">
+            <div class="sheet-tabs">
+              <button
+                v-for="sheet in activeDoc.sheets || []"
+                :key="sheet.name"
+                type="button"
+                class="mini-btn"
+                :class="{ active: activeSheetName === sheet.name }"
+                @click="activeSheetName = sheet.name"
+              >
+                {{ sheet.name }}
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th v-for="head in activeSheet.headers" :key="head">{{ head || ' ' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, rowIndex) in activeSheet.rows" :key="rowIndex">
+                    <td v-for="(cell, cellIndex) in row" :key="`${rowIndex}-${cellIndex}`" :title="formatCell(cell)">
+                      {{ formatCell(cell) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <input
+      ref="fileInput"
+      class="hidden-input"
+      type="file"
+      accept=".docx,.xlsx"
+      multiple
+      @change="onFileChange"
+    />
+    </template>
+
+    <!-- 个人笔记 -->
+    <PersonalNotes v-if="activeTab === 'notes'" />
+  </div>
+</template>
+
+<script>
+import * as XLSX from 'xlsx'
+import mammoth from 'mammoth/mammoth.browser'
+import PersonalNotes from './features/notes/PersonalNotes.vue'
+import {
+  clearKnowledgeDocs,
+  getKnowledgeMeta,
+  listKnowledgeDocs,
+  removeKnowledgeDoc,
+  saveKnowledgeDocs,
+  setKnowledgeMeta
+} from './features/knowledge-base/knowledgeBaseDb.js'
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024
+
+function toSheetRows(rows) {
+  return Array.isArray(rows)
+    ? rows.map((row) => (Array.isArray(row) ? row.map((cell) => (cell == null ? '' : String(cell))) : []))
+    : []
+}
+
+export default {
+  name: 'KnowledgeBaseStandaloneApp',
+  components: { PersonalNotes },
+  data() {
+    return {
+      activeTab: 'kb',
+      appTabs: [
+        { id: 'kb', label: '知识库', icon: '📚' },
+        { id: 'notes', label: '个人笔记', icon: '📝' }
+      ],
+      docs: [],
+      listKeyword: '',
+      searchKeyword: '',
+      typeFilter: 'all',
+      activeDocId: null,
+      activeSheetName: '',
+      importQueue: [],
+      storageInfo: {
+        persisted: false,
+        usageText: '0 B',
+        quotaText: '0 B'
+      }
+    }
+  },
+  computed: {
+    filteredDocs() {
+      const keyword = String(this.listKeyword || '').trim().toLowerCase()
+      return this.docs.filter((doc) => {
+        const typeMatched = this.typeFilter === 'all' || doc.type === this.typeFilter
+        if (!typeMatched) return false
+        if (!keyword) return true
+        return `${doc.name} ${doc.contentText || ''}`.toLowerCase().includes(keyword)
+      })
+    },
+    activeDoc() {
+      return this.docs.find((doc) => doc.id === this.activeDocId) || null
+    },
+    activeSheet() {
+      const fallback = { headers: [], rows: [] }
+      if (!this.activeDoc || this.activeDoc.type !== 'xlsx') return fallback
+      return this.activeDoc.sheets?.find((sheet) => sheet.name === this.activeSheetName) || this.activeDoc.sheets?.[0] || fallback
+    },
+    searchResults() {
+      const keyword = String(this.searchKeyword || '').trim().toLowerCase()
+      if (!keyword) return []
+      return this.docs
+        .map((doc) => {
+          const haystack = `${doc.name}\n${doc.contentText || ''}`
+          const lower = haystack.toLowerCase()
+          const index = lower.indexOf(keyword)
+          if (index === -1) return null
+          const start = Math.max(0, index - 28)
+          const end = Math.min(haystack.length, index + keyword.length + 52)
+          return {
+            doc,
+            index,
+            snippet: haystack.slice(start, end).replace(/\s+/g, ' ').trim()
+          }
+        })
+        .filter(Boolean)
+    },
+    docCounts() {
+      return this.docs.reduce((acc, doc) => {
+        acc[doc.type] += 1
+        return acc
+      }, { docx: 0, xlsx: 0 })
+    }
+  },
+  async mounted() {
+    await this.reloadDocs()
+    await this.refreshStorageInfo()
+  },
+  methods: {
+    async reloadDocs() {
+      this.docs = await listKnowledgeDocs()
+      const lastOpenedId = await getKnowledgeMeta('lastOpenedDocId')
+      if (!this.docs.length) {
+        this.activeDocId = null
+        this.activeSheetName = ''
+        return
+      }
+      const preferredId = this.docs.some((doc) => doc.id === lastOpenedId) ? lastOpenedId : this.docs[0].id
+      this.activeDocId = preferredId
+      this.syncActiveSheet()
+    },
+    syncActiveSheet() {
+      if (this.activeDoc?.type === 'xlsx') {
+        this.activeSheetName = this.activeDoc.sheets?.[0]?.name || ''
+      } else {
+        this.activeSheetName = ''
+      }
+    },
+    openFilePicker() {
+      this.$refs.fileInput?.click()
+    },
+    async onFileChange(event) {
+      const files = Array.from(event?.target?.files || [])
+      event.target.value = ''
+      if (!files.length) return
+      await this.importFiles(files)
+    },
+    async importFiles(files) {
+      const queuedItems = files.map((file, index) => ({
+        key: `${file.name}-${file.lastModified}-${index}`,
+        name: file.name,
+        status: '等待中',
+        state: 'idle',
+        detail: this.formatBytes(file.size)
+      }))
+      this.importQueue = [...queuedItems, ...this.importQueue].slice(0, 20)
+
+      const importedDocs = []
+      for (const file of files) {
+        const queueItem = this.importQueue.find((item) => item.key.startsWith(`${file.name}-${file.lastModified}`))
+        if (queueItem) {
+          queueItem.status = '解析中'
+          queueItem.state = 'loading'
+          queueItem.detail = `${this.formatBytes(file.size)} · 正在读取`
+        }
+        try {
+          if (file.size > MAX_FILE_SIZE) {
+            throw new Error('文件超过 50 MB 限制')
+          }
+          const doc = await this.parseFile(file)
+          importedDocs.push(doc)
+          if (queueItem) {
+            queueItem.status = '成功'
+            queueItem.state = 'done'
+            queueItem.detail = `${doc.type.toUpperCase()} · 已写入本地数据库`
+          }
+        } catch (error) {
+          if (queueItem) {
+            queueItem.status = '失败'
+            queueItem.state = 'error'
+            queueItem.detail = error?.message || '解析失败'
+          }
+        }
+      }
+
+      if (importedDocs.length) {
+        await saveKnowledgeDocs(importedDocs)
+        await this.reloadDocs()
+        await this.refreshStorageInfo()
+      }
+    },
+    async parseFile(file) {
+      const lowerName = String(file.name || '').toLowerCase()
+      if (lowerName.endsWith('.docx')) {
+        return this.parseDocx(file)
+      }
+      if (lowerName.endsWith('.xlsx')) {
+        return this.parseXlsx(file)
+      }
+      throw new Error('仅支持 .docx 和 .xlsx')
+    },
+    async parseDocx(file) {
+      const arrayBuffer = await file.arrayBuffer()
+      const [{ value: htmlResult, messages }, { value: textResult }] = await Promise.all([
+        mammoth.convertToHtml({ arrayBuffer }),
+        mammoth.extractRawText({ arrayBuffer })
+      ])
+      return {
+        name: file.name,
+        type: 'docx',
+        size: file.size,
+        contentHtml: htmlResult || '<p>文档为空</p>',
+        contentText: String(textResult || '').trim(),
+        sheets: [],
+        parseWarnings: Array.isArray(messages) ? messages.map((item) => item.message).filter(Boolean) : []
+      }
+    },
+    async parseXlsx(file) {
+      const arrayBuffer = await file.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+      const sheets = workbook.SheetNames.map((name) => {
+        const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[name], {
+          header: 1,
+          raw: false,
+          defval: ''
+        })
+        const rows = toSheetRows(rawRows)
+        const [headers = [], ...bodyRows] = rows
+        return { name, headers, rows: bodyRows }
+      })
+      const contentText = sheets.map((sheet) => [sheet.name, ...sheet.headers, ...sheet.rows.flat()].join(' ')).join('\n')
+      return {
+        name: file.name,
+        type: 'xlsx',
+        size: file.size,
+        contentHtml: '',
+        contentText,
+        sheets,
+        parseWarnings: []
+      }
+    },
+    async openDoc(doc) {
+      this.activeDocId = doc.id
+      this.syncActiveSheet()
+      await setKnowledgeMeta('lastOpenedDocId', doc.id)
+    },
+    async openSearchResult(result) {
+      await this.openDoc(result.doc)
+    },
+    async deleteDoc(doc) {
+      const confirmed = window.confirm(`确定删除文档“${doc.name}”吗？`)
+      if (!confirmed) return
+      await removeKnowledgeDoc(doc.id)
+      await this.reloadDocs()
+      await this.refreshStorageInfo()
+    },
+    async clearAllDocs() {
+      const confirmed = window.confirm('确定清空全部知识库文档吗？该操作不可撤销。')
+      if (!confirmed) return
+      await clearKnowledgeDocs()
+      await setKnowledgeMeta('lastOpenedDocId', null)
+      this.importQueue = []
+      await this.reloadDocs()
+      await this.refreshStorageInfo()
+    },
+    async requestPersistentStorage() {
+      if (!navigator?.storage?.persist) {
+        alert('当前浏览器不支持持久化存储 API')
+        return
+      }
+      const granted = await navigator.storage.persist()
+      await this.refreshStorageInfo()
+      if (granted) {
+        alert('✅ 持久化已开启！浏览器不会自动清除你的数据。')
+      } else {
+        alert('⚠️ 浏览器拒绝了持久化请求。\n\n提示：将此应用「添加到主屏幕」安装为 PWA 后再试，或在浏览器设置中允许本站存储。')
+      }
+    },
+    async refreshStorageInfo() {
+      const next = {
+        persisted: false,
+        usageText: '未知',
+        quotaText: '未知'
+      }
+      if (navigator?.storage?.persisted) {
+        next.persisted = await navigator.storage.persisted()
+      }
+      if (navigator?.storage?.estimate) {
+        const estimate = await navigator.storage.estimate()
+        next.usageText = this.formatBytes(estimate?.usage || 0)
+        next.quotaText = this.formatBytes(estimate?.quota || 0)
+      }
+      this.storageInfo = next
+    },
+    getDocPreview(doc) {
+      const source = String(doc?.contentText || '').replace(/\s+/g, ' ').trim()
+      return source ? `${source.slice(0, 88)}${source.length > 88 ? '...' : ''}` : '暂无预览'
+    },
+    formatBytes(value) {
+      const size = Number(value || 0)
+      if (!Number.isFinite(size) || size <= 0) return '0 B'
+      const units = ['B', 'KB', 'MB', 'GB']
+      const level = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)))
+      const amount = size / (1024 ** level)
+      return `${amount.toFixed(amount >= 10 || level === 0 ? 0 : 1)} ${units[level]}`
+    },
+    formatDate(value) {
+      if (!value) return '未知时间'
+      return new Date(value).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    },
+    formatCell(cell) {
+      const text = cell == null ? '' : String(cell)
+      return text.length > 60 ? `${text.slice(0, 60)}...` : text
+    }
+  }
+}
+</script>
