@@ -18,7 +18,7 @@
       </div>
     </div>
 
-    <!-- 全局导航 -->
+    <!-- 底部导航 -->
     <nav v-if="!locked" class="app-nav">
       <button
         v-for="tab in appTabs"
@@ -28,7 +28,8 @@
         :class="{ active: activeTab === tab.id }"
         @click="activeTab = tab.id"
       >
-        {{ tab.icon }} {{ tab.label }}
+        <span class="nav-icon">{{ tab.icon }}</span>
+        <span class="nav-label">{{ tab.label }}</span>
       </button>
     </nav>
 

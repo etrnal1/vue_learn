@@ -45,15 +45,16 @@ textarea {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  padding-top: var(--safe-top);
 }
 
-/* 固定顶部导航 */
+/* 底部导航占位 */
 .kb-scroll-area {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 12px 16px max(18px, calc(var(--safe-bottom) + 12px));
+  padding: 12px 16px calc(70px + var(--safe-bottom));
   display: grid;
   gap: 16px;
   align-content: start;
@@ -69,7 +70,7 @@ textarea {
 }
 
 .hero {
-  padding: 24px;
+  padding: 16px;
   background:
     radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 24%),
     linear-gradient(135deg, #082f49 0%, #0f172a 50%, #0f766e 100%);
@@ -77,10 +78,10 @@ textarea {
 }
 
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -89,10 +90,15 @@ textarea {
   margin: 0;
 }
 
+.hero h1 {
+  font-size: 1.3rem;
+}
+
 .hero-text {
-  margin-top: 12px;
+  margin-top: 6px;
   color: rgba(255, 255, 255, 0.76);
-  line-height: 1.75;
+  line-height: 1.5;
+  font-size: 0.85rem;
 }
 
 .hero-actions,
@@ -119,22 +125,22 @@ textarea {
 }
 
 .stats {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .stat {
-  padding: 14px 16px;
+  padding: 10px 12px;
 }
 
 .stat span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .stat strong {
   display: block;
-  margin-top: 6px;
-  font-size: 22px;
+  margin-top: 4px;
+  font-size: 18px;
 }
 
 .panel {
@@ -612,41 +618,56 @@ textarea {
   pointer-events: none;
 }
 
-/* ====== App Navigation ====== */
+/* ====== App Navigation (Bottom Tab Bar) ====== */
 .app-nav {
   display: flex;
-  gap: 4px;
-  padding: calc(var(--safe-top) + 6px) 6px 6px;
-  flex-shrink: 0;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
   background: var(--card);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08);
+  padding: 4px 0 calc(var(--safe-bottom) + 4px);
 }
 
 .nav-tab {
-  flex: 0 0 auto;
-  padding: 10px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
   border: none;
-  border-radius: 12px;
   background: transparent;
   color: var(--muted);
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.nav-label {
+  font-size: 10px;
+  line-height: 1;
   white-space: nowrap;
-  transition: all 0.2s;
 }
 
 .nav-tab.active {
-  background: linear-gradient(135deg, #0f766e, #0ea5e9);
-  color: white;
-  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
+  color: var(--primary);
+}
+
+.nav-tab.active .nav-label {
+  font-weight: 700;
 }
 
 .nav-tab:not(.active):active {
-  background: rgba(15, 118, 110, 0.06);
   color: var(--text);
 }
 
@@ -1140,7 +1161,7 @@ textarea {
   }
 
   .stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .layout {
@@ -1157,6 +1178,34 @@ textarea {
 
   .editor-meta {
     grid-template-columns: 1fr 1fr auto;
+  }
+
+  .hero {
+    padding: 24px;
+  }
+
+  .hero h1 {
+    font-size: 1.6rem;
+  }
+
+  .hero-text {
+    font-size: 0.95rem;
+  }
+
+  .about-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+
+  .backup-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .stat span {
+    font-size: 13px;
+  }
+
+  .stat strong {
+    font-size: 22px;
   }
 }
 
@@ -1266,9 +1315,9 @@ textarea {
 /* ─── 备份迁移 ─── */
 .backup-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .backup-card {
@@ -1320,9 +1369,9 @@ textarea {
 /* ─── 关于说明 ─── */
 .about-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .about-card {
@@ -1410,7 +1459,7 @@ textarea {
 /* ─── SW 更新提示条 ─── */
 .sw-update-bar {
   position: fixed;
-  bottom: 0;
+  bottom: calc(60px + var(--safe-bottom));
   left: 0;
   right: 0;
   z-index: 9999;
