@@ -224,6 +224,17 @@
         <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
       </div>
 
+      <!-- 文章导航栏 -->
+      <div class="reader-nav-bar">
+        <button type="button" class="reader-nav-btn" :disabled="!prevDoc" @click="goDoc(prevDoc)">
+          ‹ 上一篇
+        </button>
+        <span class="reader-nav-pos">{{ readerDocIndex + 1 }} / {{ filteredDocs.length }}</span>
+        <button type="button" class="reader-nav-btn" :disabled="!nextDoc" @click="goDoc(nextDoc)">
+          下一篇 ›
+        </button>
+      </div>
+
       <!-- 搜索栏 -->
       <div v-if="readerSearchOpen" class="reader-search-bar">
         <input
@@ -244,7 +255,7 @@
 
       <!-- 内容区 -->
       <div ref="readerBody" class="reader-body" @scroll="onReaderScroll">
-        <div v-if="activeDoc.type === 'docx'" class="reader-block">
+        <div v-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf'" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
@@ -352,6 +363,32 @@
           <input ref="backupFileInput" type="file" accept=".json" class="hidden-input" @change="onBackupFileChange($event, 'merge')" />
           <input ref="backupReplaceInput" type="file" accept=".json" class="hidden-input" @change="onBackupFileChange($event, 'replace')" />
         </article>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Auto Backup</p>
+            <h2>自动备份</h2>
+          </div>
+        </div>
+        <p class="backup-desc">开启后，每次退出应用或切换标签页时自动将数据保存为备份文件到下载目录。iOS 用户可通过 iCloud Drive 同步下载目录实现云备份。</p>
+        <div class="auto-backup-row">
+          <label class="toggle-label">
+            <input type="checkbox" v-model="autoBackupEnabled" @change="toggleAutoBackup" />
+            <span>{{ autoBackupEnabled ? '已开启自动备份' : '开启自动备份' }}</span>
+          </label>
+          <span v-if="lastAutoBackupTime" class="auto-backup-time">上次备份: {{ lastAutoBackupTime }}</span>
+        </div>
+        <div class="backup-tips" style="margin-top:8px">
+          <p><strong>iOS iCloud 自动同步：</strong></p>
+          <ol>
+            <li>确保 <strong>设置 → iCloud → iCloud Drive</strong> 已开启</li>
+            <li>Safari 下载的文件默认保存到 iCloud Drive</li>
+            <li>开启自动备份后，数据会定期保存为 JSON 文件</li>
+            <li>在新设备登录同一 Apple ID 即可在 iCloud Drive 中找到备份文件</li>
+          </ol>
+        </div>
       </section>
 
       <section v-if="backupStatus" class="panel" style="margin-top:16px">
@@ -482,7 +519,7 @@
             </div>
             <div class="faq-item">
               <strong>Q: 支持哪些文件格式？</strong>
-              <p>知识库支持 .docx（Word）和 .xlsx（Excel），单文件最大 50MB。</p>
+              <p>知识库支持 .docx（Word）、.xlsx（Excel）和 .pdf（PDF），单文件最大 50MB。</p>
             </div>
             <div class="faq-item">
               <strong>Q: 数据会丢失吗？</strong>
@@ -677,7 +714,9 @@ export default {
         persisted: false,
         usageText: '0 B',
         quotaText: '0 B'
-      }
+      },
+      autoBackupEnabled: false,
+      lastAutoBackupTime: ''
     }
   },
   computed: {
@@ -716,6 +755,18 @@ export default {
           }
         })
         .filter(Boolean)
+    },
+    readerDocIndex() {
+      if (!this.activeDoc) return -1
+      return this.filteredDocs.findIndex(d => d.id === this.activeDocId)
+    },
+    prevDoc() {
+      const idx = this.readerDocIndex
+      return idx > 0 ? this.filteredDocs[idx - 1] : null
+    },
+    nextDoc() {
+      const idx = this.readerDocIndex
+      return idx >= 0 && idx < this.filteredDocs.length - 1 ? this.filteredDocs[idx + 1] : null
     },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
@@ -758,6 +809,12 @@ export default {
       await this.reloadDocs()
       await this.refreshStorageInfo()
       this.runDiagnostics()
+      // 恢复自动备份设置
+      this.autoBackupEnabled = localStorage.getItem('kb-auto-backup') === 'true'
+      this.lastAutoBackupTime = localStorage.getItem('kb-last-backup-time') || ''
+      if (this.autoBackupEnabled) {
+        this._setupAutoBackup()
+      }
     },
     async doUnlock() {
       this.lockError = ''
@@ -997,6 +1054,16 @@ export default {
       this.clearReaderSearch()
       this.readerProgress = 0
     },
+    goDoc(doc) {
+      if (!doc) return
+      this.clearReaderSearch()
+      this.readerProgress = 0
+      this.activeDocId = doc.id
+      this.syncActiveSheet()
+      this.$nextTick(() => {
+        this.$refs.readerBody?.scrollTo({ top: 0 })
+      })
+    },
     onReaderScroll() {
       const el = this.$refs.readerBody
       if (!el) return
@@ -1219,6 +1286,49 @@ export default {
         this.backupStatus = `❌ 导入失败: ${err.message}`
       } finally {
         this.backupBusy = false
+      }
+    },
+    toggleAutoBackup() {
+      localStorage.setItem('kb-auto-backup', this.autoBackupEnabled)
+      if (this.autoBackupEnabled) {
+        this._setupAutoBackup()
+        this._doAutoBackup()
+      } else {
+        this._teardownAutoBackup()
+      }
+    },
+    _setupAutoBackup() {
+      this._teardownAutoBackup()
+      // 页面隐藏时自动备份（切App、锁屏等）
+      this._visibilityHandler = () => {
+        if (document.visibilityState === 'hidden' && this.autoBackupEnabled) {
+          this._doAutoBackup()
+        }
+      }
+      document.addEventListener('visibilitychange', this._visibilityHandler)
+    },
+    _teardownAutoBackup() {
+      if (this._visibilityHandler) {
+        document.removeEventListener('visibilitychange', this._visibilityHandler)
+        this._visibilityHandler = null
+      }
+    },
+    async _doAutoBackup() {
+      try {
+        const data = await exportAllData()
+        const json = JSON.stringify(data)
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `kb-auto-backup.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        const now = new Date().toLocaleString('zh-CN')
+        this.lastAutoBackupTime = now
+        localStorage.setItem('kb-last-backup-time', now)
+      } catch (e) {
+        console.error('[auto-backup]', e)
       }
     },
     async runDiagnostics() {
