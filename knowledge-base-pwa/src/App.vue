@@ -733,24 +733,47 @@ export default {
       this.passwordMsg = newPwd ? '✅ 密码已设置' : '✅ 密码已清除'
     },
     async shareDoc(doc) {
-      const text = doc.type === 'docx' ? doc.contentText : `文档: ${doc.name}`
-      await this.doShare(doc.name, text)
-    },
-    async doShare(title, text) {
-      if (!navigator.share) {
-        // 回退到剪贴板
-        try {
-          await navigator.clipboard.writeText(text)
-          alert('内容已复制到剪贴板')
-        } catch (_) {
-          alert('当前浏览器不支持分享功能')
-        }
-        return
+      let content = ''
+      let filename = doc.name
+
+      if (doc.type === 'docx') {
+        content = doc.contentText || ''
+        filename = doc.name.replace(/\.docx$/i, '') + '.txt'
+      } else {
+        // Excel: 导出为 CSV 格式
+        const sheets = doc.sheets || []
+        content = sheets.map(sheet => {
+          const header = (sheet.headers || []).join(',')
+          const rows = (sheet.rows || []).map(r => r.join(',')).join('\n')
+          return `[${sheet.name}]\n${header}\n${rows}`
+        }).join('\n\n')
+        filename = doc.name.replace(/\.xlsx$/i, '') + '.csv'
       }
+
+      // 优先文件分享
+      if (navigator.share && navigator.canShare) {
+        try {
+          const file = new File([content], filename, { type: 'text/plain' })
+          const shareData = { title: doc.name, files: [file] }
+          if (navigator.canShare(shareData)) {
+            await navigator.share(shareData)
+            return
+          }
+        } catch (_) {}
+        try {
+          await navigator.share({ title: doc.name, text: content.slice(0, 2000) })
+          return
+        } catch (err) {
+          if (err.name !== 'AbortError') console.error('[share]', err)
+          return
+        }
+      }
+      // 回退到剪贴板
       try {
-        await navigator.share({ title, text })
-      } catch (err) {
-        if (err.name !== 'AbortError') console.error('[share]', err)
+        await navigator.clipboard.writeText(content)
+        alert('内容已复制到剪贴板')
+      } catch (_) {
+        alert('当前浏览器不支持分享功能')
       }
     },
     async reloadDocs() {

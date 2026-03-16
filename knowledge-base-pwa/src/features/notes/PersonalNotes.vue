@@ -474,13 +474,17 @@ export default {
 
   methods: {
     async reload() {
-      this.notes = await listNotes({
-        keyword: this.searchKeyword,
-        sort: this.sortBy
-      })
-      this.categories = await listCategories()
-      this.allTags = await getAllTags()
-      this.stats = await getStats()
+      try {
+        this.notes = await listNotes({
+          keyword: this.searchKeyword,
+          sort: this.sortBy
+        })
+        this.categories = await listCategories()
+        this.allTags = await getAllTags()
+        this.stats = await getStats()
+      } catch (err) {
+        console.error('[notes] reload failed:', err)
+      }
     },
 
     debouncedSearch() {
@@ -520,18 +524,29 @@ export default {
         return
       }
 
-      const payload = { ...this.form }
-      payload.expiresAt = payload.expiresAt ? new Date(payload.expiresAt + 'T23:59:59').getTime() : 0
+      try {
+        const payload = {
+          title: this.form.title,
+          content: this.form.content,
+          category: this.form.category,
+          tags: [...this.form.tags],
+          isStarred: this.form.isStarred,
+          expiresAt: this.form.expiresAt ? new Date(this.form.expiresAt + 'T23:59:59').getTime() : 0
+        }
 
-      if (this.editingNote) {
-        await updateNote(this.editingNote.id, payload)
-      } else {
-        await createNote(payload)
+        if (this.editingNote) {
+          await updateNote(this.editingNote.id, payload)
+        } else {
+          await createNote(payload)
+        }
+
+        this.currentView = 'list'
+        this.editingNote = null
+        await this.reload()
+      } catch (err) {
+        console.error('[notes] save failed:', err)
+        alert('保存失败: ' + (err.message || '未知错误'))
       }
-
-      this.currentView = 'list'
-      this.editingNote = null
-      await this.reload()
     },
 
     editNote(note) {
@@ -567,21 +582,39 @@ export default {
     },
 
     async shareNote(note) {
-      const tags = (note.tags || []).length ? `\n标签: ${note.tags.join(', ')}` : ''
-      const text = `${note.title}\n${'─'.repeat(20)}\n${note.content}${tags}`
-      if (navigator.share) {
+      const tags = (note.tags || []).length ? `标签: ${note.tags.join(', ')}` : ''
+      const meta = [
+        note.category ? `分类: ${note.category}` : '',
+        tags,
+        `创建: ${new Date(note.createdAt).toLocaleString('zh-CN')}`,
+      ].filter(Boolean).join('\n')
+      const text = `# ${note.title}\n\n${meta}\n\n${'─'.repeat(30)}\n\n${note.content}`
+
+      // 优先用文件分享，对方可以直接打开阅读
+      if (navigator.share && navigator.canShare) {
+        try {
+          const file = new File([text], `${note.title}.txt`, { type: 'text/plain' })
+          const shareData = { title: note.title, files: [file] }
+          if (navigator.canShare(shareData)) {
+            await navigator.share(shareData)
+            return
+          }
+        } catch (_) {}
+        // 文件分享不支持时用文本分享
         try {
           await navigator.share({ title: note.title, text })
+          return
         } catch (err) {
           if (err.name !== 'AbortError') console.error('[share]', err)
+          return
         }
-      } else {
-        try {
-          await navigator.clipboard.writeText(text)
-          alert('内容已复制到剪贴板')
-        } catch (_) {
-          alert('当前浏览器不支持分享功能')
-        }
+      }
+      // 回退到剪贴板
+      try {
+        await navigator.clipboard.writeText(text)
+        alert('内容已复制到剪贴板')
+      } catch (_) {
+        alert('当前浏览器不支持分享功能')
       }
     },
 
