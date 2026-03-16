@@ -55,6 +55,7 @@
           <option value="all">全部</option>
           <option value="docx">Word</option>
           <option value="xlsx">Excel</option>
+          <option value="pdf">PDF</option>
         </select>
         <button type="button" class="btn" @click="reloadDocs">刷新</button>
         <button type="button" class="btn btn-danger" :disabled="docs.length === 0" @click="clearAllDocs">清空全部</button>
@@ -73,6 +74,10 @@
       <article class="stat panel">
         <span>Excel</span>
         <strong>{{ docCounts.xlsx }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>PDF</span>
+        <strong>{{ docCounts.pdf }}</strong>
       </article>
       <article class="stat panel">
         <span>存储状态</span>
@@ -104,7 +109,7 @@
             :class="{ active: activeDocId === doc.id }"
             @click="openDoc(doc)"
           >
-            <div class="doc-icon" :class="doc.type">{{ doc.type === 'docx' ? 'W' : 'X' }}</div>
+            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P' }[doc.type] || '?' }}</div>
             <div class="doc-meta">
               <strong>{{ doc.name }}</strong>
               <p>{{ getDocPreview(doc) }}</p>
@@ -213,9 +218,9 @@
 
       <!-- 顶部栏 -->
       <div class="reader-header">
-        <button type="button" class="reader-back" @click="closeReader">← 返回</button>
+        <button type="button" class="reader-back" @click="closeReader">← 返回列表</button>
         <div class="reader-title">{{ activeDoc.name }}</div>
-        <button type="button" class="reader-search-toggle" @click="readerSearchOpen = !readerSearchOpen">🔍</button>
+        <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
         <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
       </div>
 
@@ -243,7 +248,7 @@
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
-          <article ref="readerContent" class="docx-content" v-html="readerHighlightedHtml"></article>
+          <article ref="readerContent" class="docx-content" v-html="activeDoc.contentHtml"></article>
         </div>
 
         <div v-else class="reader-block">
@@ -291,7 +296,7 @@
       ref="fileInput"
       class="hidden-input"
       type="file"
-      accept=".docx,.xlsx"
+      accept=".docx,.xlsx,.pdf"
       multiple
       @change="onFileChange"
     />
@@ -597,6 +602,12 @@
 <script>
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth/mammoth.browser'
+import * as pdfjsLib from 'pdfjs-dist/build/pdf.min.mjs'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
 import {
   clearKnowledgeDocs,
@@ -708,26 +719,9 @@ export default {
     },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
-        acc[doc.type] += 1
+        acc[doc.type] = (acc[doc.type] || 0) + 1
         return acc
-      }, { docx: 0, xlsx: 0 })
-    },
-    readerHighlightedHtml() {
-      if (!this.activeDoc || this.activeDoc.type !== 'docx') return ''
-      const html = this.activeDoc.contentHtml || ''
-      if (!this.readerSearchKeyword) return html
-
-      const kw = this.readerSearchKeyword
-      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const regex = new RegExp(`(>[^<]*?)(${escaped})`, 'gi')
-
-      let matchIdx = 0
-      return html.replace(regex, (match, before, found) => {
-        const cls = matchIdx === this.readerMatchIndex ? 'reader-highlight active' : 'reader-highlight'
-        const id = `reader-match-${matchIdx}`
-        matchIdx++
-        return `${before}<mark class="${cls}" id="${id}">${found}</mark>`
-      })
+      }, { docx: 0, xlsx: 0, pdf: 0 })
     },
     diagSummary() {
       const d = this.diag
@@ -909,13 +903,10 @@ export default {
     },
     async parseFile(file) {
       const lowerName = String(file.name || '').toLowerCase()
-      if (lowerName.endsWith('.docx')) {
-        return this.parseDocx(file)
-      }
-      if (lowerName.endsWith('.xlsx')) {
-        return this.parseXlsx(file)
-      }
-      throw new Error('仅支持 .docx 和 .xlsx')
+      if (lowerName.endsWith('.docx')) return this.parseDocx(file)
+      if (lowerName.endsWith('.xlsx')) return this.parseXlsx(file)
+      if (lowerName.endsWith('.pdf')) return this.parsePdf(file)
+      throw new Error('仅支持 .docx、.xlsx 和 .pdf')
     },
     async parseDocx(file) {
       const arrayBuffer = await file.arrayBuffer()
@@ -957,6 +948,44 @@ export default {
         parseWarnings: []
       }
     },
+    async parsePdf(file) {
+      const arrayBuffer = await file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      const pages = []
+      const textParts = []
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+        const lines = []
+        let lastY = null
+
+        for (const item of textContent.items) {
+          if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+            lines.push('<br/>')
+          }
+          lines.push(this.escapeHtml(item.str))
+          lastY = item.transform[5]
+        }
+
+        const pageText = textContent.items.map(item => item.str).join(' ')
+        textParts.push(pageText)
+        pages.push(`<div class="pdf-page"><div class="pdf-page-num">第 ${i} 页 / 共 ${pdf.numPages} 页</div>${lines.join(' ')}</div>`)
+      }
+
+      return {
+        name: file.name,
+        type: 'pdf',
+        size: file.size,
+        contentHtml: pages.join('<hr class="pdf-page-break"/>'),
+        contentText: textParts.join('\n'),
+        sheets: [],
+        parseWarnings: pdf.numPages > 50 ? [`文档共 ${pdf.numPages} 页，加载较慢`] : []
+      }
+    },
+    escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    },
     async openDoc(doc) {
       this.activeDocId = doc.id
       this.syncActiveSheet()
@@ -979,46 +1008,90 @@ export default {
     scrollReaderTop() {
       this.$refs.readerBody?.scrollTo({ top: 0, behavior: 'smooth' })
     },
+    toggleReaderSearch() {
+      this.readerSearchOpen = !this.readerSearchOpen
+      if (this.readerSearchOpen) {
+        this.$nextTick(() => this.$refs.readerSearchInput?.focus())
+      } else {
+        this.clearReaderSearch()
+      }
+    },
     doReaderSearch() {
-      if (!this.readerSearchKeyword || !this.activeDoc) {
+      // 先清除旧高亮
+      this._clearHighlights()
+
+      if (!this.readerSearchKeyword || !this.$refs.readerBody) {
         this.readerMatchCount = 0
         this.readerMatchIndex = 0
         return
       }
-      // 计算匹配数
-      const kw = this.readerSearchKeyword
-      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-      if (this.activeDoc.type === 'docx') {
-        const text = this.activeDoc.contentText || ''
-        const matches = text.match(new RegExp(escaped, 'gi'))
-        this.readerMatchCount = matches ? matches.length : 0
-      } else {
-        // Excel: 搜索当前 sheet
-        const sheet = this.activeSheet
-        let count = 0
-        const regex = new RegExp(escaped, 'gi')
-        for (const row of (sheet.rows || [])) {
-          for (const cell of row) {
-            const m = String(cell).match(regex)
-            if (m) count += m.length
-          }
+      const container = this.$refs.readerBody
+      const kw = this.readerSearchKeyword.toLowerCase()
+      const marks = []
+
+      // 遍历所有文本节点
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+      const textNodes = []
+      while (walker.nextNode()) textNodes.push(walker.currentNode)
+
+      for (const node of textNodes) {
+        const text = node.nodeValue
+        const lower = text.toLowerCase()
+        let pos = 0
+        const fragments = []
+        let idx
+
+        while ((idx = lower.indexOf(kw, pos)) !== -1) {
+          if (idx > pos) fragments.push(document.createTextNode(text.slice(pos, idx)))
+          const mark = document.createElement('mark')
+          mark.className = 'reader-highlight'
+          mark.textContent = text.slice(idx, idx + kw.length)
+          marks.push(mark)
+          fragments.push(mark)
+          pos = idx + kw.length
         }
-        this.readerMatchCount = count
+
+        if (fragments.length) {
+          if (pos < text.length) fragments.push(document.createTextNode(text.slice(pos)))
+          const parent = node.parentNode
+          for (const frag of fragments) parent.insertBefore(frag, node)
+          parent.removeChild(node)
+        }
       }
-      this.readerMatchIndex = 0
-      this.$nextTick(() => this.scrollToMatch())
+
+      this.readerMatchCount = marks.length
+      this.readerMatchIndex = marks.length > 0 ? 0 : -1
+      this._readerMarks = marks
+      this._updateActiveHighlight()
     },
     jumpToMatch(direction) {
       if (!this.readerMatchCount) return
       this.readerMatchIndex = (this.readerMatchIndex + direction + this.readerMatchCount) % this.readerMatchCount
-      this.$nextTick(() => this.scrollToMatch())
+      this._updateActiveHighlight()
     },
-    scrollToMatch() {
-      const el = document.getElementById(`reader-match-${this.readerMatchIndex}`)
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    _updateActiveHighlight() {
+      const marks = this._readerMarks || []
+      marks.forEach((m, i) => {
+        m.className = i === this.readerMatchIndex ? 'reader-highlight active' : 'reader-highlight'
+      })
+      if (marks[this.readerMatchIndex]) {
+        marks[this.readerMatchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    },
+    _clearHighlights() {
+      const container = this.$refs.readerBody
+      if (!container) return
+      const marks = container.querySelectorAll('mark.reader-highlight')
+      marks.forEach(mark => {
+        const parent = mark.parentNode
+        parent.replaceChild(document.createTextNode(mark.textContent), mark)
+        parent.normalize()
+      })
+      this._readerMarks = []
     },
     clearReaderSearch() {
+      this._clearHighlights()
       this.readerSearchKeyword = ''
       this.readerSearchOpen = false
       this.readerMatchCount = 0

@@ -279,6 +279,10 @@ textarea {
   background: linear-gradient(135deg, #16a34a, #15803d);
 }
 
+.doc-icon.pdf {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
 .doc-meta p,
 .doc-meta span,
 .queue-item p,
@@ -1491,4 +1495,27 @@ textarea {
   background: #fffbeb;
   color: #d97706;
   border: 1px solid #fde68a;
+}
+
+/* PDF 页面样式 */
+.pdf-page {
+  padding: 1.2em 0;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pdf-page-num {
+  display: block;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.6em;
+  font-weight: 600;
+}
+
+.pdf-page-break {
+  border: none;
+  border-top: 1px dashed var(--border);
+  margin: 1.5em 0;
 }
