@@ -461,6 +461,73 @@ textarea {
   flex-shrink: 0;
 }
 
+/* 阅读进度条 */
+.reader-progress-bar {
+  height: 3px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.reader-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0f766e, #0ea5e9);
+  transition: width 0.15s ease;
+}
+
+/* 搜索切换按钮 */
+.reader-search-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(15, 118, 110, 0.08);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 搜索栏 */
+.reader-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.reader-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.reader-match-info {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 48px;
+  text-align: center;
+}
+
+/* 搜索高亮 */
+.reader-highlight {
+  background: #fde68a;
+  color: #92400e;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.reader-highlight.active {
+  background: #f97316;
+  color: #fff;
+}
+
 .reader-body {
   flex: 1;
   overflow-y: auto;
@@ -477,6 +544,23 @@ textarea {
 
 .reader-body .table-wrap {
   max-height: none;
+}
+
+/* 回到顶部按钮 */
+.reader-top-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(20px + var(--safe-bottom));
+  z-index: 5001;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #0f766e, #0ea5e9);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(15, 118, 110, 0.35);
+  cursor: pointer;
 }
 
 .hidden-input {

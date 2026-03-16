@@ -206,20 +206,44 @@
 
     <!-- 全屏文档阅读器 -->
     <div v-if="activeDoc && readerOpen" class="reader-overlay">
+      <!-- 阅读进度条 -->
+      <div class="reader-progress-bar">
+        <div class="reader-progress-fill" :style="{ width: readerProgress + '%' }"></div>
+      </div>
+
+      <!-- 顶部栏 -->
       <div class="reader-header">
         <button type="button" class="reader-back" @click="closeReader">← 返回</button>
         <div class="reader-title">{{ activeDoc.name }}</div>
-        <div class="reader-header-actions">
-          <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
-          <button type="button" class="mini-btn danger" @click="deleteDoc(activeDoc)">删除</button>
-        </div>
+        <button type="button" class="reader-search-toggle" @click="readerSearchOpen = !readerSearchOpen">🔍</button>
+        <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
       </div>
-      <div class="reader-body">
+
+      <!-- 搜索栏 -->
+      <div v-if="readerSearchOpen" class="reader-search-bar">
+        <input
+          ref="readerSearchInput"
+          v-model.trim="readerSearchKeyword"
+          class="input reader-search-input"
+          placeholder="搜索文档内容..."
+          @input="doReaderSearch"
+          @keydown.enter="jumpToMatch(1)"
+        />
+        <span v-if="readerSearchKeyword" class="reader-match-info">
+          {{ readerMatchIndex + 1 }} / {{ readerMatchCount }}
+        </span>
+        <button type="button" class="mini-btn" @click="jumpToMatch(-1)" :disabled="!readerMatchCount">▲</button>
+        <button type="button" class="mini-btn" @click="jumpToMatch(1)" :disabled="!readerMatchCount">▼</button>
+        <button type="button" class="mini-btn" @click="clearReaderSearch">✕</button>
+      </div>
+
+      <!-- 内容区 -->
+      <div ref="readerBody" class="reader-body" @scroll="onReaderScroll">
         <div v-if="activeDoc.type === 'docx'" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
-          <article class="docx-content" v-html="activeDoc.contentHtml"></article>
+          <article ref="readerContent" class="docx-content" v-html="readerHighlightedHtml"></article>
         </div>
 
         <div v-else class="reader-block">
@@ -253,6 +277,14 @@
           </div>
         </div>
       </div>
+
+      <!-- 回到顶部按钮 -->
+      <button
+        v-if="readerProgress > 15"
+        type="button"
+        class="reader-top-btn"
+        @click="scrollReaderTop"
+      >↑ 顶部</button>
     </div>
 
     <input
@@ -624,6 +656,11 @@ export default {
       activeDocId: null,
       activeSheetName: '',
       readerOpen: false,
+      readerProgress: 0,
+      readerSearchOpen: false,
+      readerSearchKeyword: '',
+      readerMatchCount: 0,
+      readerMatchIndex: 0,
       importQueue: [],
       storageInfo: {
         persisted: false,
@@ -674,6 +711,23 @@ export default {
         acc[doc.type] += 1
         return acc
       }, { docx: 0, xlsx: 0 })
+    },
+    readerHighlightedHtml() {
+      if (!this.activeDoc || this.activeDoc.type !== 'docx') return ''
+      const html = this.activeDoc.contentHtml || ''
+      if (!this.readerSearchKeyword) return html
+
+      const kw = this.readerSearchKeyword
+      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp(`(>[^<]*?)(${escaped})`, 'gi')
+
+      let matchIdx = 0
+      return html.replace(regex, (match, before, found) => {
+        const cls = matchIdx === this.readerMatchIndex ? 'reader-highlight active' : 'reader-highlight'
+        const id = `reader-match-${matchIdx}`
+        matchIdx++
+        return `${before}<mark class="${cls}" id="${id}">${found}</mark>`
+      })
     },
     diagSummary() {
       const d = this.diag
@@ -911,6 +965,64 @@ export default {
     },
     closeReader() {
       this.readerOpen = false
+      this.clearReaderSearch()
+      this.readerProgress = 0
+    },
+    onReaderScroll() {
+      const el = this.$refs.readerBody
+      if (!el) return
+      const { scrollTop, scrollHeight, clientHeight } = el
+      this.readerProgress = scrollHeight > clientHeight
+        ? Math.round((scrollTop / (scrollHeight - clientHeight)) * 100)
+        : 0
+    },
+    scrollReaderTop() {
+      this.$refs.readerBody?.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    doReaderSearch() {
+      if (!this.readerSearchKeyword || !this.activeDoc) {
+        this.readerMatchCount = 0
+        this.readerMatchIndex = 0
+        return
+      }
+      // 计算匹配数
+      const kw = this.readerSearchKeyword
+      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+      if (this.activeDoc.type === 'docx') {
+        const text = this.activeDoc.contentText || ''
+        const matches = text.match(new RegExp(escaped, 'gi'))
+        this.readerMatchCount = matches ? matches.length : 0
+      } else {
+        // Excel: 搜索当前 sheet
+        const sheet = this.activeSheet
+        let count = 0
+        const regex = new RegExp(escaped, 'gi')
+        for (const row of (sheet.rows || [])) {
+          for (const cell of row) {
+            const m = String(cell).match(regex)
+            if (m) count += m.length
+          }
+        }
+        this.readerMatchCount = count
+      }
+      this.readerMatchIndex = 0
+      this.$nextTick(() => this.scrollToMatch())
+    },
+    jumpToMatch(direction) {
+      if (!this.readerMatchCount) return
+      this.readerMatchIndex = (this.readerMatchIndex + direction + this.readerMatchCount) % this.readerMatchCount
+      this.$nextTick(() => this.scrollToMatch())
+    },
+    scrollToMatch() {
+      const el = document.getElementById(`reader-match-${this.readerMatchIndex}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    },
+    clearReaderSearch() {
+      this.readerSearchKeyword = ''
+      this.readerSearchOpen = false
+      this.readerMatchCount = 0
+      this.readerMatchIndex = 0
     },
     async openSearchResult(result) {
       await this.openDoc(result.doc)
