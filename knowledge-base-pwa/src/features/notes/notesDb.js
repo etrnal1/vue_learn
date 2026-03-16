@@ -14,9 +14,15 @@ const db = knowledgeBaseDb
 // ============ 笔记 CRUD ============
 
 export async function listNotes({ category, tag, keyword, starred, sort = 'newest' } = {}) {
-  let collection = db.notes.where('deletedAt').equals(0)
-
-  let notes = await collection.toArray()
+  let notes
+  try {
+    notes = await db.notes.toArray()
+    // 过滤未删除的笔记（兼容 deletedAt 为 0、null、undefined）
+    notes = notes.filter(n => !n.deletedAt)
+  } catch (err) {
+    console.error('[notesDb] listNotes failed:', err)
+    notes = []
+  }
 
   // 过滤
   if (category) notes = notes.filter(n => n.category === category)
@@ -138,7 +144,7 @@ export async function deleteCategory(id) {
 // ============ 统计 ============
 
 export async function getStats() {
-  const allNotes = await db.notes.where('deletedAt').equals(0).toArray()
+  const allNotes = (await db.notes.toArray()).filter(n => !n.deletedAt)
   const totalNotes = allNotes.length
   const totalWords = allNotes.reduce((sum, n) => sum + (n.wordCount || 0), 0)
   const starredCount = allNotes.filter(n => n.isStarred).length
@@ -184,7 +190,7 @@ export async function getStats() {
 // ============ 获取所有标签 ============
 
 export async function getAllTags() {
-  const allNotes = await db.notes.where('deletedAt').equals(0).toArray()
+  const allNotes = (await db.notes.toArray()).filter(n => !n.deletedAt)
   const tagSet = new Set()
   for (const n of allNotes) {
     for (const t of (n.tags || [])) tagSet.add(t)
