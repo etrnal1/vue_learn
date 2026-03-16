@@ -183,16 +183,15 @@
           </div>
         </section>
 
-        <section class="panel">
+        <!-- 导入队列 -->
+        <section v-if="importQueue.length > 0" class="panel">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Reader</p>
-              <h2>{{ activeDoc ? activeDoc.name : '文档阅读' }}</h2>
+              <p class="eyebrow">Import</p>
+              <h2>导入进度</h2>
             </div>
-            <span class="pill">{{ storageInfo.usageText }} / {{ storageInfo.quotaText }}</span>
           </div>
-
-          <div v-if="importQueue.length > 0" class="queue-list">
+          <div class="queue-list">
             <div v-for="item in importQueue" :key="item.key" class="queue-item">
               <div>
                 <strong>{{ item.name }}</strong>
@@ -201,52 +200,60 @@
               <span class="queue-state" :class="item.state">{{ item.status }}</span>
             </div>
           </div>
-
-          <div v-if="!activeDoc" class="empty compact">
-            <strong>还没有选中文档</strong>
-            <p>从左侧选择一个文档开始阅读。</p>
-          </div>
-
-          <div v-else-if="activeDoc.type === 'docx'" class="reader-block">
-            <div v-if="activeDoc.parseWarnings?.length" class="warning">
-              {{ activeDoc.parseWarnings.join('；') }}
-            </div>
-            <article class="docx-content" v-html="activeDoc.contentHtml"></article>
-          </div>
-
-          <div v-else class="reader-block">
-            <div class="sheet-tabs">
-              <button
-                v-for="sheet in activeDoc.sheets || []"
-                :key="sheet.name"
-                type="button"
-                class="mini-btn"
-                :class="{ active: activeSheetName === sheet.name }"
-                @click="activeSheetName = sheet.name"
-              >
-                {{ sheet.name }}
-              </button>
-            </div>
-            <div class="table-wrap">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th v-for="head in activeSheet.headers" :key="head">{{ head || ' ' }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(row, rowIndex) in activeSheet.rows" :key="rowIndex">
-                    <td v-for="(cell, cellIndex) in row" :key="`${rowIndex}-${cellIndex}`" :title="formatCell(cell)">
-                      {{ formatCell(cell) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </section>
       </main>
     </section>
+
+    <!-- 全屏文档阅读器 -->
+    <div v-if="activeDoc && readerOpen" class="reader-overlay">
+      <div class="reader-header">
+        <button type="button" class="reader-back" @click="closeReader">← 返回</button>
+        <div class="reader-title">{{ activeDoc.name }}</div>
+        <div class="reader-header-actions">
+          <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
+          <button type="button" class="mini-btn danger" @click="deleteDoc(activeDoc)">删除</button>
+        </div>
+      </div>
+      <div class="reader-body">
+        <div v-if="activeDoc.type === 'docx'" class="reader-block">
+          <div v-if="activeDoc.parseWarnings?.length" class="warning">
+            {{ activeDoc.parseWarnings.join('；') }}
+          </div>
+          <article class="docx-content" v-html="activeDoc.contentHtml"></article>
+        </div>
+
+        <div v-else class="reader-block">
+          <div class="sheet-tabs">
+            <button
+              v-for="sheet in activeDoc.sheets || []"
+              :key="sheet.name"
+              type="button"
+              class="mini-btn"
+              :class="{ active: activeSheetName === sheet.name }"
+              @click="activeSheetName = sheet.name"
+            >
+              {{ sheet.name }}
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th v-for="head in activeSheet.headers" :key="head">{{ head || ' ' }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, rowIndex) in activeSheet.rows" :key="rowIndex">
+                  <td v-for="(cell, cellIndex) in row" :key="`${rowIndex}-${cellIndex}`" :title="formatCell(cell)">
+                    {{ formatCell(cell) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <input
       ref="fileInput"
@@ -616,6 +623,7 @@ export default {
       typeFilter: 'all',
       activeDocId: null,
       activeSheetName: '',
+      readerOpen: false,
       importQueue: [],
       storageInfo: {
         persisted: false,
@@ -780,15 +788,10 @@ export default {
     },
     async reloadDocs() {
       this.docs = await listKnowledgeDocs()
-      const lastOpenedId = await getKnowledgeMeta('lastOpenedDocId')
       if (!this.docs.length) {
         this.activeDocId = null
         this.activeSheetName = ''
-        return
       }
-      const preferredId = this.docs.some((doc) => doc.id === lastOpenedId) ? lastOpenedId : this.docs[0].id
-      this.activeDocId = preferredId
-      this.syncActiveSheet()
     },
     syncActiveSheet() {
       if (this.activeDoc?.type === 'xlsx') {
@@ -903,14 +906,19 @@ export default {
     async openDoc(doc) {
       this.activeDocId = doc.id
       this.syncActiveSheet()
+      this.readerOpen = true
       await setKnowledgeMeta('lastOpenedDocId', doc.id)
+    },
+    closeReader() {
+      this.readerOpen = false
     },
     async openSearchResult(result) {
       await this.openDoc(result.doc)
     },
     async deleteDoc(doc) {
-      const confirmed = window.confirm(`确定删除文档“${doc.name}”吗？`)
+      const confirmed = window.confirm(`确定删除文档”${doc.name}”吗？`)
       if (!confirmed) return
+      this.readerOpen = false
       await removeKnowledgeDoc(doc.id)
       await this.reloadDocs()
       await this.refreshStorageInfo()
