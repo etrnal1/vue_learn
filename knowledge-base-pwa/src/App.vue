@@ -242,6 +242,88 @@
     <!-- 个人笔记 -->
     <PersonalNotes v-if="activeTab === 'notes'" />
 
+    <!-- 备份迁移 -->
+    <template v-if="activeTab === 'backup'">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Backup & Migrate</p>
+          <h1>备份与迁移</h1>
+          <p class="hero-text">导出全部数据为 JSON 文件，在新设备上导入即可恢复。支持知识库文档和个人笔记。</p>
+        </div>
+      </section>
+
+      <section class="backup-grid">
+        <article class="panel backup-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Export</p>
+              <h2>导出备份</h2>
+            </div>
+          </div>
+          <p class="backup-desc">将所有数据（知识库文档 + 个人笔记 + 分类）打包为一个 JSON 文件下载到本地。</p>
+          <div class="backup-actions">
+            <button type="button" class="btn btn-primary" :disabled="backupBusy" @click="doBackup">
+              {{ backupBusy ? '导出中...' : '导出全部数据' }}
+            </button>
+          </div>
+        </article>
+
+        <article class="panel backup-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Import</p>
+              <h2>导入恢复</h2>
+            </div>
+          </div>
+          <p class="backup-desc">从备份文件恢复数据。支持合并（保留现有数据）或替换（清空后导入）两种模式。</p>
+          <div class="backup-actions">
+            <button type="button" class="btn btn-primary" :disabled="backupBusy" @click="$refs.backupFileInput?.click()">
+              {{ backupBusy ? '导入中...' : '合并导入' }}
+            </button>
+            <button type="button" class="btn btn-danger" :disabled="backupBusy" @click="doRestoreReplace">
+              替换导入
+            </button>
+          </div>
+          <input ref="backupFileInput" type="file" accept=".json" class="hidden-input" @change="onBackupFileChange($event, 'merge')" />
+          <input ref="backupReplaceInput" type="file" accept=".json" class="hidden-input" @change="onBackupFileChange($event, 'replace')" />
+        </article>
+      </section>
+
+      <section v-if="backupStatus" class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Status</p>
+            <h2>操作结果</h2>
+          </div>
+          <button type="button" class="mini-btn" @click="backupStatus = ''">关闭</button>
+        </div>
+        <div class="backup-result" v-html="backupStatus"></div>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tips</p>
+            <h2>使用说明</h2>
+          </div>
+        </div>
+        <div class="backup-tips">
+          <p><strong>迁移到新设备：</strong></p>
+          <ol>
+            <li>在旧设备上点击「导出全部数据」，保存 JSON 文件</li>
+            <li>将 JSON 文件传到新设备（AirDrop / 微信 / 邮件等）</li>
+            <li>在新设备上打开本应用，点击「合并导入」选择文件</li>
+          </ol>
+          <p><strong>合并 vs 替换：</strong></p>
+          <ul>
+            <li><strong>合并导入</strong>：保留现有数据，追加备份中的数据</li>
+            <li><strong>替换导入</strong>：清空现有数据，完全用备份覆盖（⚠️ 不可逆）</li>
+          </ul>
+          <p><strong>定期备份：</strong>建议定期导出备份，防止数据丢失。</p>
+        </div>
+      </section>
+    </template>
+
     <!-- PWA 诊断面板 -->
     <template v-if="activeTab === 'pwa'">
       <section class="hero">
@@ -348,7 +430,9 @@ import {
   listKnowledgeDocs,
   removeKnowledgeDoc,
   saveKnowledgeDocs,
-  setKnowledgeMeta
+  setKnowledgeMeta,
+  exportAllData,
+  importAllData
 } from './features/knowledge-base/knowledgeBaseDb.js'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -368,8 +452,11 @@ export default {
       appTabs: [
         { id: 'kb', label: '知识库', icon: '📚' },
         { id: 'notes', label: '个人笔记', icon: '📝' },
+        { id: 'backup', label: '备份迁移', icon: '💾' },
         { id: 'pwa', label: 'PWA 诊断', icon: '🔧' }
       ],
+      backupStatus: '',
+      backupBusy: false,
       diag: {
         protocol: { ok: false, value: '', detail: '检测中...' },
         swSupport: { ok: false, detail: '检测中...' },
@@ -662,6 +749,56 @@ export default {
     formatCell(cell) {
       const text = cell == null ? '' : String(cell)
       return text.length > 60 ? `${text.slice(0, 60)}...` : text
+    },
+    async doBackup() {
+      this.backupBusy = true
+      this.backupStatus = ''
+      try {
+        const data = await exportAllData()
+        const json = JSON.stringify(data, null, 2)
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        const date = new Date().toISOString().slice(0, 10)
+        a.href = url
+        a.download = `knowledge-base-backup-${date}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        this.backupStatus = `✅ 导出成功！<br>文档: ${data.stats.docs} 篇<br>笔记: ${data.stats.notes} 条<br>分类: ${data.stats.categories} 个<br>文件大小: ${this.formatBytes(json.length)}`
+      } catch (err) {
+        this.backupStatus = `❌ 导出失败: ${err.message}`
+      } finally {
+        this.backupBusy = false
+      }
+    },
+    doRestoreReplace() {
+      if (!confirm('⚠️ 替换导入会清空现有所有数据，确定继续吗？')) return
+      this.$refs.backupReplaceInput?.click()
+    },
+    async onBackupFileChange(event, mode) {
+      const file = event?.target?.files?.[0]
+      event.target.value = ''
+      if (!file) return
+
+      this.backupBusy = true
+      this.backupStatus = ''
+      try {
+        const text = await file.text()
+        const backup = JSON.parse(text)
+
+        if (!backup.data) throw new Error('文件格式不正确，缺少 data 字段')
+
+        const result = await importAllData(backup, mode)
+        await this.reloadDocs()
+        await this.refreshStorageInfo()
+
+        const modeText = mode === 'replace' ? '替换' : '合并'
+        this.backupStatus = `✅ ${modeText}导入成功！<br>文档: ${result.docs} 篇<br>笔记: ${result.notes} 条<br>分类: ${result.categories} 个<br>备份时间: ${backup.exportedAt || '未知'}`
+      } catch (err) {
+        this.backupStatus = `❌ 导入失败: ${err.message}`
+      } finally {
+        this.backupBusy = false
+      }
     },
     async runDiagnostics() {
       const d = this.diag
