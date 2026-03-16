@@ -324,6 +324,101 @@
       </section>
     </template>
 
+    <!-- 关于说明 -->
+    <template v-if="activeTab === 'about'">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">About</p>
+          <h1>关于本地知识库</h1>
+          <p class="hero-text">一款离线优先的知识管理 PWA，数据完全存储在本地设备上。</p>
+        </div>
+      </section>
+
+      <section class="about-grid">
+        <article class="panel about-card">
+          <h3>功能介绍</h3>
+          <ul class="about-list">
+            <li><strong>知识库</strong> — 导入 Word (.docx) 和 Excel (.xlsx) 文档，支持全文搜索和离线阅读</li>
+            <li><strong>个人笔记</strong> — 轻量级笔记管理，支持分类、标签、星标、搜索和数据统计</li>
+            <li><strong>备份迁移</strong> — 一键导出/导入全部数据，方便跨设备迁移</li>
+            <li><strong>离线使用</strong> — 首次加载后，无需网络即可完整使用所有功能</li>
+          </ul>
+        </article>
+
+        <article class="panel about-card">
+          <h3>快速上手</h3>
+          <ol class="about-list">
+            <li>用 Safari 打开本应用</li>
+            <li>点击底部分享按钮 → <strong>添加到主屏幕</strong></li>
+            <li>从主屏幕打开，即可离线使用</li>
+            <li>导入文档或新建笔记开始使用</li>
+          </ol>
+        </article>
+
+        <article class="panel about-card highlight">
+          <h3>iPhone iCloud 备份</h3>
+          <p>本应用数据存储在设备的 IndexedDB 中，<strong>会随 iCloud 备份自动同步</strong>。</p>
+          <h4>确保 iCloud 备份生效：</h4>
+          <ol class="about-list">
+            <li>打开 <strong>设置 → [你的名字] → iCloud → iCloud 云备份</strong></li>
+            <li>确认 <strong>iCloud 云备份</strong> 已开启</li>
+            <li>确保 <strong>Safari</strong> 在 iCloud 同步列表中已开启（设置 → iCloud → 使用 iCloud 的 App → Safari）</li>
+            <li>连接 WiFi 并充电时会自动备份</li>
+          </ol>
+          <h4>恢复数据：</h4>
+          <ul class="about-list">
+            <li><strong>新 iPhone 从 iCloud 恢复备份</strong>时，PWA 数据会自动恢复</li>
+            <li>如果自动恢复不完整，可使用<strong>「备份迁移」</strong>功能手动导入</li>
+          </ul>
+          <div class="about-tip">
+            <strong>建议：</strong>除了依赖 iCloud，也定期使用「备份迁移 → 导出」手动备份一份 JSON 文件到 iCloud Drive 或其他云盘，双重保险。
+          </div>
+        </article>
+
+        <article class="panel about-card">
+          <h3>数据存储说明</h3>
+          <ul class="about-list">
+            <li><strong>存储位置</strong> — 浏览器 IndexedDB（本地设备）</li>
+            <li><strong>隐私安全</strong> — 所有数据仅保存在你的设备上，不会上传到任何服务器</li>
+            <li><strong>持久化</strong> — 建议在「PWA 诊断」中申请持久化存储，防止浏览器自动清理</li>
+            <li><strong>存储限制</strong> — 通常可使用设备可用空间的 50%（Safari）</li>
+          </ul>
+        </article>
+
+        <article class="panel about-card">
+          <h3>常见问题</h3>
+          <div class="faq-list">
+            <div class="faq-item">
+              <strong>Q: 离线打不开怎么办？</strong>
+              <p>确保通过 HTTPS 访问，首次加载后刷新一次让 Service Worker 接管。切到「PWA 诊断」页面检查状态。</p>
+            </div>
+            <div class="faq-item">
+              <strong>Q: 换手机后数据怎么迁移？</strong>
+              <p>方法一：iCloud 备份恢复（自动）。方法二：在旧手机上导出 JSON，传到新手机导入（手动）。</p>
+            </div>
+            <div class="faq-item">
+              <strong>Q: 支持哪些文件格式？</strong>
+              <p>知识库支持 .docx（Word）和 .xlsx（Excel），单文件最大 50MB。</p>
+            </div>
+            <div class="faq-item">
+              <strong>Q: 数据会丢失吗？</strong>
+              <p>正常使用不会。但建议申请持久化存储并定期手动备份，以防浏览器极端情况下清理存储。</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel about-card">
+          <h3>版本信息</h3>
+          <table class="about-info-table">
+            <tr><td>应用版本</td><td>1.0.0</td></tr>
+            <tr><td>技术栈</td><td>Vue 3 + Vite + Dexie (IndexedDB)</td></tr>
+            <tr><td>离线支持</td><td>Service Worker + Cache API</td></tr>
+            <tr><td>平台兼容</td><td>iOS Safari 16+ / Chrome / Edge</td></tr>
+          </table>
+        </article>
+      </section>
+    </template>
+
     <!-- PWA 诊断面板 -->
     <template v-if="activeTab === 'pwa'">
       <section class="hero">
@@ -453,6 +548,7 @@ export default {
         { id: 'kb', label: '知识库', icon: '📚' },
         { id: 'notes', label: '个人笔记', icon: '📝' },
         { id: 'backup', label: '备份迁移', icon: '💾' },
+        { id: 'about', label: '关于', icon: '📖' },
         { id: 'pwa', label: 'PWA 诊断', icon: '🔧' }
       ],
       backupStatus: '',

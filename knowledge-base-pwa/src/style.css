@@ -1060,3 +1060,93 @@ select {
 .backup-tips p {
   margin: 12px 0 4px;
 }
+
+/* ─── 关于说明 ─── */
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.about-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about-card h3 {
+  font-size: 1.1rem;
+  margin: 0;
+  color: var(--text);
+}
+
+.about-card h4 {
+  font-size: 0.95rem;
+  margin: 10px 0 2px;
+  color: var(--text);
+}
+
+.about-card.highlight {
+  border-left: 4px solid #0f766e;
+}
+
+.about-list {
+  padding-left: 20px;
+  margin: 4px 0;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.about-list li {
+  margin: 4px 0;
+}
+
+.about-tip {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(15, 118, 110, 0.08);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.faq-item strong {
+  display: block;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.faq-item p {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.about-info-table {
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+.about-info-table td {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-info-table td:first-child {
+  color: var(--muted);
+  width: 100px;
+}
+
+.about-info-table td:last-child {
+  color: var(--text);
+}
