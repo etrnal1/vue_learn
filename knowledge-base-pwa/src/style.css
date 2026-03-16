@@ -401,8 +401,16 @@ textarea {
 }
 
 .reader-block {
-  overflow: hidden;
   max-width: 100%;
+}
+
+/* 在列表页内嵌时限制溢出，全屏阅读器内不限制 */
+.panel .reader-block {
+  overflow: hidden;
+}
+
+.reader-body .reader-block {
+  overflow: visible;
 }
 
 /* ─── 全屏文档阅读器 ─── */
@@ -459,6 +467,16 @@ textarea {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding: 12px 12px calc(12px + var(--safe-bottom));
+  min-height: 0;
+}
+
+.reader-body .docx-content {
+  max-height: none;
+  overflow: visible;
+}
+
+.reader-body .table-wrap {
+  max-height: none;
 }
 
 .hidden-input {
