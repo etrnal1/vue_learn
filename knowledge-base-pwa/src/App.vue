@@ -20,18 +20,60 @@
 
     <!-- 底部导航 -->
     <nav v-if="!locked" class="app-nav">
-      <button
-        v-for="tab in appTabs"
-        :key="tab.id"
-        type="button"
-        class="nav-tab"
-        :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
-      >
-        <span class="nav-icon">{{ tab.icon }}</span>
-        <span class="nav-label">{{ tab.label }}</span>
+      <button type="button" class="nav-tab" :class="{ active: activeTab === 'kb' }" @click="activeTab = 'kb'">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        <span class="nav-label">文档</span>
+      </button>
+      <button type="button" class="nav-tab" :class="{ active: activeTab === 'notes' }" @click="activeTab = 'notes'">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="nav-label">笔记</span>
+      </button>
+      <button type="button" class="nav-tab" :class="{ active: activeTab === 'backup' }" @click="activeTab = 'backup'">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span class="nav-label">备份</span>
+        <span v-if="backupOverdue" class="nav-badge"></span>
+      </button>
+      <button type="button" class="nav-tab" :class="{ active: isMoreTabActive }" @click="toggleMoreMenu">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+        <span class="nav-label">更多</span>
       </button>
     </nav>
+
+    <!-- 更多菜单弹出层 -->
+    <transition name="sheet">
+      <div v-if="moreMenuOpen" class="sheet-overlay" @click.self="moreMenuOpen = false">
+        <div class="sheet-panel">
+          <div class="sheet-handle"></div>
+          <div class="sheet-menu">
+            <button type="button" class="sheet-item" :class="{ active: activeTab === 'about' }" @click="goTab('about')">
+              <span class="sheet-item-icon">📖</span>
+              <div class="sheet-item-body">
+                <strong>关于</strong>
+                <p>功能介绍、iCloud 备份指南、常见问题</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
+            <button type="button" class="sheet-item" :class="{ active: activeTab === 'pwa' }" @click="goTab('pwa')">
+              <span class="sheet-item-icon">🩺</span>
+              <div class="sheet-item-body">
+                <strong>离线诊断</strong>
+                <p>检测 SW、缓存、HTTPS 状态</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
+            <button type="button" class="sheet-item" @click="goTab('backup')">
+              <span class="sheet-item-icon">🔒</span>
+              <div class="sheet-item-body">
+                <strong>密码与安全</strong>
+                <p>设置应用锁屏密码</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
+          </div>
+          <button type="button" class="sheet-cancel" @click="moreMenuOpen = false">取消</button>
+        </div>
+      </div>
+    </transition>
 
     <div v-if="activeTab === 'kb'" class="kb-scroll-area">
     <section class="hero">
@@ -366,30 +408,56 @@
         </article>
       </section>
 
-      <section class="panel" style="margin-top:16px">
+      <section class="panel auto-backup-panel">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Auto Backup</p>
-            <h2>自动备份</h2>
+            <p class="eyebrow">iCloud Auto Backup</p>
+            <h2>定时备份到 iCloud</h2>
           </div>
         </div>
-        <p class="backup-desc">开启后，每次退出应用或切换标签页时自动将数据保存为备份文件到下载目录。iOS 用户可通过 iCloud Drive 同步下载目录实现云备份。</p>
-        <div class="auto-backup-row">
-          <label class="toggle-label">
+        <p class="backup-desc">开启后按设定间隔自动导出备份文件。iOS Safari 下载目录默认同步到 iCloud Drive，实现云端自动备份。</p>
+
+        <div class="auto-backup-controls">
+          <label class="toggle-switch">
             <input type="checkbox" v-model="autoBackupEnabled" @change="toggleAutoBackup" />
-            <span>{{ autoBackupEnabled ? '已开启自动备份' : '开启自动备份' }}</span>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-text">{{ autoBackupEnabled ? '已开启' : '已关闭' }}</span>
           </label>
-          <span v-if="lastAutoBackupTime" class="auto-backup-time">上次备份: {{ lastAutoBackupTime }}</span>
+
+          <div v-if="autoBackupEnabled" class="interval-select">
+            <label>备份间隔</label>
+            <select v-model.number="autoBackupInterval" class="input select" @change="onBackupIntervalChange">
+              <option :value="1">每小时</option>
+              <option :value="6">每 6 小时</option>
+              <option :value="12">每 12 小时</option>
+              <option :value="24">每天</option>
+              <option :value="72">每 3 天</option>
+              <option :value="168">每周</option>
+            </select>
+          </div>
         </div>
-        <div class="backup-tips" style="margin-top:8px">
-          <p><strong>iOS iCloud 自动同步：</strong></p>
+
+        <div v-if="autoBackupEnabled" class="backup-status-bar">
+          <div class="backup-status-item">
+            <span class="backup-status-dot" :class="backupOverdue ? 'overdue' : 'ok'"></span>
+            <span>{{ backupOverdue ? '备份已过期' : '备份正常' }}</span>
+          </div>
+          <div v-if="lastAutoBackupTime" class="backup-status-item">
+            <span class="backup-status-label">上次备份</span>
+            <span>{{ lastAutoBackupTime }}</span>
+          </div>
+          <button type="button" class="mini-btn" @click="_doAutoBackup">立即备份</button>
+        </div>
+
+        <details class="icloud-guide">
+          <summary>如何配置 iCloud 自动同步？</summary>
           <ol>
-            <li>确保 <strong>设置 → iCloud → iCloud Drive</strong> 已开启</li>
-            <li>Safari 下载的文件默认保存到 iCloud Drive</li>
-            <li>开启自动备份后，数据会定期保存为 JSON 文件</li>
-            <li>在新设备登录同一 Apple ID 即可在 iCloud Drive 中找到备份文件</li>
+            <li>打开 iPhone <strong>设置 → iCloud → iCloud Drive</strong>，确认已开启</li>
+            <li>Safari 的下载文件默认保存到 <strong>"文件" App → iCloud Drive → 下载项</strong></li>
+            <li>开启自动备份后，JSON 备份文件会按间隔自动下载到该目录</li>
+            <li>新设备登录同一 Apple ID → 打开 "文件" App → 找到备份文件 → 在本应用中导入恢复</li>
           </ol>
-        </div>
+        </details>
       </section>
 
       <section v-if="backupStatus" class="panel" style="margin-top:16px">
@@ -675,13 +743,7 @@ export default {
   data() {
     return {
       activeTab: 'kb',
-      appTabs: [
-        { id: 'kb', label: '知识库', icon: '📚' },
-        { id: 'notes', label: '个人笔记', icon: '📝' },
-        { id: 'backup', label: '备份迁移', icon: '💾' },
-        { id: 'about', label: '关于', icon: '📖' },
-        { id: 'pwa', label: 'PWA 诊断', icon: '🔧' }
-      ],
+      moreMenuOpen: false,
       backupStatus: '',
       backupBusy: false,
       locked: false,
@@ -717,7 +779,10 @@ export default {
         quotaText: '0 B'
       },
       autoBackupEnabled: false,
-      lastAutoBackupTime: ''
+      autoBackupInterval: 24,
+      lastAutoBackupTime: '',
+      lastAutoBackupTs: 0,
+      backupOverdue: false
     }
   },
   computed: {
@@ -769,6 +834,9 @@ export default {
       const idx = this.readerDocIndex
       return idx >= 0 && idx < this.filteredDocs.length - 1 ? this.filteredDocs[idx + 1] : null
     },
+    isMoreTabActive() {
+      return ['about', 'pwa'].includes(this.activeTab)
+    },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
         acc[doc.type] = (acc[doc.type] || 0) + 1
@@ -812,10 +880,20 @@ export default {
       this.runDiagnostics()
       // 恢复自动备份设置
       this.autoBackupEnabled = localStorage.getItem('kb-auto-backup') === 'true'
+      this.autoBackupInterval = parseInt(localStorage.getItem('kb-auto-backup-interval') || '24', 10)
       this.lastAutoBackupTime = localStorage.getItem('kb-last-backup-time') || ''
+      this.lastAutoBackupTs = parseInt(localStorage.getItem('kb-last-backup-ts') || '0', 10)
+      this._checkBackupOverdue()
       if (this.autoBackupEnabled) {
         this._setupAutoBackup()
       }
+    },
+    toggleMoreMenu() {
+      this.moreMenuOpen = !this.moreMenuOpen
+    },
+    goTab(id) {
+      this.activeTab = id
+      this.moreMenuOpen = false
     },
     async doUnlock() {
       this.lockError = ''
@@ -1293,26 +1371,55 @@ export default {
       localStorage.setItem('kb-auto-backup', this.autoBackupEnabled)
       if (this.autoBackupEnabled) {
         this._setupAutoBackup()
-        this._doAutoBackup()
+        // 首次开启时如果从未备份过，立即执行一次
+        if (!this.lastAutoBackupTs) this._doAutoBackup()
       } else {
         this._teardownAutoBackup()
+        this.backupOverdue = false
+      }
+    },
+    onBackupIntervalChange() {
+      localStorage.setItem('kb-auto-backup-interval', this.autoBackupInterval)
+      this._checkBackupOverdue()
+      if (this.autoBackupEnabled) {
+        this._setupAutoBackup()
       }
     },
     _setupAutoBackup() {
       this._teardownAutoBackup()
-      // 页面隐藏时自动备份（切App、锁屏等）
-      this._visibilityHandler = () => {
-        if (document.visibilityState === 'hidden' && this.autoBackupEnabled) {
+      // 定时检查（每分钟检查一次是否到期）
+      this._backupTimer = setInterval(() => {
+        if (this.autoBackupEnabled && this._isBackupDue()) {
           this._doAutoBackup()
+        }
+      }, 60 * 1000)
+      // 页面恢复可见时也检查
+      this._visibilityHandler = () => {
+        if (document.visibilityState === 'visible' && this.autoBackupEnabled) {
+          this._checkBackupOverdue()
+          if (this._isBackupDue()) this._doAutoBackup()
         }
       }
       document.addEventListener('visibilitychange', this._visibilityHandler)
     },
     _teardownAutoBackup() {
+      if (this._backupTimer) { clearInterval(this._backupTimer); this._backupTimer = null }
       if (this._visibilityHandler) {
         document.removeEventListener('visibilitychange', this._visibilityHandler)
         this._visibilityHandler = null
       }
+    },
+    _isBackupDue() {
+      if (!this.lastAutoBackupTs) return true
+      const elapsed = Date.now() - this.lastAutoBackupTs
+      return elapsed >= this.autoBackupInterval * 60 * 60 * 1000
+    },
+    _checkBackupOverdue() {
+      if (!this.autoBackupEnabled || !this.lastAutoBackupTs) {
+        this.backupOverdue = false
+        return
+      }
+      this.backupOverdue = this._isBackupDue()
     },
     async _doAutoBackup() {
       try {
@@ -1322,12 +1429,16 @@ export default {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `kb-auto-backup.json`
+        a.download = `kb-backup-${new Date().toISOString().slice(0, 10)}.json`
         a.click()
         URL.revokeObjectURL(url)
-        const now = new Date().toLocaleString('zh-CN')
-        this.lastAutoBackupTime = now
-        localStorage.setItem('kb-last-backup-time', now)
+        const now = Date.now()
+        const timeStr = new Date(now).toLocaleString('zh-CN')
+        this.lastAutoBackupTime = timeStr
+        this.lastAutoBackupTs = now
+        this.backupOverdue = false
+        localStorage.setItem('kb-last-backup-time', timeStr)
+        localStorage.setItem('kb-last-backup-ts', String(now))
       } catch (e) {
         console.error('[auto-backup]', e)
       }
