@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kb-pwa-v4'
+const CACHE_VERSION = 'kb-pwa-v5'
 const STATIC_CACHE = `knowledge-base-static-${CACHE_VERSION}`
 
 // 构建时由 vite 插件自动注入资源列表，不再运行时 fetch manifest
@@ -20,13 +20,13 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(STATIC_CACHE)
     // 逐个缓存，单个失败不影响整体
-    await Promise.all(
-      PRECACHE_URLS.map((url) =>
-        cache.add(url).catch((err) => {
-          console.warn('[sw] precache failed:', url, err.message)
-        })
-      )
-    )
+    for (const url of PRECACHE_URLS) {
+      try {
+        await cache.add(url)
+      } catch (err) {
+        console.warn('[sw] precache failed:', url, err.message)
+      }
+    }
     await self.skipWaiting()
   })())
 })
@@ -50,26 +50,35 @@ self.addEventListener('message', (event) => {
   }
 })
 
-// ─── fetch：缓存优先，后台静默更新 ───
+// ─── fetch：缓存优先 ───
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
 
   const url = new URL(event.request.url)
   if (url.origin !== self.location.origin) return
 
-  // 导航请求 → 缓存优先，后台更新
+  // 导航请求 → 返回缓存的 index.html
   if (event.request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cached = await caches.match('./index.html')
+        // 用绝对 URL 构建 index.html 的完整路径来匹配缓存
+        const swScope = self.registration.scope
+        const indexUrl = new URL('index.html', swScope).href
+
+        const cache = await caches.open(STATIC_CACHE)
+        // 尝试多种匹配方式：完整 URL、相对路径、scope 根路径
+        let cached = await cache.match(indexUrl)
+          || await cache.match(new URL('./', swScope).href)
+          || await cache.match(event.request)
+
         if (cached) {
           // 后台静默更新（不阻塞页面渲染）
           event.waitUntil(
             fetch(event.request)
               .then(async (res) => {
                 if (res.ok) {
-                  const cache = await caches.open(STATIC_CACHE)
-                  await cache.put('./index.html', res)
+                  await cache.put(indexUrl, res.clone())
+                  await cache.put(new URL('./', swScope).href, res)
                 }
               })
               .catch(() => {})
@@ -80,8 +89,9 @@ self.addEventListener('fetch', (event) => {
         // 首次访问：走网络
         try {
           const res = await fetch(event.request)
-          const cache = await caches.open(STATIC_CACHE)
-          cache.put('./index.html', res.clone()).catch(() => {})
+          // 同时缓存为多个 key，确保离线时任何方式都能命中
+          await cache.put(indexUrl, res.clone())
+          await cache.put(new URL('./', swScope).href, res.clone())
           return res
         } catch (_err) {
           return new Response(
