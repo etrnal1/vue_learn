@@ -780,6 +780,22 @@ textarea {
   font-weight: 300;
 }
 
+/* 更新菜单项 */
+.sheet-item-update {
+  background: rgba(15, 118, 110, 0.05);
+}
+
+.sheet-update-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  background: #ef4444;
+  padding: 3px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
 .sheet-cancel {
   display: block;
   width: calc(100% - 20px);
@@ -1599,40 +1615,6 @@ textarea {
 }
 
 /* ─── SW 更新提示条 ─── */
-.sw-update-bar {
-  position: fixed;
-  bottom: calc(60px + var(--safe-bottom));
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px 16px;
-  padding-bottom: calc(12px + var(--safe-bottom));
-  background: linear-gradient(135deg, #0f766e, #0ea5e9);
-  color: #fff;
-  font-size: 0.92rem;
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
-}
-
-.sw-update-bar button {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 6px;
-  background: #fff;
-  color: #0f766e;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sw-update-bar button.dismiss {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
-
 /* ─── 锁屏 ─── */
 .lock-screen {
   position: fixed;

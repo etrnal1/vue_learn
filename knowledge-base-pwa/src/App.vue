@@ -36,6 +36,7 @@
       <button type="button" class="nav-tab" :class="{ active: isMoreTabActive }" @click="toggleMoreMenu">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         <span class="nav-label">更多</span>
+        <span v-if="swUpdateAvailable" class="nav-badge"></span>
       </button>
     </nav>
 
@@ -45,6 +46,22 @@
         <div class="sheet-panel">
           <div class="sheet-handle"></div>
           <div class="sheet-menu">
+            <button v-if="swUpdateAvailable" type="button" class="sheet-item sheet-item-update" @click="applySwUpdate">
+              <span class="sheet-item-icon">🆕</span>
+              <div class="sheet-item-body">
+                <strong>新版本可用</strong>
+                <p>点击立即更新并刷新页面</p>
+              </div>
+              <span class="sheet-update-badge">UPDATE</span>
+            </button>
+            <button v-else type="button" class="sheet-item" @click="checkSwUpdate">
+              <span class="sheet-item-icon">🔄</span>
+              <div class="sheet-item-body">
+                <strong>检查更新</strong>
+                <p>{{ swCheckMsg || '当前已是最新版本' }}</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
             <button type="button" class="sheet-item" :class="{ active: activeTab === 'about' }" @click="goTab('about')">
               <span class="sheet-item-icon">📖</span>
               <div class="sheet-item-body">
@@ -778,6 +795,8 @@ export default {
         usageText: '0 B',
         quotaText: '0 B'
       },
+      swUpdateAvailable: false,
+      swCheckMsg: '',
       autoBackupEnabled: false,
       autoBackupInterval: 24,
       lastAutoBackupTime: '',
@@ -878,6 +897,9 @@ export default {
       await this.reloadDocs()
       await this.refreshStorageInfo()
       this.runDiagnostics()
+      // 监听 SW 更新事件
+      if (window.__swUpdate?.available) this.swUpdateAvailable = true
+      window.addEventListener('sw-update-found', () => { this.swUpdateAvailable = true })
       // 恢复自动备份设置
       this.autoBackupEnabled = localStorage.getItem('kb-auto-backup') === 'true'
       this.autoBackupInterval = parseInt(localStorage.getItem('kb-auto-backup-interval') || '24', 10)
@@ -894,6 +916,35 @@ export default {
     goTab(id) {
       this.activeTab = id
       this.moreMenuOpen = false
+    },
+    applySwUpdate() {
+      const sw = window.__swUpdate?.worker
+      if (sw) {
+        sw.postMessage({ type: 'SKIP_WAITING' })
+        // controllerchange 事件会自动刷新页面
+      }
+      this.moreMenuOpen = false
+    },
+    async checkSwUpdate() {
+      this.swCheckMsg = '检查中...'
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration()
+        if (reg) {
+          await reg.update()
+          // 等一小会儿让 SW 有时间下载
+          await new Promise(r => setTimeout(r, 1500))
+          if (window.__swUpdate?.available || reg.waiting) {
+            this.swUpdateAvailable = true
+            this.swCheckMsg = ''
+          } else {
+            this.swCheckMsg = '已是最新版本'
+          }
+        } else {
+          this.swCheckMsg = 'SW 未注册'
+        }
+      } catch (e) {
+        this.swCheckMsg = '检查失败: ' + e.message
+      }
     },
     async doUnlock() {
       this.lockError = ''
