@@ -56,7 +56,7 @@ export async function getNote(id) {
   return note
 }
 
-export async function createNote({ title, content = '', category = '', tags = [], isStarred = false }) {
+export async function createNote({ title, content = '', category = '', tags = [], isStarred = false, expiresAt = 0 }) {
   const now = Date.now()
   const note = {
     title: title.trim(),
@@ -64,6 +64,7 @@ export async function createNote({ title, content = '', category = '', tags = []
     category,
     tags: tags || [],
     isStarred: !!isStarred,
+    expiresAt: expiresAt || 0,
     wordCount: content.length,
     createdAt: now,
     updatedAt: now,
@@ -90,6 +91,7 @@ export async function updateNote(id, changes) {
   if (changes.category !== undefined) patch.category = changes.category
   if (changes.tags !== undefined) patch.tags = changes.tags
   if (changes.isStarred !== undefined) patch.isStarred = !!changes.isStarred
+  if (changes.expiresAt !== undefined) patch.expiresAt = changes.expiresAt || 0
 
   await db.notes.update(id, patch)
 

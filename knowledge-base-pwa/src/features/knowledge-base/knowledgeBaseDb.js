@@ -42,6 +42,36 @@ export async function getKnowledgeMeta(key) {
   return record?.value
 }
 
+// ============ 密码保护 ============
+
+async function hashPassword(password) {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password + 'kb-pwa-salt-2024')
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function setPassword(password) {
+  if (!password) {
+    await knowledgeBaseDb.meta.delete('passwordHash')
+    return
+  }
+  const hash = await hashPassword(password)
+  await knowledgeBaseDb.meta.put({ key: 'passwordHash', value: hash, updatedAt: Date.now() })
+}
+
+export async function verifyPassword(password) {
+  const record = await knowledgeBaseDb.meta.get('passwordHash')
+  if (!record?.value) return true // 未设置密码
+  const hash = await hashPassword(password)
+  return hash === record.value
+}
+
+export async function hasPassword() {
+  const record = await knowledgeBaseDb.meta.get('passwordHash')
+  return !!(record?.value)
+}
+
 // ============ 备份与恢复 ============
 
 export async function exportAllData() {

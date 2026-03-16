@@ -262,6 +262,12 @@
               </div>
 
               <div class="form-group">
+                <label>过期时间</label>
+                <input v-model="form.expiresAt" type="date" class="input" />
+                <span v-if="form.expiresAt" class="muted-text" style="font-size:0.82rem">过期后笔记会标记提醒，不会自动删除</span>
+              </div>
+
+              <div class="form-group">
                 <label>
                   <input v-model="form.isStarred" type="checkbox" />
                   标记为重要
@@ -312,6 +318,8 @@
               </div>
               <p class="note-card-preview">{{ getPreview(note.content) }}</p>
               <div class="note-card-footer">
+                <span v-if="isExpired(note)" class="note-expired-tag">已过期</span>
+                <span v-else-if="note.expiresAt" class="note-expires-tag">{{ formatDate(note.expiresAt) }} 到期</span>
                 <span v-if="note.category" class="note-cat-tag">{{ note.category }}</span>
                 <span v-for="t in (note.tags || []).slice(0, 3)" :key="t" class="note-tag">{{ t }}</span>
                 <span class="note-date">{{ formatDate(note.updatedAt) }}</span>
@@ -347,6 +355,7 @@
                   <td>{{ formatDate(note.updatedAt) }}</td>
                   <td class="row-actions">
                     <button type="button" class="mini-btn" @click="editNote(note)">编辑</button>
+                    <button type="button" class="mini-btn" @click="shareNote(note)">分享</button>
                     <button type="button" class="mini-btn danger" @click="doDelete(note)">删除</button>
                   </td>
                 </tr>
@@ -364,11 +373,14 @@
             </div>
             <div class="editor-head-actions">
               <button type="button" class="mini-btn" @click="editNote(viewingNote)">编辑</button>
+              <button type="button" class="mini-btn" @click="shareNote(viewingNote)">分享</button>
               <button type="button" class="mini-btn danger" @click="doDelete(viewingNote)">删除</button>
               <button type="button" class="mini-btn" @click="viewingNote = null">关闭</button>
             </div>
           </div>
           <div class="note-detail-meta">
+            <span v-if="isExpired(viewingNote)" class="note-expired-tag">已过期</span>
+            <span v-else-if="viewingNote.expiresAt" class="note-expires-tag">{{ formatDate(viewingNote.expiresAt) }} 到期</span>
             <span v-if="viewingNote.category" class="note-cat-tag">{{ viewingNote.category }}</span>
             <span v-for="t in viewingNote.tags" :key="t" class="note-tag">{{ t }}</span>
             <span class="note-date">创建: {{ formatDate(viewingNote.createdAt) }}</span>
@@ -419,7 +431,7 @@ export default {
       showStatsPanel: false,
       showExportMenu: false,
 
-      form: { title: '', content: '', category: '', tags: [], isStarred: false },
+      form: { title: '', content: '', category: '', tags: [], isStarred: false, expiresAt: '' },
       newTagInput: '',
 
       _searchTimer: null
@@ -485,11 +497,12 @@ export default {
           content: note.content,
           category: note.category || '',
           tags: [...(note.tags || [])],
-          isStarred: note.isStarred
+          isStarred: note.isStarred,
+          expiresAt: note.expiresAt ? new Date(note.expiresAt).toISOString().slice(0, 10) : ''
         }
       } else {
         this.editingNote = null
-        this.form = { title: '', content: '', category: '', tags: [], isStarred: false }
+        this.form = { title: '', content: '', category: '', tags: [], isStarred: false, expiresAt: '' }
       }
       this.newTagInput = ''
       this.currentView = 'edit'
@@ -507,10 +520,13 @@ export default {
         return
       }
 
+      const payload = { ...this.form }
+      payload.expiresAt = payload.expiresAt ? new Date(payload.expiresAt + 'T23:59:59').getTime() : 0
+
       if (this.editingNote) {
-        await updateNote(this.editingNote.id, this.form)
+        await updateNote(this.editingNote.id, payload)
       } else {
-        await createNote(this.form)
+        await createNote(payload)
       }
 
       this.currentView = 'list'
@@ -550,6 +566,25 @@ export default {
       this.form.tags.splice(idx, 1)
     },
 
+    async shareNote(note) {
+      const tags = (note.tags || []).length ? `\n标签: ${note.tags.join(', ')}` : ''
+      const text = `${note.title}\n${'─'.repeat(20)}\n${note.content}${tags}`
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: note.title, text })
+        } catch (err) {
+          if (err.name !== 'AbortError') console.error('[share]', err)
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text)
+          alert('内容已复制到剪贴板')
+        } catch (_) {
+          alert('当前浏览器不支持分享功能')
+        }
+      }
+    },
+
     filterByTag(tag) {
       this.filterTag = this.filterTag === tag ? '' : tag
       this.showStatsPanel = false
@@ -567,6 +602,10 @@ export default {
       a.click()
       URL.revokeObjectURL(url)
       this.showExportMenu = false
+    },
+
+    isExpired(note) {
+      return note.expiresAt && note.expiresAt < Date.now()
     },
 
     getPreview(content) {

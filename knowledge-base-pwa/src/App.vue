@@ -1,7 +1,25 @@
 <template>
   <div class="kb-page">
+    <!-- 密码锁屏 -->
+    <div v-if="locked" class="lock-screen">
+      <div class="lock-card">
+        <div class="lock-icon">🔒</div>
+        <h2>知识库已锁定</h2>
+        <p>请输入密码解锁</p>
+        <input
+          v-model="lockPassword"
+          type="password"
+          class="input lock-input"
+          placeholder="输入密码"
+          @keydown.enter="doUnlock"
+        />
+        <p v-if="lockError" class="lock-error">{{ lockError }}</p>
+        <button type="button" class="btn btn-primary lock-btn" @click="doUnlock">解锁</button>
+      </div>
+    </div>
+
     <!-- 全局导航 -->
-    <nav class="app-nav">
+    <nav v-if="!locked" class="app-nav">
       <button
         v-for="tab in appTabs"
         :key="tab.id"
@@ -127,6 +145,7 @@
                   <td>{{ formatDate(doc.createdAt) }}</td>
                   <td class="row-actions">
                     <button type="button" class="mini-btn" @click="openDoc(doc)">打开</button>
+                    <button type="button" class="mini-btn" @click="shareDoc(doc)">分享</button>
                     <button type="button" class="mini-btn danger" @click="deleteDoc(doc)">删除</button>
                   </td>
                 </tr>
@@ -298,6 +317,25 @@
           <button type="button" class="mini-btn" @click="backupStatus = ''">关闭</button>
         </div>
         <div class="backup-result" v-html="backupStatus"></div>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h2>密码保护</h2>
+          </div>
+        </div>
+        <p class="backup-desc">设置密码后，每次打开应用需要输入密码才能访问。留空新密码可清除密码。</p>
+        <div class="password-form">
+          <input v-model="passwordForm.current" type="password" class="input" placeholder="当前密码（首次设置留空）" />
+          <input v-model="passwordForm.newPwd" type="password" class="input" placeholder="新密码（至少4位）" />
+          <input v-model="passwordForm.confirm" type="password" class="input" placeholder="确认新密码" @keydown.enter="doSetPassword" />
+          <div class="backup-actions">
+            <button type="button" class="btn btn-primary" @click="doSetPassword">设置密码</button>
+          </div>
+          <p v-if="passwordMsg" class="password-msg">{{ passwordMsg }}</p>
+        </div>
       </section>
 
       <section class="panel" style="margin-top:16px">
@@ -527,7 +565,10 @@ import {
   saveKnowledgeDocs,
   setKnowledgeMeta,
   exportAllData,
-  importAllData
+  importAllData,
+  setPassword,
+  verifyPassword,
+  hasPassword
 } from './features/knowledge-base/knowledgeBaseDb.js'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -553,6 +594,11 @@ export default {
       ],
       backupStatus: '',
       backupBusy: false,
+      locked: false,
+      lockPassword: '',
+      lockError: '',
+      passwordForm: { current: '', newPwd: '', confirm: '' },
+      passwordMsg: '',
       diag: {
         protocol: { ok: false, value: '', detail: '检测中...' },
         swSupport: { ok: false, detail: '检测中...' },
@@ -641,11 +687,72 @@ export default {
     }
   },
   async mounted() {
-    await this.reloadDocs()
-    await this.refreshStorageInfo()
-    this.runDiagnostics()
+    // 检查是否设置了密码
+    const hasPwd = await hasPassword()
+    if (hasPwd) {
+      this.locked = true
+      return
+    }
+    await this.initApp()
   },
   methods: {
+    async initApp() {
+      await this.reloadDocs()
+      await this.refreshStorageInfo()
+      this.runDiagnostics()
+    },
+    async doUnlock() {
+      this.lockError = ''
+      if (!this.lockPassword) {
+        this.lockError = '请输入密码'
+        return
+      }
+      const ok = await verifyPassword(this.lockPassword)
+      if (ok) {
+        this.locked = false
+        this.lockPassword = ''
+        await this.initApp()
+      } else {
+        this.lockError = '密码错误'
+      }
+    },
+    async doSetPassword() {
+      this.passwordMsg = ''
+      const { current, newPwd, confirm } = this.passwordForm
+      // 如果已有密码，需要验证当前密码
+      const hasPwd = await hasPassword()
+      if (hasPwd) {
+        const ok = await verifyPassword(current)
+        if (!ok) { this.passwordMsg = '❌ 当前密码错误'; return }
+      }
+      if (!newPwd && !hasPwd) { this.passwordMsg = '❌ 请输入新密码'; return }
+      if (newPwd && newPwd !== confirm) { this.passwordMsg = '❌ 两次密码不一致'; return }
+      if (newPwd && newPwd.length < 4) { this.passwordMsg = '❌ 密码至少4位'; return }
+      await setPassword(newPwd || null)
+      this.passwordForm = { current: '', newPwd: '', confirm: '' }
+      this.passwordMsg = newPwd ? '✅ 密码已设置' : '✅ 密码已清除'
+    },
+    async shareDoc(doc) {
+      const text = doc.type === 'docx' ? doc.contentText : `文档: ${doc.name}`
+      await this.doShare(doc.name, text)
+    },
+    async doShare(title, text) {
+      if (!navigator.share) {
+        // 回退到剪贴板
+        try {
+          await navigator.clipboard.writeText(text)
+          alert('内容已复制到剪贴板')
+        } catch (_) {
+          alert('当前浏览器不支持分享功能')
+        }
+        return
+      }
+      try {
+        await navigator.share({ title, text })
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error('[share]', err)
+      }
+    },
     async reloadDocs() {
       this.docs = await listKnowledgeDocs()
       const lastOpenedId = await getKnowledgeMeta('lastOpenedDocId')

@@ -8,9 +8,9 @@ app.mount('#app')
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then((registration) => {
-    // 新 SW 安装完毕后，自动激活（无需用户刷新）
+    // 已有等待中的 SW，提示更新
     if (registration.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+      showUpdatePrompt(registration.waiting)
     }
 
     registration.addEventListener('updatefound', () => {
@@ -18,20 +18,33 @@ if ('serviceWorker' in navigator) {
       if (!newWorker) return
       newWorker.addEventListener('statechange', () => {
         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          // 新版本已安装，自动激活
-          newWorker.postMessage({ type: 'SKIP_WAITING' })
+          showUpdatePrompt(newWorker)
         }
       })
     })
+
+    // 每次打开检查更新
+    setInterval(() => registration.update(), 60 * 1000)
   }).catch((error) => {
     console.error('[pwa] service worker register failed', error)
   })
 
-  // 当新 SW 接管后，自动刷新页面加载最新资源
   let refreshing = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return
     refreshing = true
     window.location.reload()
   })
+}
+
+function showUpdatePrompt(worker) {
+  const bar = document.createElement('div')
+  bar.className = 'sw-update-bar'
+  bar.innerHTML = `
+    <span>发现新版本，点击更新</span>
+    <button onclick="this.parentElement._worker.postMessage({type:'SKIP_WAITING'})">立即更新</button>
+    <button onclick="this.parentElement.remove()" class="dismiss">稍后</button>
+  `
+  bar._worker = worker
+  document.body.appendChild(bar)
 }
