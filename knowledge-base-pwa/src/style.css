@@ -139,6 +139,8 @@ textarea {
 
 .panel {
   padding: 16px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .toolbar-group {
@@ -189,6 +191,11 @@ textarea {
 
 .layout {
   align-items: start;
+  min-width: 0;
+}
+
+.content-stack {
+  min-width: 0;
 }
 
 .section-head {
@@ -281,9 +288,11 @@ textarea {
 }
 
 .table-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: 18px;
+  max-width: 100%;
 }
 
 .table {
@@ -368,6 +377,32 @@ textarea {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.95);
   line-height: 1.85;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.docx-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.docx-content table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+.docx-content pre,
+.docx-content code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.reader-block {
+  overflow: hidden;
+  max-width: 100%;
 }
 
 .hidden-input {
