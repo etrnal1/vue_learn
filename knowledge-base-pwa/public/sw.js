@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kb-pwa-v2'
+const CACHE_VERSION = 'kb-pwa-v3'
 const STATIC_CACHE = `knowledge-base-static-${CACHE_VERSION}`
 const RUNTIME_CACHE = `knowledge-base-runtime-${CACHE_VERSION}`
 const APP_SHELL = [
@@ -6,31 +6,37 @@ const APP_SHELL = [
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/icon-1024.png'
 ]
 
 /**
  * 读取 Vite 构建清单，提取所有 JS/CSS/资产文件用于预缓存
+ * Vite 5 把 manifest 放在 .vite/manifest.json
  */
 async function precacheBuildAssets() {
-  try {
-    const response = await fetch('./manifest.json', { cache: 'no-store' })
-    if (!response.ok) return []
-    const manifest = await response.json()
-    const files = new Set()
-    const normalize = (value) => `./${String(value).replace(/^\.?\/+/, '')}`
+  const paths = ['./.vite/manifest.json', './manifest.json']
+  for (const manifestPath of paths) {
+    try {
+      const response = await fetch(manifestPath, { cache: 'no-store' })
+      if (!response.ok) continue
+      const manifest = await response.json()
+      const files = new Set()
+      const normalize = (value) => `./${String(value).replace(/^\.?\/+/, '')}`
 
-    Object.values(manifest || {}).forEach((item) => {
-      if (!item || typeof item !== 'object') return
-      if (item.file) files.add(normalize(item.file))
-      if (Array.isArray(item.css)) item.css.forEach((file) => files.add(normalize(file)))
-      if (Array.isArray(item.assets)) item.assets.forEach((file) => files.add(normalize(file)))
-    })
+      Object.values(manifest || {}).forEach((item) => {
+        if (!item || typeof item !== 'object') return
+        if (item.file) files.add(normalize(item.file))
+        if (Array.isArray(item.css)) item.css.forEach((file) => files.add(normalize(file)))
+        if (Array.isArray(item.assets)) item.assets.forEach((file) => files.add(normalize(file)))
+      })
 
-    return [...files]
-  } catch (_error) {
-    return []
+      return [...files]
+    } catch (_error) {
+      // 继续尝试下一个路径
+    }
   }
+  return []
 }
 
 // ─── install：预缓存所有静态资源 + 构建产物，立即激活 ───
@@ -65,37 +71,53 @@ self.addEventListener('message', (event) => {
   }
 })
 
-// ─── fetch：导航请求返回缓存 index.html，其他请求缓存优先 ───
+// ─── fetch：缓存优先，后台更新 ───
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
 
-  // 导航请求（用户点击主屏幕图标、地址栏回车等）
-  // 始终返回缓存的 index.html，网络不可用也能打开
+  const url = new URL(event.request.url)
+
+  // 跳过非同源请求（CDN、API 等）
+  if (url.origin !== self.location.origin) return
+
+  // 导航请求（用户打开应用）→ 缓存优先，后台静默更新
   if (event.request.mode === 'navigate') {
     event.respondWith(
       (async () => {
+        const cached = await caches.match('./index.html')
+        if (cached) {
+          // 后台静默更新缓存（不阻塞页面加载）
+          event.waitUntil(
+            fetch(event.request)
+              .then(async (networkResponse) => {
+                if (networkResponse.ok) {
+                  const cache = await caches.open(STATIC_CACHE)
+                  await cache.put('./index.html', networkResponse)
+                }
+              })
+              .catch(() => {})
+          )
+          return cached
+        }
+
+        // 首次访问没有缓存，必须走网络
         try {
-          // 先尝试网络获取最新页面
           const networkResponse = await fetch(event.request)
-          // 网络成功时更新缓存
           const cache = await caches.open(STATIC_CACHE)
           cache.put('./index.html', networkResponse.clone()).catch(() => {})
           return networkResponse
         } catch (_error) {
-          // 网络不可用 → 返回缓存的 index.html
-          const cached = await caches.match('./index.html')
-          if (cached) return cached
-          // 兜底：尝试不带路径的根匹配
-          const rootCached = await caches.match('./')
-          if (rootCached) return rootCached
-          return new Response('离线不可用', { status: 503, headers: { 'Content-Type': 'text/plain;charset=utf-8' } })
+          return new Response(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>离线</title></head><body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:system-ui;color:#666"><div style="text-align:center"><h2>暂时无法访问</h2><p>请连接网络后首次打开应用，之后即可离线使用。</p><button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:16px">重试</button></div></body></html>',
+            { status: 503, headers: { 'Content-Type': 'text/html;charset=utf-8' } }
+          )
         }
       })()
     )
     return
   }
 
-  // 非导航请求：缓存优先，网络兜底，网络失败也不报错
+  // 静态资源（JS/CSS/图片/字体）→ 缓存优先
   event.respondWith(
     (async () => {
       const cached = await caches.match(event.request)
@@ -104,12 +126,12 @@ self.addEventListener('fetch', (event) => {
       try {
         const response = await fetch(event.request)
         if (response.ok) {
+          // 将新资源放入运行时缓存
           const cache = await caches.open(RUNTIME_CACHE)
           cache.put(event.request, response.clone()).catch(() => {})
         }
         return response
       } catch (_error) {
-        // 网络不可用且无缓存 → 返回空响应，不让页面报网络错误
         return new Response('', { status: 503 })
       }
     })()
