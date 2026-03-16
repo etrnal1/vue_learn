@@ -917,3 +917,92 @@ select {
     grid-template-columns: 50px 1fr 60px;
   }
 }
+
+/* ─── PWA 诊断面板 ─── */
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.diag-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.diag-card.ok {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.diag-card.fail {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.diag-card.warn {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.diag-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.diag-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.diag-card p {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.diag-summary {
+  padding: 16px;
+  border-radius: 10px;
+}
+
+.diag-summary.ok {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid #10b981;
+}
+
+.diag-summary.fail {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid #ef4444;
+}
+
+.diag-summary strong {
+  font-size: 1.1rem;
+}
+
+.diag-summary p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.cache-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.cache-item {
+  padding: 6px 0;
+  font-size: 0.82rem;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+}

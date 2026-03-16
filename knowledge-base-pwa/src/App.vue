@@ -241,6 +241,100 @@
 
     <!-- 个人笔记 -->
     <PersonalNotes v-if="activeTab === 'notes'" />
+
+    <!-- PWA 诊断面板 -->
+    <template v-if="activeTab === 'pwa'">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">PWA Diagnostics</p>
+          <h1>离线状态诊断</h1>
+          <p class="hero-text">检查 Service Worker、缓存和 HTTPS 状态，帮助排查离线问题。</p>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn btn-primary" @click="runDiagnostics">重新检测</button>
+        </div>
+      </section>
+
+      <section class="diag-grid">
+        <article class="diag-card" :class="diag.protocol.ok ? 'ok' : 'fail'">
+          <div class="diag-icon">{{ diag.protocol.ok ? '✅' : '❌' }}</div>
+          <div>
+            <strong>协议: {{ diag.protocol.value }}</strong>
+            <p>{{ diag.protocol.detail }}</p>
+          </div>
+        </article>
+
+        <article class="diag-card" :class="diag.swSupport.ok ? 'ok' : 'fail'">
+          <div class="diag-icon">{{ diag.swSupport.ok ? '✅' : '❌' }}</div>
+          <div>
+            <strong>SW 支持</strong>
+            <p>{{ diag.swSupport.detail }}</p>
+          </div>
+        </article>
+
+        <article class="diag-card" :class="diag.swStatus.ok ? 'ok' : 'fail'">
+          <div class="diag-icon">{{ diag.swStatus.ok ? '✅' : '❌' }}</div>
+          <div>
+            <strong>SW 状态: {{ diag.swStatus.value }}</strong>
+            <p>{{ diag.swStatus.detail }}</p>
+          </div>
+        </article>
+
+        <article class="diag-card" :class="diag.cacheStatus.ok ? 'ok' : 'fail'">
+          <div class="diag-icon">{{ diag.cacheStatus.ok ? '✅' : '❌' }}</div>
+          <div>
+            <strong>缓存: {{ diag.cacheStatus.value }}</strong>
+            <p>{{ diag.cacheStatus.detail }}</p>
+          </div>
+        </article>
+
+        <article class="diag-card" :class="diag.persistent.ok ? 'ok' : 'warn'">
+          <div class="diag-icon">{{ diag.persistent.ok ? '✅' : '⚠️' }}</div>
+          <div>
+            <strong>持久化存储</strong>
+            <p>{{ diag.persistent.detail }}</p>
+          </div>
+        </article>
+
+        <article class="diag-card" :class="diag.standalone.ok ? 'ok' : 'warn'">
+          <div class="diag-icon">{{ diag.standalone.ok ? '✅' : 'ℹ️' }}</div>
+          <div>
+            <strong>运行模式</strong>
+            <p>{{ diag.standalone.detail }}</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Cache Details</p>
+            <h2>已缓存资源</h2>
+          </div>
+          <span class="pill">{{ diag.cachedUrls.length }} 个</span>
+        </div>
+        <div v-if="diag.cachedUrls.length === 0" class="empty compact">
+          <strong>缓存为空</strong>
+          <p>Service Worker 未注册或未完成缓存。</p>
+        </div>
+        <div v-else class="cache-list">
+          <div v-for="url in diag.cachedUrls" :key="url" class="cache-item">{{ url }}</div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Summary</p>
+            <h2>诊断结论</h2>
+          </div>
+        </div>
+        <div class="diag-summary" :class="diagSummary.level">
+          <strong>{{ diagSummary.title }}</strong>
+          <p>{{ diagSummary.message }}</p>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
@@ -273,8 +367,18 @@ export default {
       activeTab: 'kb',
       appTabs: [
         { id: 'kb', label: '知识库', icon: '📚' },
-        { id: 'notes', label: '个人笔记', icon: '📝' }
+        { id: 'notes', label: '个人笔记', icon: '📝' },
+        { id: 'pwa', label: 'PWA 诊断', icon: '🔧' }
       ],
+      diag: {
+        protocol: { ok: false, value: '', detail: '检测中...' },
+        swSupport: { ok: false, detail: '检测中...' },
+        swStatus: { ok: false, value: '', detail: '检测中...' },
+        cacheStatus: { ok: false, value: '', detail: '检测中...' },
+        persistent: { ok: false, detail: '检测中...' },
+        standalone: { ok: false, detail: '检测中...' },
+        cachedUrls: []
+      },
       docs: [],
       listKeyword: '',
       searchKeyword: '',
@@ -331,11 +435,32 @@ export default {
         acc[doc.type] += 1
         return acc
       }, { docx: 0, xlsx: 0 })
+    },
+    diagSummary() {
+      const d = this.diag
+      if (!d.protocol.ok) {
+        return {
+          level: 'fail',
+          title: '❌ 不支持离线：需要 HTTPS',
+          message: `当前通过 ${d.protocol.value} 访问，Service Worker 要求 HTTPS 或 localhost。请部署到 HTTPS 服务器，或通过 localhost 访问。`
+        }
+      }
+      if (!d.swSupport.ok) {
+        return { level: 'fail', title: '❌ 浏览器不支持 Service Worker', message: '请使用 Safari 14+ 或 Chrome。' }
+      }
+      if (!d.swStatus.ok) {
+        return { level: 'fail', title: '❌ Service Worker 未激活', message: '请刷新页面等待 SW 安装完成，然后再测试离线。' }
+      }
+      if (!d.cacheStatus.ok) {
+        return { level: 'fail', title: '❌ 缓存不完整', message: '关键资源未缓存。请联网刷新页面，等待 SW 重新缓存。' }
+      }
+      return { level: 'ok', title: '✅ 离线就绪！', message: '所有资源已缓存，可以安全开启飞行模式使用。' }
     }
   },
   async mounted() {
     await this.reloadDocs()
     await this.refreshStorageInfo()
+    this.runDiagnostics()
   },
   methods: {
     async reloadDocs() {
@@ -537,6 +662,101 @@ export default {
     formatCell(cell) {
       const text = cell == null ? '' : String(cell)
       return text.length > 60 ? `${text.slice(0, 60)}...` : text
+    },
+    async runDiagnostics() {
+      const d = this.diag
+
+      // 1. 协议检测
+      const proto = location.protocol
+      const isSecure = proto === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+      d.protocol = {
+        ok: isSecure,
+        value: proto.replace(':', ''),
+        detail: isSecure
+          ? 'HTTPS 或 localhost，Service Worker 可正常工作'
+          : `当前 ${proto}//${location.host}，SW 要求 HTTPS 或 localhost`
+      }
+
+      // 2. SW 支持
+      d.swSupport = {
+        ok: 'serviceWorker' in navigator,
+        detail: 'serviceWorker' in navigator ? '浏览器支持 Service Worker' : '浏览器不支持 Service Worker'
+      }
+
+      // 3. SW 状态
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration()
+          if (reg) {
+            const sw = reg.active || reg.waiting || reg.installing
+            const state = sw ? sw.state : '无'
+            const isActive = !!(reg.active)
+            d.swStatus = {
+              ok: isActive,
+              value: state,
+              detail: isActive
+                ? `SW 已激活，scope: ${reg.scope}`
+                : `SW 状态: ${state}。等待激活中...`
+            }
+          } else {
+            d.swStatus = { ok: false, value: '未注册', detail: isSecure ? 'SW 未注册，请刷新页面' : '因 HTTP 协议，SW 无法注册' }
+          }
+        } catch (err) {
+          d.swStatus = { ok: false, value: '错误', detail: err.message }
+        }
+      } else {
+        d.swStatus = { ok: false, value: '不支持', detail: '浏览器不支持' }
+      }
+
+      // 4. 缓存检测
+      try {
+        const keys = await caches.keys()
+        const allUrls = []
+        let hasHtml = false
+        let hasJs = false
+        let hasCss = false
+        for (const key of keys) {
+          const cache = await caches.open(key)
+          const requests = await cache.keys()
+          for (const req of requests) {
+            const short = req.url.replace(location.origin, '')
+            allUrls.push(`[${key.replace('knowledge-base-', '')}] ${short}`)
+            if (short.includes('index.html') || short.endsWith('/')) hasHtml = true
+            if (short.endsWith('.js')) hasJs = true
+            if (short.endsWith('.css')) hasCss = true
+          }
+        }
+        const complete = hasHtml && hasJs && hasCss
+        d.cacheStatus = {
+          ok: complete,
+          value: complete ? `${allUrls.length} 个资源` : '不完整',
+          detail: complete
+            ? `HTML=${hasHtml ? '✓' : '✗'} JS=${hasJs ? '✓' : '✗'} CSS=${hasCss ? '✓' : '✗'}，共 ${allUrls.length} 个`
+            : `缺少关键资源 HTML=${hasHtml ? '✓' : '✗'} JS=${hasJs ? '✓' : '✗'} CSS=${hasCss ? '✓' : '✗'}`
+        }
+        d.cachedUrls = allUrls
+      } catch (err) {
+        d.cacheStatus = { ok: false, value: '错误', detail: err.message }
+        d.cachedUrls = []
+      }
+
+      // 5. 持久化
+      if (navigator?.storage?.persisted) {
+        const persisted = await navigator.storage.persisted()
+        d.persistent = {
+          ok: persisted,
+          detail: persisted ? '已持久化，浏览器不会自动清除数据' : '未持久化，数据可能被浏览器清除。建议点击"申请持久化"'
+        }
+      } else {
+        d.persistent = { ok: false, detail: '不支持 StorageManager API' }
+      }
+
+      // 6. 独立模式
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+      d.standalone = {
+        ok: isStandalone,
+        detail: isStandalone ? '已从主屏幕启动（独立模式）' : '在浏览器中运行。建议"添加到主屏幕"获得最佳离线体验'
+      }
     }
   }
 }
