@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kb-pwa-v5'
+const CACHE_VERSION = 'kb-pwa-v6'
 const STATIC_CACHE = `knowledge-base-static-${CACHE_VERSION}`
 
 // 构建时由 vite 插件自动注入资源列表，不再运行时 fetch manifest
@@ -15,7 +15,7 @@ const APP_SHELL = [
 
 const PRECACHE_URLS = [...APP_SHELL, ...BUILD_ASSETS]
 
-// ─── install：预缓存全部资源，立即激活 ───
+// ─── install：预缓存全部资源，等待用户确认更新 ───
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(STATIC_CACHE)
@@ -27,7 +27,7 @@ self.addEventListener('install', (event) => {
         console.warn('[sw] precache failed:', url, err.message)
       }
     }
-    await self.skipWaiting()
+    // 不再自动 skipWaiting，等用户点击"立即更新"后通过 message 触发
   })())
 })
 
