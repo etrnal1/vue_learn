@@ -32,7 +32,7 @@
       </button>
     </nav>
 
-    <template v-if="activeTab === 'kb'">
+    <div v-if="activeTab === 'kb'" class="kb-scroll-area">
     <section class="hero">
       <div>
         <p class="eyebrow">Offline-first</p>
@@ -256,13 +256,15 @@
       multiple
       @change="onFileChange"
     />
-    </template>
+    </div>
 
     <!-- 个人笔记 -->
-    <PersonalNotes v-if="activeTab === 'notes'" />
+    <div v-if="activeTab === 'notes'" class="kb-scroll-area">
+      <PersonalNotes />
+    </div>
 
     <!-- 备份迁移 -->
-    <template v-if="activeTab === 'backup'">
+    <div v-if="activeTab === 'backup'" class="kb-scroll-area">
       <section class="hero">
         <div>
           <p class="eyebrow">Backup & Migrate</p>
@@ -360,10 +362,10 @@
           <p><strong>定期备份：</strong>建议定期导出备份，防止数据丢失。</p>
         </div>
       </section>
-    </template>
+    </div>
 
     <!-- 关于说明 -->
-    <template v-if="activeTab === 'about'">
+    <div v-if="activeTab === 'about'" class="kb-scroll-area">
       <section class="hero">
         <div>
           <p class="eyebrow">About</p>
@@ -455,10 +457,10 @@
           </table>
         </article>
       </section>
-    </template>
+    </div>
 
     <!-- PWA 诊断面板 -->
-    <template v-if="activeTab === 'pwa'">
+    <div v-if="activeTab === 'pwa'" class="kb-scroll-area">
       <section class="hero">
         <div>
           <p class="eyebrow">PWA Diagnostics</p>
@@ -549,7 +551,7 @@
           <p>{{ diagSummary.message }}</p>
         </div>
       </section>
-    </template>
+    </div>
   </div>
 </template>
 
