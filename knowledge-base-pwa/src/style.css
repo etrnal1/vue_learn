@@ -2221,6 +2221,94 @@ section.dashboard.panel {
   border-color: var(--primary) !important;
 }
 
+/* ─── 编辑器 ─── */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border, #e0e0e0);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.editor-toolbar .mini-btn {
+  min-width: 32px;
+  font-size: 13px;
+}
+.toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border, #ddd);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+.toolbar-spacer {
+  flex: 1;
+}
+.editor-heading-select {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #333);
+}
+.btn-sm {
+  padding: 4px 12px !important;
+  font-size: 13px !important;
+  min-height: auto !important;
+}
+.editor-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.editor-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 60vh;
+  padding: 16px;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text, #333);
+  background: var(--card-bg, #fff);
+  tab-size: 2;
+}
+.editor-textarea:focus {
+  background: var(--card-bg, #fff);
+}
+.editor-richtext {
+  flex: 1;
+  min-height: 60vh;
+  padding: 16px;
+  outline: none;
+  cursor: text;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  transition: border-color .2s;
+}
+.editor-richtext:focus {
+  border-color: var(--primary, #2563eb);
+}
+[data-theme="dark"] .editor-toolbar {
+  background: var(--card-bg, #1e1e1e);
+}
+[data-theme="dark"] .editor-textarea {
+  color: var(--text, #e0e0e0);
+  background: var(--card-bg, #1e1e1e);
+}
+[data-theme="dark"] .editor-heading-select {
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border-color: #444;
+}
+
 /* ─── 版本管理面板 ─── */
 .version-overlay {
   position: fixed;

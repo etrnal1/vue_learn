@@ -25,6 +25,11 @@ export async function saveKnowledgeDocs(docs) {
   return listKnowledgeDocs()
 }
 
+export async function updateKnowledgeDoc(id, changes) {
+  await knowledgeBaseDb.docs.update(id, { ...changes, updatedAt: Date.now() })
+  return knowledgeBaseDb.docs.get(id)
+}
+
 export async function removeKnowledgeDoc(id) {
   await knowledgeBaseDb.docs.delete(id)
 }

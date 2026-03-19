@@ -349,6 +349,7 @@
         <button type="button" class="mini-btn" @click="changeFontSize(1)" title="放大字体">A+</button>
         <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
         <button type="button" class="mini-btn" @click="saveBookmark" title="保存书签">🔖</button>
+        <button type="button" class="mini-btn" :class="{ 'btn-active': editMode }" @click="toggleEditMode" title="编辑">✏️</button>
         <button type="button" class="mini-btn" @click="openVersionPanel" title="版本历史">⏱</button>
       </div>
 
@@ -381,55 +382,114 @@
         <button type="button" class="mini-btn" @click="clearReaderSearch">✕</button>
       </div>
 
+      <!-- 编辑模式工具栏 -->
+      <div v-if="editMode" class="editor-toolbar">
+        <template v-if="['docx','pdf'].includes(activeDoc.type)">
+          <button type="button" class="mini-btn" @click="execFormat('bold')" title="加粗"><b>B</b></button>
+          <button type="button" class="mini-btn" @click="execFormat('italic')" title="斜体"><i>I</i></button>
+          <button type="button" class="mini-btn" @click="execFormat('underline')" title="下划线"><u>U</u></button>
+          <span class="toolbar-sep"></span>
+          <button type="button" class="mini-btn" @click="execFormat('insertUnorderedList')" title="无序列表">• 列表</button>
+          <button type="button" class="mini-btn" @click="execFormat('insertOrderedList')" title="有序列表">1. 列表</button>
+          <span class="toolbar-sep"></span>
+          <select class="editor-heading-select" @change="execFormat('formatBlock', $event.target.value); $event.target.value = ''">
+            <option value="">标题</option>
+            <option value="H1">H1</option>
+            <option value="H2">H2</option>
+            <option value="H3">H3</option>
+            <option value="P">正文</option>
+          </select>
+        </template>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-sm" @click="cancelEdit">取消</button>
+        <button type="button" class="btn btn-primary btn-sm" :disabled="editSaving" @click="saveEdit">
+          {{ editSaving ? '保存中...' : '保存' }}
+        </button>
+      </div>
+
       <!-- 内容区 -->
-      <div ref="readerBody" class="reader-body" :style="{ fontSize: readerFontSize + 'px' }" @scroll="onReaderScroll" @mouseup="onTextSelect" @touchend="onTextSelect">
-        <div v-if="activeDoc.type === 'html'" class="reader-block html-iframe-wrap">
-          <iframe
-            ref="htmlIframe"
-            class="html-iframe"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            :srcdoc="activeDoc.contentHtml"
-            @load="onHtmlIframeLoad"
-          ></iframe>
-        </div>
+      <div ref="readerBody" class="reader-body" :style="{ fontSize: readerFontSize + 'px' }" @scroll="onReaderScroll" @mouseup="!editMode && onTextSelect($event)" @touchend="!editMode && onTextSelect($event)">
 
-        <div v-else-if="['docx','pdf','md','txt'].includes(activeDoc.type)" class="reader-block">
-          <div v-if="activeDoc.parseWarnings?.length" class="warning">
-            {{ activeDoc.parseWarnings.join('；') }}
+        <!-- 编辑模式 -->
+        <template v-if="editMode">
+          <!-- md / txt / html：纯文本编辑 -->
+          <div v-if="['md','txt','html'].includes(activeDoc.type)" class="reader-block editor-block">
+            <textarea
+              ref="editorTextarea"
+              v-model="editContent"
+              class="editor-textarea"
+              spellcheck="false"
+            ></textarea>
           </div>
-          <article ref="readerContent" class="docx-content" v-html="activeDoc.contentHtml"></article>
-        </div>
+          <!-- docx / pdf：富文本 contenteditable -->
+          <div v-else-if="['docx','pdf'].includes(activeDoc.type)" class="reader-block editor-block">
+            <article
+              ref="editorRichtext"
+              class="docx-content editor-richtext"
+              contenteditable="true"
+              v-html="editContent"
+              @input="onRichtextInput"
+            ></article>
+          </div>
+          <!-- xlsx 不支持编辑 -->
+          <div v-else class="reader-block">
+            <div class="empty compact" style="padding:20px">
+              <strong>表格文档暂不支持编辑</strong>
+              <p>请导出为 Excel 后使用专业工具编辑。</p>
+            </div>
+          </div>
+        </template>
 
-        <div v-else class="reader-block">
-          <div class="sheet-tabs">
-            <button
-              v-for="sheet in activeDoc.sheets || []"
-              :key="sheet.name"
-              type="button"
-              class="mini-btn"
-              :class="{ active: activeSheetName === sheet.name }"
-              @click="activeSheetName = sheet.name"
-            >
-              {{ sheet.name }}
-            </button>
+        <!-- 阅读模式（原有） -->
+        <template v-else>
+          <div v-if="activeDoc.type === 'html'" class="reader-block html-iframe-wrap">
+            <iframe
+              ref="htmlIframe"
+              class="html-iframe"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              :srcdoc="activeDoc.contentHtml"
+              @load="onHtmlIframeLoad"
+            ></iframe>
           </div>
-          <div class="table-wrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th v-for="head in activeSheet.headers" :key="head">{{ head || ' ' }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, rowIndex) in activeSheet.rows" :key="rowIndex">
-                  <td v-for="(cell, cellIndex) in row" :key="`${rowIndex}-${cellIndex}`" :title="formatCell(cell)">
-                    {{ formatCell(cell) }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div v-else-if="['docx','pdf','md','txt'].includes(activeDoc.type)" class="reader-block">
+            <div v-if="activeDoc.parseWarnings?.length" class="warning">
+              {{ activeDoc.parseWarnings.join('；') }}
+            </div>
+            <article ref="readerContent" class="docx-content" v-html="activeDoc.contentHtml"></article>
           </div>
-        </div>
+
+          <div v-else class="reader-block">
+            <div class="sheet-tabs">
+              <button
+                v-for="sheet in activeDoc.sheets || []"
+                :key="sheet.name"
+                type="button"
+                class="mini-btn"
+                :class="{ active: activeSheetName === sheet.name }"
+                @click="activeSheetName = sheet.name"
+              >
+                {{ sheet.name }}
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th v-for="head in activeSheet.headers" :key="head">{{ head || ' ' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, rowIndex) in activeSheet.rows" :key="rowIndex">
+                    <td v-for="(cell, cellIndex) in row" :key="`${rowIndex}-${cellIndex}`" :title="formatCell(cell)">
+                      {{ formatCell(cell) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- 版本历史面板 -->
@@ -914,6 +974,7 @@ import {
   getKnowledgeMeta,
   listKnowledgeDocs,
   removeKnowledgeDoc,
+  updateKnowledgeDoc,
   saveKnowledgeDocs,
   setKnowledgeMeta,
   exportAllData,
@@ -996,6 +1057,9 @@ export default {
       highlights: {},
       selectionPopup: null,
       readingStats: { today: 0, week: [], sessionStart: 0 },
+      editMode: false,
+      editContent: '',
+      editSaving: false,
       versionPanelOpen: false,
       docVersions: [],
       diffView: null,
@@ -1251,6 +1315,98 @@ export default {
       window.getSelection()?.removeAllRanges()
       this.bookmarkToast = '已摘录到笔记'
       setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    // ─── 编辑模式 ───
+    toggleEditMode() {
+      if (this.editMode) {
+        this.cancelEdit()
+        return
+      }
+      if (this.activeDoc.type === 'xlsx') {
+        this.bookmarkToast = '表格文档暂不支持编辑'
+        setTimeout(() => { this.bookmarkToast = '' }, 1500)
+        return
+      }
+      // 进入编辑模式
+      if (['md', 'txt'].includes(this.activeDoc.type)) {
+        this.editContent = this.activeDoc.contentText || ''
+      } else if (this.activeDoc.type === 'html') {
+        this.editContent = this.activeDoc.contentHtml || ''
+      } else {
+        // docx, pdf — 编辑 HTML
+        this.editContent = this.activeDoc.contentHtml || ''
+      }
+      this.editMode = true
+      this.$nextTick(() => {
+        if (this.$refs.editorTextarea) this.$refs.editorTextarea.focus()
+      })
+    },
+    cancelEdit() {
+      if (this.editContent !== (this.activeDoc.contentText || this.activeDoc.contentHtml || '')) {
+        if (!confirm('放弃未保存的修改？')) return
+      }
+      this.editMode = false
+      this.editContent = ''
+    },
+    async saveEdit() {
+      if (!this.activeDoc || this.editSaving) return
+      this.editSaving = true
+      try {
+        // 保存编辑前的版本快照
+        await saveDocVersion(this.activeDoc, '编辑前自动保存')
+
+        const doc = this.activeDoc
+        let contentHtml, contentText
+
+        if (doc.type === 'md') {
+          contentText = this.editContent
+          contentHtml = marked(this.editContent)
+        } else if (doc.type === 'txt') {
+          contentText = this.editContent
+          contentHtml = '<pre class="txt-content">' + this.escHtml(this.editContent) + '</pre>'
+        } else if (doc.type === 'html') {
+          contentHtml = this.editContent
+          // 提取纯文本
+          const tmp = document.createElement('div')
+          tmp.innerHTML = this.editContent
+          contentText = tmp.textContent || ''
+        } else {
+          // docx / pdf — 从 contenteditable 获取
+          contentHtml = this.$refs.editorRichtext?.innerHTML || this.editContent
+          const tmp = document.createElement('div')
+          tmp.innerHTML = contentHtml
+          contentText = tmp.textContent || ''
+        }
+
+        await updateKnowledgeDoc(doc.id, {
+          contentHtml,
+          contentText,
+          size: new Blob([contentHtml]).size
+        })
+        await this.reloadDocs()
+
+        // 保存编辑后的版本快照
+        const updated = this.docs.find(d => d.id === doc.id)
+        if (updated) await saveDocVersion(updated, '编辑保存')
+
+        this.editMode = false
+        this.editContent = ''
+        this.bookmarkToast = '已保存'
+        setTimeout(() => { this.bookmarkToast = '' }, 1500)
+      } catch (err) {
+        console.error('[edit] save failed:', err)
+        alert('保存失败: ' + err.message)
+      } finally {
+        this.editSaving = false
+      }
+    },
+    execFormat(command, value) {
+      document.execCommand(command, false, value || null)
+      this.$refs.editorRichtext?.focus()
+    },
+    onRichtextInput() {
+      // 同步 contenteditable 内容到 editContent（用于脏检查）
+      this.editContent = this.$refs.editorRichtext?.innerHTML || ''
     },
     // ─── 版本管理 ───
     async openVersionPanel() {
@@ -1672,6 +1828,11 @@ export default {
       this.restoreBookmark()
     },
     closeReader() {
+      if (this.editMode) {
+        if (!confirm('正在编辑中，确定退出？')) return
+        this.editMode = false
+        this.editContent = ''
+      }
       this.autoSaveBookmark()
       this.stopReadingTimer()
       this.selectionPopup = null
