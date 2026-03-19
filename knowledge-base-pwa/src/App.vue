@@ -62,6 +62,14 @@
               </div>
               <span class="sheet-arrow">›</span>
             </button>
+            <button type="button" class="sheet-item" @click="toggleTheme">
+              <span class="sheet-item-icon">{{ darkMode ? '☀️' : '🌙' }}</span>
+              <div class="sheet-item-body">
+                <strong>{{ darkMode ? '浅色模式' : '深色模式' }}</strong>
+                <p>切换应用主题外观</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
             <button type="button" class="sheet-item" :class="{ active: activeTab === 'about' }" @click="goTab('about')">
               <span class="sheet-item-icon">📖</span>
               <div class="sheet-item-body">
@@ -75,6 +83,14 @@
               <div class="sheet-item-body">
                 <strong>离线诊断</strong>
                 <p>检测 SW、缓存、HTTPS 状态</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
+            <button type="button" class="sheet-item" @click="goTab('trash')">
+              <span class="sheet-item-icon">🗑️</span>
+              <div class="sheet-item-body">
+                <strong>回收站</strong>
+                <p>{{ trashDocs.length }} 个已删除文档</p>
               </div>
               <span class="sheet-arrow">›</span>
             </button>
@@ -92,16 +108,81 @@
       </div>
     </transition>
 
-    <div v-if="activeTab === 'kb'" class="kb-scroll-area">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">Offline-first</p>
-        <h1>本地知识库 PWA</h1>
-        <p class="hero-text">独立工作区版本。支持本地导入、离线阅读、列表管理和全文搜索。</p>
+    <!-- 全局搜索浮动按钮 -->
+    <button v-if="!locked && !readerOpen && !globalSearchOpen" type="button" class="global-search-fab" @click="openGlobalSearch">🔍</button>
+
+    <!-- 全局搜索面板 -->
+    <transition name="sheet">
+      <div v-if="globalSearchOpen" class="global-search-overlay" @click.self="globalSearchOpen = false">
+        <div class="global-search-panel">
+          <div class="global-search-header">
+            <input
+              ref="globalSearchInput"
+              v-model.trim="globalSearchKeyword"
+              class="input global-search-input"
+              placeholder="搜索文档和笔记..."
+              @input="doGlobalSearch"
+            />
+            <button type="button" class="mini-btn" @click="globalSearchOpen = false">取消</button>
+          </div>
+          <div class="global-search-results">
+            <div v-if="globalSearchKeyword && globalSearchResults.length === 0" class="empty compact">
+              <strong>没有匹配结果</strong>
+            </div>
+            <button
+              v-for="(r, i) in globalSearchResults"
+              :key="i"
+              type="button"
+              class="search-item"
+              @click="openGlobalResult(r)"
+            >
+              <div class="doc-icon" :class="r.source" style="width:28px;height:28px;font-size:12px;flex-shrink:0">{{ r.icon }}</div>
+              <div>
+                <strong>{{ r.title }}</strong>
+                <p>{{ r.snippet }}</p>
+              </div>
+              <span class="search-item-tag">{{ r.tag }}</span>
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="hero-actions">
-        <button type="button" class="btn btn-primary" @click="openFilePicker">导入文档</button>
-        <button type="button" class="btn" @click="requestPersistentStorage">申请持久化</button>
+    </transition>
+
+    <div v-if="activeTab === 'kb'" class="kb-scroll-area">
+    <!-- 仪表盘 -->
+    <section class="dashboard panel">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-greeting">{{ greetingText }}</h2>
+          <p class="dashboard-sub">共 {{ docs.length }} 篇文档 · {{ trashDocs.length }} 在回收站 · {{ storageInfo.usageText }} 已用</p>
+        </div>
+        <div class="dashboard-actions">
+          <button type="button" class="btn btn-primary" @click="openFilePicker">导入文档</button>
+        </div>
+      </div>
+      <div class="dashboard-cards">
+        <div class="dash-card" v-for="t in [
+          { label: 'Word', count: docCounts.docx, cls: 'docx' },
+          { label: 'Excel', count: docCounts.xlsx, cls: 'xlsx' },
+          { label: 'PDF', count: docCounts.pdf, cls: 'pdf' },
+          { label: 'HTML', count: docCounts.html, cls: 'html' },
+          { label: 'MD', count: docCounts.md, cls: 'md' }
+        ]" :key="t.cls" @click="typeFilter = t.cls">
+          <div class="dash-card-icon" :class="t.cls">{{ t.count }}</div>
+          <span>{{ t.label }}</span>
+        </div>
+      </div>
+      <div v-if="recentDocs.length" class="dashboard-recent">
+        <p class="eyebrow">最近阅读</p>
+        <div class="recent-list">
+          <button v-for="doc in recentDocs" :key="doc.id" type="button" class="recent-item" @click="openDoc(doc)">
+            <div class="doc-icon" :class="doc.type" style="width:28px;height:28px;font-size:11px">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?' }}</div>
+            <div class="recent-meta">
+              <strong>{{ doc.name }}</strong>
+              <span v-if="bookmarks[doc.id]">{{ bookmarks[doc.id].progress }}%</span>
+            </div>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -117,6 +198,7 @@
           <option value="xlsx">Excel</option>
           <option value="pdf">PDF</option>
           <option value="html">HTML</option>
+          <option value="md">Markdown</option>
         </select>
         <button type="button" class="btn" @click="reloadDocs">刷新</button>
         <button type="button" class="btn btn-danger" :disabled="docs.length === 0" @click="clearAllDocs">清空全部</button>
@@ -143,6 +225,10 @@
       <article class="stat panel">
         <span>HTML</span>
         <strong>{{ docCounts.html }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>MD</span>
+        <strong>{{ docCounts.md }}</strong>
       </article>
       <article class="stat panel">
         <span>存储状态</span>
@@ -174,7 +260,7 @@
             :class="{ active: activeDocId === doc.id }"
             @click="openDoc(doc)"
           >
-            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H' }[doc.type] || '?' }}</div>
+            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?' }}</div>
             <div class="doc-meta">
               <strong>{{ doc.name }}<span v-if="bookmarks[doc.id]" class="bookmark-badge" :title="'已读 ' + bookmarks[doc.id].progress + '%'">🔖{{ bookmarks[doc.id].progress }}%</span></strong>
               <p>{{ getDocPreview(doc) }}</p>
@@ -331,7 +417,7 @@
           ></iframe>
         </div>
 
-        <div v-else-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf'" class="reader-block">
+        <div v-else-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf' || activeDoc.type === 'md'" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
@@ -388,7 +474,7 @@
       ref="fileInput"
       class="hidden-input"
       type="file"
-      accept=".docx,.xlsx,.pdf,.html,.htm"
+      accept=".docx,.xlsx,.pdf,.html,.htm,.md"
       multiple
       @change="onFileChange"
     />
@@ -740,6 +826,39 @@
         </div>
       </section>
     </div>
+
+    <!-- 回收站 -->
+    <div v-if="activeTab === 'trash'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Trash</p>
+          <h1>回收站</h1>
+          <p class="hero-text">已删除的文档可在此恢复。</p>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn btn-danger" :disabled="trashDocs.length === 0" @click="emptyTrash">清空回收站</button>
+        </div>
+      </section>
+      <section class="panel">
+        <div v-if="trashDocs.length === 0" class="empty compact">
+          <strong>回收站为空</strong>
+          <p>删除的文档会出现在这里。</p>
+        </div>
+        <div v-else class="doc-list">
+          <div v-for="item in trashDocs" :key="item.id" class="doc-item trash-item">
+            <div class="doc-icon" :class="item.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[item.type] || '?' }}</div>
+            <div class="doc-meta">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.type.toUpperCase() }} · {{ formatBytes(item.size) }} · 删除于 {{ formatDate(item.deletedAt) }}</span>
+            </div>
+            <div class="trash-actions">
+              <button type="button" class="mini-btn" @click="restoreFromTrash(item)">恢复</button>
+              <button type="button" class="mini-btn danger" @click="permanentDeleteTrash(item)">永久删除</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -747,12 +866,14 @@
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth/mammoth.browser'
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.min.mjs'
+import { marked } from 'marked'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url
 ).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
+import { listNotes } from './features/notes/notesDb.js'
 import {
   clearKnowledgeDocs,
   getKnowledgeMeta,
@@ -825,7 +946,12 @@ export default {
       autoBackupInterval: 24,
       lastAutoBackupTime: '',
       lastAutoBackupTs: 0,
-      backupOverdue: false
+      backupOverdue: false,
+      darkMode: false,
+      globalSearchOpen: false,
+      globalSearchKeyword: '',
+      globalSearchResults: [],
+      trashDocs: []
     }
   },
   computed: {
@@ -878,13 +1004,27 @@ export default {
       return idx >= 0 && idx < this.filteredDocs.length - 1 ? this.filteredDocs[idx + 1] : null
     },
     isMoreTabActive() {
-      return ['about', 'pwa'].includes(this.activeTab)
+      return ['about', 'pwa', 'trash'].includes(this.activeTab)
     },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
         acc[doc.type] = (acc[doc.type] || 0) + 1
         return acc
-      }, { docx: 0, xlsx: 0, pdf: 0, html: 0 })
+      }, { docx: 0, xlsx: 0, pdf: 0, html: 0, md: 0 })
+    },
+    greetingText() {
+      const h = new Date().getHours()
+      if (h < 6) return '夜深了，注意休息'
+      if (h < 12) return '早上好，开始学习吧'
+      if (h < 18) return '下午好，继续加油'
+      return '晚上好，今日收获如何'
+    },
+    recentDocs() {
+      // 按书签 updatedAt 排序，取最近5个
+      const withBookmark = this.docs
+        .filter(d => this.bookmarks[d.id])
+        .sort((a, b) => (this.bookmarks[b.id]?.updatedAt || 0) - (this.bookmarks[a.id]?.updatedAt || 0))
+      return withBookmark.slice(0, 5)
     },
     diagSummary() {
       const d = this.diag
@@ -923,6 +1063,14 @@ export default {
       this.runDiagnostics()
       // 恢复书签数据
       this.bookmarks = (await getKnowledgeMeta('bookmarks')) || {}
+      // 恢复主题
+      const savedTheme = localStorage.getItem('kb-theme')
+      if (savedTheme === 'dark') {
+        this.darkMode = true
+        document.documentElement.setAttribute('data-theme', 'dark')
+      }
+      // 恢复回收站
+      this.trashDocs = (await getKnowledgeMeta('trashDocs')) || []
       // 监听 SW 更新事件
       if (window.__swUpdate?.available) this.swUpdateAvailable = true
       window.addEventListener('sw-update-found', () => { this.swUpdateAvailable = true })
@@ -935,6 +1083,61 @@ export default {
       if (this.autoBackupEnabled) {
         this._setupAutoBackup()
       }
+    },
+    openGlobalSearch() {
+      this.globalSearchOpen = true
+      this.globalSearchKeyword = ''
+      this.globalSearchResults = []
+      this.$nextTick(() => this.$refs.globalSearchInput?.focus())
+    },
+    async doGlobalSearch() {
+      const kw = this.globalSearchKeyword.toLowerCase()
+      if (!kw) { this.globalSearchResults = []; return }
+      const results = []
+      // 搜索文档
+      for (const doc of this.docs) {
+        const hay = `${doc.name}\n${doc.contentText || ''}`.toLowerCase()
+        const idx = hay.indexOf(kw)
+        if (idx >= 0) {
+          const start = Math.max(0, idx - 20)
+          const end = Math.min(hay.length, idx + kw.length + 40)
+          results.push({
+            source: doc.type, icon: { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?',
+            title: doc.name, snippet: hay.slice(start, end).replace(/\s+/g, ' ').trim(),
+            tag: doc.type.toUpperCase(), type: 'doc', data: doc
+          })
+        }
+      }
+      // 搜索笔记
+      try {
+        const notes = await listNotes({ keyword: this.globalSearchKeyword })
+        for (const n of notes.slice(0, 20)) {
+          const content = (n.content || '').toLowerCase()
+          const idx = content.indexOf(kw)
+          const snippet = idx >= 0
+            ? content.slice(Math.max(0, idx - 20), idx + kw.length + 40).replace(/\s+/g, ' ').trim()
+            : (n.content || '').slice(0, 60)
+          results.push({
+            source: 'note', icon: '📝', title: n.title, snippet,
+            tag: '笔记', type: 'note', data: n
+          })
+        }
+      } catch (e) { /* ignore */ }
+      this.globalSearchResults = results.slice(0, 30)
+    },
+    openGlobalResult(r) {
+      this.globalSearchOpen = false
+      if (r.type === 'doc') {
+        this.activeTab = 'kb'
+        this.openDoc(r.data)
+      } else if (r.type === 'note') {
+        this.activeTab = 'notes'
+      }
+    },
+    toggleTheme() {
+      this.darkMode = !this.darkMode
+      document.documentElement.setAttribute('data-theme', this.darkMode ? 'dark' : 'light')
+      localStorage.setItem('kb-theme', this.darkMode ? 'dark' : 'light')
     },
     toggleMoreMenu() {
       this.moreMenuOpen = !this.moreMenuOpen
@@ -1120,7 +1323,8 @@ export default {
       if (lowerName.endsWith('.xlsx')) return this.parseXlsx(file)
       if (lowerName.endsWith('.pdf')) return this.parsePdf(file)
       if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) return this.parseHtml(file)
-      throw new Error('仅支持 .docx、.xlsx、.pdf 和 .html')
+      if (lowerName.endsWith('.md')) return this.parseMarkdown(file)
+      throw new Error('仅支持 .docx、.xlsx、.pdf、.html 和 .md')
     },
     async parseDocx(file) {
       const arrayBuffer = await file.arrayBuffer()
@@ -1195,6 +1399,19 @@ export default {
         contentText: textParts.join('\n'),
         sheets: [],
         parseWarnings: pdf.numPages > 50 ? [`文档共 ${pdf.numPages} 页，加载较慢`] : []
+      }
+    },
+    async parseMarkdown(file) {
+      const rawText = await file.text()
+      const contentHtml = marked(rawText)
+      return {
+        name: file.name,
+        type: 'md',
+        size: file.size,
+        contentHtml: contentHtml || '<p>文档为空</p>',
+        contentText: rawText.trim(),
+        sheets: [],
+        parseWarnings: []
       }
     },
     async parseHtml(file) {
@@ -1401,16 +1618,57 @@ export default {
       await this.openDoc(result.doc)
     },
     async deleteDoc(doc) {
-      const confirmed = window.confirm(`确定删除文档”${doc.name}”吗？`)
+      const confirmed = window.confirm(`将”${doc.name}”移入回收站？`)
       if (!confirmed) return
       this.readerOpen = false
+      // 移入回收站（保存精简版，不含完整 contentHtml 以节省空间）
+      this.trashDocs.push({
+        id: doc.id, name: doc.name, type: doc.type, size: doc.size,
+        createdAt: doc.createdAt, deletedAt: Date.now()
+      })
+      if (this.trashDocs.length > 100) this.trashDocs = this.trashDocs.slice(-100)
+      await setKnowledgeMeta('trashDocs', this.trashDocs)
+      await setKnowledgeMeta('trashDoc_' + doc.id, doc)
       await removeKnowledgeDoc(doc.id)
       await this.reloadDocs()
       await this.refreshStorageInfo()
     },
+    async restoreFromTrash(item) {
+      const fullDoc = await getKnowledgeMeta('trashDoc_' + item.id)
+      if (!fullDoc) { alert('回收站数据已丢失'); return }
+      await saveKnowledgeDocs([fullDoc])
+      this.trashDocs = this.trashDocs.filter(d => d.id !== item.id)
+      await setKnowledgeMeta('trashDocs', this.trashDocs)
+      await setKnowledgeMeta('trashDoc_' + item.id, null)
+      await this.reloadDocs()
+      await this.refreshStorageInfo()
+    },
+    async permanentDeleteTrash(item) {
+      if (!window.confirm(`永久删除”${item.name}”？此操作不可恢复。`)) return
+      this.trashDocs = this.trashDocs.filter(d => d.id !== item.id)
+      await setKnowledgeMeta('trashDocs', this.trashDocs)
+      await setKnowledgeMeta('trashDoc_' + item.id, null)
+    },
+    async emptyTrash() {
+      if (!window.confirm('清空回收站？所有文档将永久删除。')) return
+      for (const item of this.trashDocs) {
+        await setKnowledgeMeta('trashDoc_' + item.id, null)
+      }
+      this.trashDocs = []
+      await setKnowledgeMeta('trashDocs', [])
+    },
     async clearAllDocs() {
-      const confirmed = window.confirm('确定清空全部知识库文档吗？该操作不可撤销。')
+      const confirmed = window.confirm('确定清空全部知识库文档吗？文档将移入回收站。')
       if (!confirmed) return
+      for (const doc of this.docs) {
+        this.trashDocs.push({
+          id: doc.id, name: doc.name, type: doc.type, size: doc.size,
+          createdAt: doc.createdAt, deletedAt: Date.now()
+        })
+        await setKnowledgeMeta('trashDoc_' + doc.id, doc)
+      }
+      if (this.trashDocs.length > 100) this.trashDocs = this.trashDocs.slice(-100)
+      await setKnowledgeMeta('trashDocs', this.trashDocs)
       await clearKnowledgeDocs()
       await setKnowledgeMeta('lastOpenedDocId', null)
       this.importQueue = []
