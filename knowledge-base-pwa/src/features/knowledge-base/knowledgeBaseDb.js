@@ -52,23 +52,20 @@ export async function getKnowledgeMeta(key) {
 // ============ 版本管理 ============
 
 export async function saveDocVersion(doc, message = '') {
+  // 先将整个 doc 深拷贝为纯对象，去除 Vue 响应式 Proxy
+  const plain = JSON.parse(JSON.stringify(doc))
   const versions = await knowledgeBaseDb.docVersions
-    .where('docId').equals(doc.id)
+    .where('docId').equals(plain.id)
     .toArray()
   const nextVer = versions.length + 1
-  // 深拷贝 sheets 避免 Vue 响应式代理导致 DataCloneError
-  let sheets = []
-  try {
-    sheets = JSON.parse(JSON.stringify(doc.sheets || []))
-  } catch (_) {}
   await knowledgeBaseDb.docVersions.add({
-    docId: doc.id,
+    docId: plain.id,
     version: nextVer,
     message: message || `v${nextVer}`,
-    contentHtml: doc.contentHtml || '',
-    contentText: doc.contentText || '',
-    sheets,
-    size: doc.size || 0,
+    contentHtml: plain.contentHtml || '',
+    contentText: plain.contentText || '',
+    sheets: plain.sheets || [],
+    size: plain.size || 0,
     createdAt: Date.now()
   })
   // 最多保留 50 个版本
