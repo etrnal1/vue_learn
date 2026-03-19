@@ -344,13 +344,32 @@
       <div class="reader-header">
         <button type="button" class="reader-back" @click="closeReader">← 返回</button>
         <div class="reader-title">{{ activeDoc.name }}</div>
-        <button type="button" class="mini-btn" @click="toggleStar(activeDoc)" :title="activeDoc.starred ? '取消收藏' : '收藏'">{{ activeDoc.starred ? '★' : '☆' }}</button>
-        <button type="button" class="mini-btn" @click="changeFontSize(-1)" title="缩小字体">A-</button>
-        <button type="button" class="mini-btn" @click="changeFontSize(1)" title="放大字体">A+</button>
         <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
-        <button type="button" class="mini-btn" @click="saveBookmark" title="保存书签">🔖</button>
         <button type="button" class="mini-btn" :class="{ 'btn-active': editMode }" @click="toggleEditMode" title="编辑">✏️</button>
-        <button type="button" class="mini-btn" @click="openVersionPanel" title="版本历史">⏱</button>
+        <div class="reader-menu-wrap">
+          <button type="button" class="mini-btn" @click="readerMenuOpen = !readerMenuOpen" title="更多操作">⋯</button>
+          <transition name="fade">
+            <div v-if="readerMenuOpen" class="reader-menu-overlay" @click.self="readerMenuOpen = false">
+              <div class="reader-menu">
+                <button type="button" class="reader-menu-item" @click="toggleStar(activeDoc); readerMenuOpen = false">
+                  <span>{{ activeDoc.starred ? '★' : '☆' }}</span>{{ activeDoc.starred ? '取消收藏' : '收藏' }}
+                </button>
+                <button type="button" class="reader-menu-item" @click="changeFontSize(-1)">
+                  <span>A-</span>缩小字体
+                </button>
+                <button type="button" class="reader-menu-item" @click="changeFontSize(1)">
+                  <span>A+</span>放大字体
+                </button>
+                <button type="button" class="reader-menu-item" @click="saveBookmark(); readerMenuOpen = false">
+                  <span>🔖</span>保存书签
+                </button>
+                <button type="button" class="reader-menu-item" @click="openVersionPanel(); readerMenuOpen = false">
+                  <span>⏱</span>版本历史
+                </button>
+              </div>
+            </div>
+          </transition>
+        </div>
       </div>
 
       <!-- 文章导航栏 -->
@@ -1057,6 +1076,7 @@ export default {
       highlights: {},
       selectionPopup: null,
       readingStats: { today: 0, week: [], sessionStart: 0 },
+      readerMenuOpen: false,
       editMode: false,
       editContent: '',
       editSaving: false,
