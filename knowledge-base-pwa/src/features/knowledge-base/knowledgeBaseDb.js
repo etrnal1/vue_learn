@@ -26,9 +26,16 @@ export async function saveKnowledgeDocs(docs) {
 }
 
 export async function updateKnowledgeDoc(id, changes) {
-  // 深拷贝避免 Vue 响应式代理导致 DataCloneError
-  const plain = JSON.parse(JSON.stringify(changes))
-  await knowledgeBaseDb.docs.update(id, { ...plain, updatedAt: Date.now() })
+  // 逐字段构建纯对象，避免 Proxy / 不可克隆对象
+  const patch = { updatedAt: Date.now() }
+  if (changes.contentHtml !== undefined) patch.contentHtml = String(changes.contentHtml)
+  if (changes.contentText !== undefined) patch.contentText = String(changes.contentText)
+  if (changes.size !== undefined) patch.size = Number(changes.size) || 0
+  if (changes.name !== undefined) patch.name = String(changes.name)
+  if (changes.sheets !== undefined) {
+    try { patch.sheets = JSON.parse(JSON.stringify(changes.sheets)) } catch (_) { patch.sheets = [] }
+  }
+  await knowledgeBaseDb.docs.update(id, patch)
   return knowledgeBaseDb.docs.get(id)
 }
 
@@ -52,20 +59,26 @@ export async function getKnowledgeMeta(key) {
 // ============ 版本管理 ============
 
 export async function saveDocVersion(doc, message = '') {
-  // 先将整个 doc 深拷贝为纯对象，去除 Vue 响应式 Proxy
-  const plain = JSON.parse(JSON.stringify(doc))
+  // 逐字段提取原始值，避免 Vue Proxy / Blob 等不可克隆对象
+  const docId = Number(doc.id)
+  const html = String(doc.contentHtml || '')
+  const text = String(doc.contentText || '')
+  const size = Number(doc.size) || 0
+  let sheets = []
+  try { sheets = JSON.parse(JSON.stringify(doc.sheets || [])) } catch (_) {}
+
   const versions = await knowledgeBaseDb.docVersions
-    .where('docId').equals(plain.id)
+    .where('docId').equals(docId)
     .toArray()
   const nextVer = versions.length + 1
   await knowledgeBaseDb.docVersions.add({
-    docId: plain.id,
+    docId,
     version: nextVer,
-    message: message || `v${nextVer}`,
-    contentHtml: plain.contentHtml || '',
-    contentText: plain.contentText || '',
-    sheets: plain.sheets || [],
-    size: plain.size || 0,
+    message: String(message || `v${nextVer}`),
+    contentHtml: html,
+    contentText: text,
+    sheets,
+    size,
     createdAt: Date.now()
   })
   // 最多保留 50 个版本
