@@ -295,6 +295,35 @@ textarea {
   background: linear-gradient(135deg, #e97627, #d35400);
 }
 
+.bookmark-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.7em;
+  font-weight: 500;
+  color: #e97627;
+  vertical-align: middle;
+}
+
+.bookmark-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 14px;
+  z-index: 9999;
+  pointer-events: none;
+}
+.toast-enter-active, .toast-leave-active {
+  transition: opacity 0.3s;
+}
+.toast-enter-from, .toast-leave-to {
+  opacity: 0;
+}
+
 .doc-meta p,
 .doc-meta span,
 .queue-item p,

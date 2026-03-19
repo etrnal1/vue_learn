@@ -176,7 +176,7 @@
           >
             <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H' }[doc.type] || '?' }}</div>
             <div class="doc-meta">
-              <strong>{{ doc.name }}</strong>
+              <strong>{{ doc.name }}<span v-if="bookmarks[doc.id]" class="bookmark-badge" :title="'已读 ' + bookmarks[doc.id].progress + '%'">🔖{{ bookmarks[doc.id].progress }}%</span></strong>
               <p>{{ getDocPreview(doc) }}</p>
               <span>{{ doc.type.toUpperCase() }} · {{ formatBytes(doc.size) }}</span>
             </div>
@@ -286,6 +286,7 @@
         <button type="button" class="reader-back" @click="closeReader">← 返回列表</button>
         <div class="reader-title">{{ activeDoc.name }}</div>
         <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
+        <button type="button" class="mini-btn" @click="saveBookmark" title="保存书签">🔖</button>
         <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
       </div>
 
@@ -376,6 +377,11 @@
         class="reader-top-btn"
         @click="scrollReaderTop"
       >↑ 顶部</button>
+
+      <!-- 书签提示 -->
+      <transition name="toast">
+        <div v-if="bookmarkToast" class="bookmark-toast">{{ bookmarkToast }}</div>
+      </transition>
     </div>
 
     <input
@@ -804,6 +810,9 @@ export default {
       readerSearchKeyword: '',
       readerMatchCount: 0,
       readerMatchIndex: 0,
+      bookmarks: {},
+      bookmarkSaveTimer: null,
+      bookmarkToast: '',
       importQueue: [],
       storageInfo: {
         persisted: false,
@@ -912,6 +921,8 @@ export default {
       await this.reloadDocs()
       await this.refreshStorageInfo()
       this.runDiagnostics()
+      // 恢复书签数据
+      this.bookmarks = (await getKnowledgeMeta('bookmarks')) || {}
       // 监听 SW 更新事件
       if (window.__swUpdate?.available) this.swUpdateAvailable = true
       window.addEventListener('sw-update-found', () => { this.swUpdateAvailable = true })
@@ -1211,8 +1222,10 @@ export default {
       this.syncActiveSheet()
       this.readerOpen = true
       await setKnowledgeMeta('lastOpenedDocId', doc.id)
+      this.restoreBookmark()
     },
     closeReader() {
+      this.autoSaveBookmark()
       this.readerOpen = false
       this.clearReaderSearch()
       this.readerProgress = 0
@@ -1234,6 +1247,51 @@ export default {
       this.readerProgress = scrollHeight > clientHeight
         ? Math.round((scrollTop / (scrollHeight - clientHeight)) * 100)
         : 0
+      // 自动保存阅读位置（防抖 2 秒）
+      clearTimeout(this.bookmarkSaveTimer)
+      this.bookmarkSaveTimer = setTimeout(() => this.autoSaveBookmark(), 2000)
+    },
+    async autoSaveBookmark() {
+      if (!this.activeDocId) return
+      const el = this.$refs.readerBody
+      if (!el || el.scrollTop < 10) return
+      const ratio = el.scrollHeight > el.clientHeight
+        ? el.scrollTop / (el.scrollHeight - el.clientHeight)
+        : 0
+      this.bookmarks[this.activeDocId] = {
+        scrollRatio: ratio,
+        progress: this.readerProgress,
+        updatedAt: Date.now()
+      }
+      await setKnowledgeMeta('bookmarks', this.bookmarks)
+    },
+    async saveBookmark() {
+      if (!this.activeDocId) return
+      const el = this.$refs.readerBody
+      const ratio = el && el.scrollHeight > el.clientHeight
+        ? el.scrollTop / (el.scrollHeight - el.clientHeight)
+        : 0
+      this.bookmarks[this.activeDocId] = {
+        scrollRatio: ratio,
+        progress: this.readerProgress,
+        updatedAt: Date.now()
+      }
+      await setKnowledgeMeta('bookmarks', this.bookmarks)
+      this.bookmarkToast = '书签已保存'
+      setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    async removeBookmark(docId) {
+      delete this.bookmarks[docId]
+      await setKnowledgeMeta('bookmarks', this.bookmarks)
+    },
+    async restoreBookmark() {
+      const bm = this.bookmarks[this.activeDocId]
+      if (!bm) return
+      await this.$nextTick()
+      const el = this.$refs.readerBody
+      if (!el) return
+      const target = bm.scrollRatio * (el.scrollHeight - el.clientHeight)
+      el.scrollTo({ top: target })
     },
     scrollReaderTop() {
       this.$refs.readerBody?.scrollTo({ top: 0, behavior: 'smooth' })
