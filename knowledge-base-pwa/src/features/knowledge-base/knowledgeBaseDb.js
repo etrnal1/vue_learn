@@ -26,7 +26,9 @@ export async function saveKnowledgeDocs(docs) {
 }
 
 export async function updateKnowledgeDoc(id, changes) {
-  await knowledgeBaseDb.docs.update(id, { ...changes, updatedAt: Date.now() })
+  // 深拷贝避免 Vue 响应式代理导致 DataCloneError
+  const plain = JSON.parse(JSON.stringify(changes))
+  await knowledgeBaseDb.docs.update(id, { ...plain, updatedAt: Date.now() })
   return knowledgeBaseDb.docs.get(id)
 }
 
@@ -54,14 +56,19 @@ export async function saveDocVersion(doc, message = '') {
     .where('docId').equals(doc.id)
     .toArray()
   const nextVer = versions.length + 1
+  // 深拷贝 sheets 避免 Vue 响应式代理导致 DataCloneError
+  let sheets = []
+  try {
+    sheets = JSON.parse(JSON.stringify(doc.sheets || []))
+  } catch (_) {}
   await knowledgeBaseDb.docVersions.add({
     docId: doc.id,
     version: nextVer,
     message: message || `v${nextVer}`,
-    contentHtml: doc.contentHtml,
-    contentText: doc.contentText,
-    sheets: doc.sheets || [],
-    size: doc.size,
+    contentHtml: doc.contentHtml || '',
+    contentText: doc.contentText || '',
+    sheets,
+    size: doc.size || 0,
     createdAt: Date.now()
   })
   // 最多保留 50 个版本
