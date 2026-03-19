@@ -2156,3 +2156,67 @@ section.dashboard.panel {
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* ─── 收藏星标 ─── */
+.star-mark {
+  color: #f59e0b;
+  margin-right: 3px;
+}
+
+/* ─── 选中文字弹窗 ─── */
+.selection-popup {
+  position: absolute;
+  display: flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 200;
+  transform: translateX(-50%);
+}
+.sel-btn {
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sel-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── 高亮标注 ─── */
+.user-highlight {
+  background: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+[data-theme="dark"] .user-highlight {
+  background: rgba(250, 204, 21, 0.25);
+}
+
+/* ─── TXT 预览 ─── */
+.txt-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 0.9em;
+  line-height: 1.7;
+}
+
+/* ─── doc-icon.txt ─── */
+.doc-icon.txt {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+}
+.dash-card-icon.txt {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+}
+
+/* ─── 活跃按钮样式 ─── */
+.btn-active {
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-color: var(--primary) !important;
+}

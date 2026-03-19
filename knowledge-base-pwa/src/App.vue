@@ -154,7 +154,7 @@
       <div class="dashboard-header">
         <div>
           <h2 class="dashboard-greeting">{{ greetingText }}</h2>
-          <p class="dashboard-sub">共 {{ docs.length }} 篇文档 · {{ trashDocs.length }} 在回收站 · {{ storageInfo.usageText }} 已用</p>
+          <p class="dashboard-sub">共 {{ docs.length }} 篇文档 · {{ docs.filter(d=>d.starred).length }} 收藏 · 今日阅读 {{ readingStatsDisplay }}</p>
         </div>
         <div class="dashboard-actions">
           <button type="button" class="btn btn-primary" @click="openFilePicker">导入文档</button>
@@ -167,7 +167,8 @@
           { label: 'Excel', count: docCounts.xlsx, cls: 'xlsx' },
           { label: 'PDF', count: docCounts.pdf, cls: 'pdf' },
           { label: 'HTML', count: docCounts.html, cls: 'html' },
-          { label: 'MD', count: docCounts.md, cls: 'md' }
+          { label: 'MD', count: docCounts.md, cls: 'md' },
+          { label: 'TXT', count: docCounts.txt, cls: 'txt' }
         ]" :key="t.cls" @click="typeFilter = t.cls">
           <div class="dash-card-icon" :class="t.cls">{{ t.count }}</div>
           <span>{{ t.label }}</span>
@@ -177,7 +178,7 @@
         <p class="eyebrow">最近阅读</p>
         <div class="recent-list">
           <button v-for="doc in recentDocs" :key="doc.id" type="button" class="recent-item" @click="openDoc(doc)">
-            <div class="doc-icon" :class="doc.type" style="width:28px;height:28px;font-size:11px">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?' }}</div>
+            <div class="doc-icon" :class="doc.type" style="width:28px;height:28px;font-size:11px">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M', txt: 'T' }[doc.type] || '?' }}</div>
             <div class="recent-meta">
               <strong>{{ doc.name }}</strong>
               <span v-if="bookmarks[doc.id]">{{ bookmarks[doc.id].progress }}%</span>
@@ -201,8 +202,8 @@
           <option value="html">HTML</option>
           <option value="md">Markdown</option>
         </select>
+        <button type="button" class="btn" :class="{ 'btn-active': typeFilter === 'starred' }" @click="typeFilter = typeFilter === 'starred' ? 'all' : 'starred'">★ 收藏</button>
         <button type="button" class="btn" @click="reloadDocs">刷新</button>
-        <button type="button" class="btn btn-danger" :disabled="docs.length === 0" @click="clearAllDocs">清空全部</button>
       </div>
     </section>
 
@@ -232,9 +233,9 @@
             :class="{ active: activeDocId === doc.id }"
             @click="openDoc(doc)"
           >
-            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?' }}</div>
+            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M', txt: 'T' }[doc.type] || '?' }}</div>
             <div class="doc-meta">
-              <strong>{{ doc.name }}<span v-if="bookmarks[doc.id]" class="bookmark-badge" :title="'已读 ' + bookmarks[doc.id].progress + '%'">🔖{{ bookmarks[doc.id].progress }}%</span></strong>
+              <strong><span v-if="doc.starred" class="star-mark">★</span>{{ doc.name }}<span v-if="bookmarks[doc.id]" class="bookmark-badge" :title="'已读 ' + bookmarks[doc.id].progress + '%'">🔖{{ bookmarks[doc.id].progress }}%</span></strong>
               <p>{{ getDocPreview(doc) }}</p>
               <span>{{ doc.type.toUpperCase() }} · {{ formatBytes(doc.size) }}</span>
             </div>
@@ -341,11 +342,13 @@
 
       <!-- 顶部栏 -->
       <div class="reader-header">
-        <button type="button" class="reader-back" @click="closeReader">← 返回列表</button>
+        <button type="button" class="reader-back" @click="closeReader">← 返回</button>
         <div class="reader-title">{{ activeDoc.name }}</div>
+        <button type="button" class="mini-btn" @click="toggleStar(activeDoc)" :title="activeDoc.starred ? '取消收藏' : '收藏'">{{ activeDoc.starred ? '★' : '☆' }}</button>
+        <button type="button" class="mini-btn" @click="changeFontSize(-1)" title="缩小字体">A-</button>
+        <button type="button" class="mini-btn" @click="changeFontSize(1)" title="放大字体">A+</button>
         <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
         <button type="button" class="mini-btn" @click="saveBookmark" title="保存书签">🔖</button>
-        <button type="button" class="mini-btn" @click="shareDoc(activeDoc)">分享</button>
       </div>
 
       <!-- 文章导航栏 -->
@@ -378,7 +381,7 @@
       </div>
 
       <!-- 内容区 -->
-      <div ref="readerBody" class="reader-body" @scroll="onReaderScroll">
+      <div ref="readerBody" class="reader-body" :style="{ fontSize: readerFontSize + 'px' }" @scroll="onReaderScroll" @mouseup="onTextSelect" @touchend="onTextSelect">
         <div v-if="activeDoc.type === 'html'" class="reader-block html-iframe-wrap">
           <iframe
             ref="htmlIframe"
@@ -389,7 +392,7 @@
           ></iframe>
         </div>
 
-        <div v-else-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf' || activeDoc.type === 'md'" class="reader-block">
+        <div v-else-if="['docx','pdf','md','txt'].includes(activeDoc.type)" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
@@ -428,6 +431,13 @@
         </div>
       </div>
 
+      <!-- 选中文字操作弹窗 -->
+      <div v-if="selectionPopup" class="selection-popup" :style="{ top: selectionPopup.y + 'px', left: selectionPopup.x + 'px' }">
+        <button type="button" class="sel-btn" @click="highlightSelection">高亮</button>
+        <button type="button" class="sel-btn" @click="excerptToNote">摘录</button>
+        <button type="button" class="sel-btn" @click="selectionPopup = null">✕</button>
+      </div>
+
       <!-- 回到顶部按钮 -->
       <button
         v-if="readerProgress > 15"
@@ -446,7 +456,7 @@
       ref="fileInput"
       class="hidden-input"
       type="file"
-      accept=".docx,.xlsx,.pdf,.html,.htm,.md"
+      accept=".docx,.xlsx,.pdf,.html,.htm,.md,.txt"
       multiple
       @change="onFileChange"
     />
@@ -818,7 +828,7 @@
         </div>
         <div v-else class="doc-list">
           <div v-for="item in trashDocs" :key="item.id" class="doc-item trash-item">
-            <div class="doc-icon" :class="item.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[item.type] || '?' }}</div>
+            <div class="doc-icon" :class="item.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M', txt: 'T' }[item.type] || '?' }}</div>
             <div class="doc-meta">
               <strong>{{ item.name }}</strong>
               <span>{{ item.type.toUpperCase() }} · {{ formatBytes(item.size) }} · 删除于 {{ formatDate(item.deletedAt) }}</span>
@@ -845,8 +855,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
-import { listNotes } from './features/notes/notesDb.js'
+import { listNotes, createNote } from './features/notes/notesDb.js'
 import {
+  knowledgeBaseDb,
   clearKnowledgeDocs,
   getKnowledgeMeta,
   listKnowledgeDocs,
@@ -923,15 +934,19 @@ export default {
       globalSearchOpen: false,
       globalSearchKeyword: '',
       globalSearchResults: [],
-      trashDocs: []
+      trashDocs: [],
+      readerFontSize: 16,
+      highlights: {},
+      selectionPopup: null,
+      readingStats: { today: 0, week: [], sessionStart: 0 }
     }
   },
   computed: {
     filteredDocs() {
       const keyword = String(this.listKeyword || '').trim().toLowerCase()
       return this.docs.filter((doc) => {
-        const typeMatched = this.typeFilter === 'all' || doc.type === this.typeFilter
-        if (!typeMatched) return false
+        if (this.typeFilter === 'starred') { if (!doc.starred) return false }
+        else if (this.typeFilter !== 'all' && doc.type !== this.typeFilter) return false
         if (!keyword) return true
         return `${doc.name} ${doc.contentText || ''}`.toLowerCase().includes(keyword)
       })
@@ -982,7 +997,13 @@ export default {
       return this.docs.reduce((acc, doc) => {
         acc[doc.type] = (acc[doc.type] || 0) + 1
         return acc
-      }, { docx: 0, xlsx: 0, pdf: 0, html: 0, md: 0 })
+      }, { docx: 0, xlsx: 0, pdf: 0, html: 0, md: 0, txt: 0 })
+    },
+    readingStatsDisplay() {
+      const mins = Math.round(this.readingStats.today / 60000)
+      if (mins < 1) return '0 分钟'
+      if (mins < 60) return mins + ' 分钟'
+      return Math.floor(mins / 60) + ' 小时 ' + (mins % 60) + ' 分钟'
     },
     greetingText() {
       const h = new Date().getHours()
@@ -1043,6 +1064,12 @@ export default {
       }
       // 恢复回收站
       this.trashDocs = (await getKnowledgeMeta('trashDocs')) || []
+      // 恢复字体大小
+      this.readerFontSize = parseInt(localStorage.getItem('kb-font-size') || '16', 10)
+      // 恢复高亮数据
+      this.highlights = (await getKnowledgeMeta('highlights')) || {}
+      // 加载阅读统计
+      this.loadReadingStats()
       // 监听 SW 更新事件
       if (window.__swUpdate?.available) this.swUpdateAvailable = true
       window.addEventListener('sw-update-found', () => { this.swUpdateAvailable = true })
@@ -1074,7 +1101,7 @@ export default {
           const start = Math.max(0, idx - 20)
           const end = Math.min(hay.length, idx + kw.length + 40)
           results.push({
-            source: doc.type, icon: { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M' }[doc.type] || '?',
+            source: doc.type, icon: { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M', txt: 'T' }[doc.type] || '?',
             title: doc.name, snippet: hay.slice(start, end).replace(/\s+/g, ' ').trim(),
             tag: doc.type.toUpperCase(), type: 'doc', data: doc
           })
@@ -1105,6 +1132,82 @@ export default {
       } else if (r.type === 'note') {
         this.activeTab = 'notes'
       }
+    },
+    // ─── 字体大小 ───
+    changeFontSize(delta) {
+      this.readerFontSize = Math.max(12, Math.min(28, this.readerFontSize + delta * 2))
+      localStorage.setItem('kb-font-size', this.readerFontSize)
+    },
+    // ─── 文档收藏 ───
+    async toggleStar(doc) {
+      doc.starred = !doc.starred
+      await knowledgeBaseDb.docs.update(doc.id, { starred: doc.starred })
+    },
+    // ─── 文本选中 ───
+    onTextSelect() {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+        this.selectionPopup = null
+        return
+      }
+      const range = sel.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      const overlay = this.$refs.readerBody?.getBoundingClientRect() || { top: 0, left: 0 }
+      this.selectionPopup = {
+        text: sel.toString().trim(),
+        x: Math.min(rect.left - overlay.left + rect.width / 2, window.innerWidth - 120),
+        y: rect.top - overlay.top - 40 + (this.$refs.readerBody?.scrollTop || 0)
+      }
+    },
+    // ─── 高亮标注 ───
+    highlightSelection() {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed) return
+      try {
+        const range = sel.getRangeAt(0)
+        const mark = document.createElement('mark')
+        mark.className = 'user-highlight'
+        range.surroundContents(mark)
+      } catch (e) { /* 跨节点选中时忽略 */ }
+      // 保存高亮数据
+      if (this.activeDocId) {
+        const docHighlights = this.highlights[this.activeDocId] || []
+        docHighlights.push({ text: this.selectionPopup?.text || '', time: Date.now() })
+        this.highlights[this.activeDocId] = docHighlights
+        setKnowledgeMeta('highlights', this.highlights)
+      }
+      this.selectionPopup = null
+      window.getSelection()?.removeAllRanges()
+    },
+    // ─── 摘录到笔记 ───
+    async excerptToNote() {
+      if (!this.selectionPopup?.text) return
+      const title = '摘录：' + (this.activeDoc?.name || '未知文档')
+      const content = '> ' + this.selectionPopup.text + '\n\n— 来自《' + (this.activeDoc?.name || '') + '》'
+      await createNote({ title, content, category: '摘录', tags: ['摘录'] })
+      this.selectionPopup = null
+      window.getSelection()?.removeAllRanges()
+      this.bookmarkToast = '已摘录到笔记'
+      setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    // ─── 阅读统计 ───
+    startReadingTimer() {
+      this.readingStats.sessionStart = Date.now()
+    },
+    stopReadingTimer() {
+      if (!this.readingStats.sessionStart) return
+      const elapsed = Date.now() - this.readingStats.sessionStart
+      this.readingStats.sessionStart = 0
+      const today = new Date().toDateString()
+      const saved = JSON.parse(localStorage.getItem('kb-reading-stats') || '{}')
+      saved[today] = (saved[today] || 0) + elapsed
+      localStorage.setItem('kb-reading-stats', JSON.stringify(saved))
+      this.readingStats.today = saved[today]
+    },
+    loadReadingStats() {
+      const saved = JSON.parse(localStorage.getItem('kb-reading-stats') || '{}')
+      const today = new Date().toDateString()
+      this.readingStats.today = saved[today] || 0
     },
     toggleTheme() {
       this.darkMode = !this.darkMode
@@ -1296,7 +1399,8 @@ export default {
       if (lowerName.endsWith('.pdf')) return this.parsePdf(file)
       if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) return this.parseHtml(file)
       if (lowerName.endsWith('.md')) return this.parseMarkdown(file)
-      throw new Error('仅支持 .docx、.xlsx、.pdf、.html 和 .md')
+      if (lowerName.endsWith('.txt')) return this.parseTxt(file)
+      throw new Error('仅支持 .docx、.xlsx、.pdf、.html、.md 和 .txt')
     },
     async parseDocx(file) {
       const arrayBuffer = await file.arrayBuffer()
@@ -1386,6 +1490,19 @@ export default {
         parseWarnings: []
       }
     },
+    async parseTxt(file) {
+      const rawText = await file.text()
+      const escaped = rawText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      return {
+        name: file.name,
+        type: 'txt',
+        size: file.size,
+        contentHtml: '<pre class="txt-content">' + escaped + '</pre>',
+        contentText: rawText.trim(),
+        sheets: [],
+        parseWarnings: []
+      }
+    },
     async parseHtml(file) {
       const rawHtml = await file.text()
       // 提取纯文本用于列表搜索
@@ -1410,11 +1527,15 @@ export default {
       this.activeDocId = doc.id
       this.syncActiveSheet()
       this.readerOpen = true
+      this.selectionPopup = null
+      this.startReadingTimer()
       await setKnowledgeMeta('lastOpenedDocId', doc.id)
       this.restoreBookmark()
     },
     closeReader() {
       this.autoSaveBookmark()
+      this.stopReadingTimer()
+      this.selectionPopup = null
       this.readerOpen = false
       this.clearReaderSearch()
       this.readerProgress = 0
