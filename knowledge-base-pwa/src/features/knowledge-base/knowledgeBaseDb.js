@@ -42,6 +42,57 @@ export async function getKnowledgeMeta(key) {
   return record?.value
 }
 
+// ============ 版本管理 ============
+
+export async function saveDocVersion(doc, message = '') {
+  const versions = await knowledgeBaseDb.docVersions
+    .where('docId').equals(doc.id)
+    .toArray()
+  const nextVer = versions.length + 1
+  await knowledgeBaseDb.docVersions.add({
+    docId: doc.id,
+    version: nextVer,
+    message: message || `v${nextVer}`,
+    contentHtml: doc.contentHtml,
+    contentText: doc.contentText,
+    sheets: doc.sheets || [],
+    size: doc.size,
+    createdAt: Date.now()
+  })
+  // 最多保留 50 个版本
+  if (versions.length >= 50) {
+    const oldest = versions.sort((a, b) => a.createdAt - b.createdAt)[0]
+    await knowledgeBaseDb.docVersions.delete(oldest.id)
+  }
+  return nextVer
+}
+
+export async function listDocVersions(docId) {
+  const versions = await knowledgeBaseDb.docVersions
+    .where('docId').equals(docId)
+    .toArray()
+  return versions.sort((a, b) => b.version - a.version)
+}
+
+export async function getDocVersion(versionId) {
+  return knowledgeBaseDb.docVersions.get(versionId)
+}
+
+export async function rollbackDocVersion(docId, versionId) {
+  const ver = await knowledgeBaseDb.docVersions.get(versionId)
+  if (!ver) throw new Error('版本不存在')
+  await knowledgeBaseDb.docs.update(docId, {
+    contentHtml: ver.contentHtml,
+    contentText: ver.contentText,
+    sheets: ver.sheets,
+    updatedAt: Date.now()
+  })
+}
+
+export async function deleteDocVersion(versionId) {
+  await knowledgeBaseDb.docVersions.delete(versionId)
+}
+
 // ============ 密码保护 ============
 
 async function hashPassword(password) {

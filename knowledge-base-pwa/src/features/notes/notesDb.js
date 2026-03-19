@@ -9,6 +9,15 @@ knowledgeBaseDb.version(2).stores({
   noteCategories: '++id, &name, sortOrder'
 })
 
+// 版本 3: 添加文档版本历史表
+knowledgeBaseDb.version(3).stores({
+  docs: '++id, name, type, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============

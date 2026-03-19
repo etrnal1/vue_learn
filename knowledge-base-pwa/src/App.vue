@@ -349,6 +349,7 @@
         <button type="button" class="mini-btn" @click="changeFontSize(1)" title="放大字体">A+</button>
         <button type="button" class="reader-search-toggle" @click="toggleReaderSearch">🔍</button>
         <button type="button" class="mini-btn" @click="saveBookmark" title="保存书签">🔖</button>
+        <button type="button" class="mini-btn" @click="openVersionPanel" title="版本历史">⏱</button>
       </div>
 
       <!-- 文章导航栏 -->
@@ -430,6 +431,57 @@
           </div>
         </div>
       </div>
+
+      <!-- 版本历史面板 -->
+      <transition name="sheet">
+        <div v-if="versionPanelOpen" class="version-overlay" @click.self="versionPanelOpen = false">
+          <div class="version-panel">
+            <div class="version-header">
+              <h3>版本历史</h3>
+              <button type="button" class="mini-btn" @click="versionPanelOpen = false">✕</button>
+            </div>
+
+            <!-- 保存新版本 -->
+            <div class="version-save-bar">
+              <input v-model.trim="versionMessage" class="input" placeholder="版本说明（可选）" />
+              <button type="button" class="btn btn-primary" @click="saveCurrentVersion">保存版本</button>
+            </div>
+
+            <!-- diff 视图 -->
+            <div v-if="diffView" class="diff-view">
+              <div class="diff-header">
+                <strong>对比: v{{ diffView.from }} → v{{ diffView.to }}</strong>
+                <button type="button" class="mini-btn" @click="diffView = null">关闭</button>
+              </div>
+              <div class="diff-stats">
+                <span class="diff-add">+{{ diffView.added }} 新增</span>
+                <span class="diff-del">-{{ diffView.removed }} 删除</span>
+              </div>
+              <div class="diff-content" v-html="diffView.html"></div>
+            </div>
+
+            <!-- 版本列表 -->
+            <div v-if="docVersions.length === 0" class="empty compact" style="padding:20px">
+              <strong>暂无版本记录</strong>
+              <p>点击"保存版本"创建第一个快照。</p>
+            </div>
+            <div v-else class="version-list">
+              <div v-for="(ver, idx) in docVersions" :key="ver.id" class="version-item">
+                <div class="version-dot" :class="{ first: idx === 0 }"></div>
+                <div class="version-info">
+                  <strong>v{{ ver.version }} · {{ ver.message }}</strong>
+                  <span>{{ formatDate(ver.createdAt) }} · {{ formatBytes(ver.size || 0) }}</span>
+                </div>
+                <div class="version-actions">
+                  <button v-if="idx < docVersions.length - 1" type="button" class="mini-btn" @click="showDiff(ver, docVersions[idx + 1])">对比</button>
+                  <button v-if="idx > 0" type="button" class="mini-btn" @click="doRollback(ver)">回滚</button>
+                  <button type="button" class="mini-btn danger" @click="doDeleteVersion(ver)">删除</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
 
       <!-- 选中文字操作弹窗 -->
       <div v-if="selectionPopup" class="selection-popup" :style="{ top: selectionPopup.y + 'px', left: selectionPopup.x + 'px' }">
@@ -868,7 +920,12 @@ import {
   importAllData,
   setPassword,
   verifyPassword,
-  hasPassword
+  hasPassword,
+  saveDocVersion,
+  listDocVersions,
+  getDocVersion,
+  rollbackDocVersion,
+  deleteDocVersion
 } from './features/knowledge-base/knowledgeBaseDb.js'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -938,7 +995,12 @@ export default {
       readerFontSize: 16,
       highlights: {},
       selectionPopup: null,
-      readingStats: { today: 0, week: [], sessionStart: 0 }
+      readingStats: { today: 0, week: [], sessionStart: 0 },
+      versionPanelOpen: false,
+      docVersions: [],
+      diffView: null,
+      versionMessage: '',
+      changelog: []
     }
   },
   computed: {
@@ -1190,6 +1252,74 @@ export default {
       this.bookmarkToast = '已摘录到笔记'
       setTimeout(() => { this.bookmarkToast = '' }, 1500)
     },
+    // ─── 版本管理 ───
+    async openVersionPanel() {
+      if (!this.activeDoc) return
+      this.docVersions = await listDocVersions(this.activeDoc.id)
+      this.diffView = null
+      this.versionMessage = ''
+      this.versionPanelOpen = true
+    },
+    async saveCurrentVersion() {
+      if (!this.activeDoc) return
+      const msg = this.versionMessage || `手动保存 v${this.docVersions.length + 1}`
+      await saveDocVersion(this.activeDoc, msg)
+      this.versionMessage = ''
+      this.docVersions = await listDocVersions(this.activeDoc.id)
+      this.bookmarkToast = '版本已保存'
+      setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    showDiff(newer, older) {
+      const newLines = (newer.contentText || '').split('\n')
+      const oldLines = (older.contentText || '').split('\n')
+      let added = 0, removed = 0
+      const diffHtml = []
+      // 简易逐行 diff
+      const maxLen = Math.max(newLines.length, oldLines.length)
+      for (let i = 0; i < maxLen; i++) {
+        const nLine = newLines[i]
+        const oLine = oldLines[i]
+        if (nLine === oLine) {
+          if (nLine !== undefined) diffHtml.push(`<div class="diff-line diff-same">${this.escHtml(nLine) || '&nbsp;'}</div>`)
+        } else {
+          if (oLine !== undefined) {
+            removed++
+            diffHtml.push(`<div class="diff-line diff-removed">- ${this.escHtml(oLine)}</div>`)
+          }
+          if (nLine !== undefined) {
+            added++
+            diffHtml.push(`<div class="diff-line diff-added">+ ${this.escHtml(nLine)}</div>`)
+          }
+        }
+      }
+      this.diffView = {
+        from: older.version,
+        to: newer.version,
+        added,
+        removed,
+        html: diffHtml.join('')
+      }
+    },
+    escHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    },
+    async doRollback(ver) {
+      if (!confirm(`确定回滚到 v${ver.version}？当前内容将自动保存为新版本。`)) return
+      // 先保存当前版本
+      await saveDocVersion(this.activeDoc, `回滚前自动保存`)
+      // 执行回滚
+      await rollbackDocVersion(this.activeDoc.id, ver.id)
+      // 刷新文档和版本列表
+      await this.reloadDocs()
+      this.docVersions = await listDocVersions(this.activeDoc.id)
+      this.bookmarkToast = `已回滚到 v${ver.version}`
+      setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    async doDeleteVersion(ver) {
+      if (!confirm(`确定删除版本 v${ver.version}？`)) return
+      await deleteDocVersion(ver.id)
+      this.docVersions = await listDocVersions(this.activeDoc.id)
+    },
     // ─── 阅读统计 ───
     startReadingTimer() {
       this.readingStats.sessionStart = Date.now()
@@ -1389,6 +1519,15 @@ export default {
       if (importedDocs.length) {
         await saveKnowledgeDocs(importedDocs)
         await this.reloadDocs()
+        // 为新导入的文档创建初始版本
+        for (const doc of this.docs) {
+          if (importedDocs.some(d => d.name === doc.name)) {
+            const versions = await listDocVersions(doc.id)
+            if (versions.length === 0) {
+              await saveDocVersion(doc, '初始导入')
+            }
+          }
+        }
         await this.refreshStorageInfo()
       }
     },
