@@ -320,7 +320,17 @@
 
       <!-- 内容区 -->
       <div ref="readerBody" class="reader-body" @scroll="onReaderScroll">
-        <div v-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf' || activeDoc.type === 'html'" class="reader-block">
+        <div v-if="activeDoc.type === 'html'" class="reader-block html-iframe-wrap">
+          <iframe
+            ref="htmlIframe"
+            class="html-iframe"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            :srcdoc="activeDoc.contentHtml"
+            @load="onHtmlIframeLoad"
+          ></iframe>
+        </div>
+
+        <div v-else-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf'" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
@@ -1178,18 +1188,16 @@ export default {
     },
     async parseHtml(file) {
       const rawHtml = await file.text()
-      // 提取 <body> 内容，若无 body 则用全文
-      const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-      const contentHtml = bodyMatch ? bodyMatch[1].trim() : rawHtml
-      // 提取纯文本用于搜索
+      // 提取纯文本用于列表搜索
       const tmp = document.createElement('div')
-      tmp.innerHTML = contentHtml
+      tmp.innerHTML = rawHtml
       const contentText = tmp.textContent || tmp.innerText || ''
+      // contentHtml 保存完整原始 HTML，供 iframe srcdoc 渲染
       return {
         name: file.name,
         type: 'html',
         size: file.size,
-        contentHtml: contentHtml || '<p>文档为空</p>',
+        contentHtml: rawHtml || '<p>文档为空</p>',
         contentText: contentText.trim(),
         sheets: [],
         parseWarnings: []
@@ -1229,6 +1237,18 @@ export default {
     },
     scrollReaderTop() {
       this.$refs.readerBody?.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    onHtmlIframeLoad() {
+      // 自动调整 iframe 高度以适应内容
+      try {
+        const iframe = this.$refs.htmlIframe
+        if (!iframe) return
+        const doc = iframe.contentDocument || iframe.contentWindow?.document
+        if (doc) {
+          const h = doc.documentElement.scrollHeight || doc.body.scrollHeight
+          iframe.style.height = h + 'px'
+        }
+      } catch (e) { /* 跨域限制时忽略 */ }
     },
     toggleReaderSearch() {
       this.readerSearchOpen = !this.readerSearchOpen

@@ -429,6 +429,17 @@ textarea {
   overflow: visible;
 }
 
+.html-iframe-wrap {
+  padding: 0;
+}
+.html-iframe {
+  width: 100%;
+  min-height: 300px;
+  border: none;
+  background: #fff;
+  border-radius: 8px;
+}
+
 /* ─── 全屏文档阅读器 ─── */
 .reader-overlay {
   position: fixed;
