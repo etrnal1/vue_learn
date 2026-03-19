@@ -158,6 +158,7 @@
         </div>
         <div class="dashboard-actions">
           <button type="button" class="btn btn-primary" @click="openFilePicker">导入文档</button>
+          <button type="button" class="btn" @click="requestPersistentStorage">{{ storageInfo.persisted ? '✅ 已持久化' : '申请持久化' }}</button>
         </div>
       </div>
       <div class="dashboard-cards">
