@@ -116,6 +116,7 @@
           <option value="docx">Word</option>
           <option value="xlsx">Excel</option>
           <option value="pdf">PDF</option>
+          <option value="html">HTML</option>
         </select>
         <button type="button" class="btn" @click="reloadDocs">刷新</button>
         <button type="button" class="btn btn-danger" :disabled="docs.length === 0" @click="clearAllDocs">清空全部</button>
@@ -138,6 +139,10 @@
       <article class="stat panel">
         <span>PDF</span>
         <strong>{{ docCounts.pdf }}</strong>
+      </article>
+      <article class="stat panel">
+        <span>HTML</span>
+        <strong>{{ docCounts.html }}</strong>
       </article>
       <article class="stat panel">
         <span>存储状态</span>
@@ -169,7 +174,7 @@
             :class="{ active: activeDocId === doc.id }"
             @click="openDoc(doc)"
           >
-            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P' }[doc.type] || '?' }}</div>
+            <div class="doc-icon" :class="doc.type">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H' }[doc.type] || '?' }}</div>
             <div class="doc-meta">
               <strong>{{ doc.name }}</strong>
               <p>{{ getDocPreview(doc) }}</p>
@@ -315,7 +320,7 @@
 
       <!-- 内容区 -->
       <div ref="readerBody" class="reader-body" @scroll="onReaderScroll">
-        <div v-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf'" class="reader-block">
+        <div v-if="activeDoc.type === 'docx' || activeDoc.type === 'pdf' || activeDoc.type === 'html'" class="reader-block">
           <div v-if="activeDoc.parseWarnings?.length" class="warning">
             {{ activeDoc.parseWarnings.join('；') }}
           </div>
@@ -367,7 +372,7 @@
       ref="fileInput"
       class="hidden-input"
       type="file"
-      accept=".docx,.xlsx,.pdf"
+      accept=".docx,.xlsx,.pdf,.html,.htm"
       multiple
       @change="onFileChange"
     />
@@ -860,7 +865,7 @@ export default {
       return this.docs.reduce((acc, doc) => {
         acc[doc.type] = (acc[doc.type] || 0) + 1
         return acc
-      }, { docx: 0, xlsx: 0, pdf: 0 })
+      }, { docx: 0, xlsx: 0, pdf: 0, html: 0 })
     },
     diagSummary() {
       const d = this.diag
@@ -1093,7 +1098,8 @@ export default {
       if (lowerName.endsWith('.docx')) return this.parseDocx(file)
       if (lowerName.endsWith('.xlsx')) return this.parseXlsx(file)
       if (lowerName.endsWith('.pdf')) return this.parsePdf(file)
-      throw new Error('仅支持 .docx、.xlsx 和 .pdf')
+      if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) return this.parseHtml(file)
+      throw new Error('仅支持 .docx、.xlsx、.pdf 和 .html')
     },
     async parseDocx(file) {
       const arrayBuffer = await file.arrayBuffer()
@@ -1168,6 +1174,25 @@ export default {
         contentText: textParts.join('\n'),
         sheets: [],
         parseWarnings: pdf.numPages > 50 ? [`文档共 ${pdf.numPages} 页，加载较慢`] : []
+      }
+    },
+    async parseHtml(file) {
+      const rawHtml = await file.text()
+      // 提取 <body> 内容，若无 body 则用全文
+      const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+      const contentHtml = bodyMatch ? bodyMatch[1].trim() : rawHtml
+      // 提取纯文本用于搜索
+      const tmp = document.createElement('div')
+      tmp.innerHTML = contentHtml
+      const contentText = tmp.textContent || tmp.innerText || ''
+      return {
+        name: file.name,
+        type: 'html',
+        size: file.size,
+        contentHtml: contentHtml || '<p>文档为空</p>',
+        contentText: contentText.trim(),
+        sheets: [],
+        parseWarnings: []
       }
     },
     escapeHtml(str) {

@@ -291,6 +291,9 @@ textarea {
 .doc-icon.pdf {
   background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
+.doc-icon.html {
+  background: linear-gradient(135deg, #e97627, #d35400);
+}
 
 .doc-meta p,
 .doc-meta span,
