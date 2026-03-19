@@ -108,6 +108,62 @@
       </div>
     </transition>
 
+    <!-- 文件夹管理面板 -->
+    <transition name="sheet">
+      <div v-if="folderPanelOpen" class="sheet-overlay" @click.self="folderPanelOpen = false">
+        <div class="sheet-panel" style="max-height:70vh">
+          <div class="sheet-handle"></div>
+          <h3 style="margin:0 0 12px;font-size:17px">文件夹管理</h3>
+
+          <!-- 新建文件夹 -->
+          <div class="folder-create-bar">
+            <input v-model.trim="folderNewName" class="input" placeholder="新建文件夹名称" @keydown.enter="doCreateFolder" />
+            <button type="button" class="btn btn-primary" @click="doCreateFolder" :disabled="!folderNewName">创建</button>
+          </div>
+
+          <div v-if="!folders.length" class="empty compact" style="padding:16px">
+            <strong>暂无文件夹</strong>
+            <p>输入名称创建第一个文件夹。</p>
+          </div>
+
+          <div v-else class="folder-manage-list">
+            <div v-for="f in folders" :key="f.id" class="folder-manage-item">
+              <span class="folder-dot" :style="{ background: f.color }"></span>
+              <template v-if="folderEditId === f.id">
+                <input v-model.trim="folderEditName" class="input" style="flex:1" @keydown.enter="doRenameFolder(f)" @keydown.esc="folderEditId = null" />
+                <button type="button" class="mini-btn" @click="doRenameFolder(f)">✓</button>
+                <button type="button" class="mini-btn" @click="folderEditId = null">✕</button>
+              </template>
+              <template v-else>
+                <span class="folder-manage-name">{{ f.name }}</span>
+                <span class="folder-manage-count">{{ docs.filter(d => d.folderId === f.id).length }}</span>
+                <button type="button" class="mini-btn" @click="folderEditId = f.id; folderEditName = f.name" title="重命名">✏️</button>
+                <button type="button" class="mini-btn danger" @click="doDeleteFolder(f)" title="删除">🗑</button>
+              </template>
+            </div>
+          </div>
+
+          <button type="button" class="btn" style="width:100%;margin-top:12px" @click="folderPanelOpen = false">关闭</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 移动到文件夹弹窗 -->
+    <transition name="fade">
+      <div v-if="moveDocTarget" class="sheet-overlay" @click.self="moveDocTarget = null" style="z-index:7000">
+        <div class="move-folder-popup">
+          <h3 style="margin:0 0 8px;font-size:15px">移动「{{ moveDocTarget.name }}」到</h3>
+          <button type="button" class="folder-move-item" @click="doMoveDoc(0)">
+            <span>📄</span> 未分类（根目录）
+          </button>
+          <button v-for="f in folders" :key="f.id" type="button" class="folder-move-item" @click="doMoveDoc(f.id)">
+            <span class="folder-dot" :style="{ background: f.color }"></span> {{ f.name }}
+          </button>
+          <button type="button" class="btn" style="width:100%;margin-top:8px" @click="moveDocTarget = null">取消</button>
+        </div>
+      </div>
+    </transition>
+
     <!-- 全局搜索浮动按钮 -->
     <button v-if="!locked && !readerOpen && !globalSearchOpen" type="button" class="global-search-fab" @click="openGlobalSearch">🔍</button>
 
@@ -216,7 +272,26 @@
             <p class="eyebrow">Documents</p>
             <h2>文档列表</h2>
           </div>
-          <span class="pill">{{ filteredDocs.length }}</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="pill">{{ filteredDocs.length }}</span>
+            <button type="button" class="mini-btn" @click="folderPanelOpen = true" title="管理文件夹">📁</button>
+          </div>
+        </div>
+
+        <!-- 文件夹快速筛选 -->
+        <div v-if="folders.length" class="folder-chips">
+          <button type="button" class="folder-chip" :class="{ active: activeFolderId === null }" @click="activeFolderId = null">全部</button>
+          <button type="button" class="folder-chip" :class="{ active: activeFolderId === 0 }" @click="activeFolderId = activeFolderId === 0 ? null : 0">未分类</button>
+          <button
+            v-for="f in folders" :key="f.id"
+            type="button"
+            class="folder-chip"
+            :class="{ active: activeFolderId === f.id }"
+            :style="{ '--fc': f.color }"
+            @click="activeFolderId = activeFolderId === f.id ? null : f.id"
+          >
+            <span class="folder-dot" :style="{ background: f.color }"></span>{{ f.name }}
+          </button>
         </div>
 
         <div v-if="filteredDocs.length === 0" class="empty">
@@ -237,8 +312,9 @@
             <div class="doc-meta">
               <strong><span v-if="doc.starred" class="star-mark">★</span>{{ doc.name }}<span v-if="bookmarks[doc.id]" class="bookmark-badge" :title="'已读 ' + bookmarks[doc.id].progress + '%'">🔖{{ bookmarks[doc.id].progress }}%</span></strong>
               <p>{{ getDocPreview(doc) }}</p>
-              <span>{{ doc.type.toUpperCase() }} · {{ formatBytes(doc.size) }}</span>
+              <span>{{ doc.type.toUpperCase() }} · {{ formatBytes(doc.size) }}<template v-if="getDocFolder(doc)"> · 📁{{ getDocFolder(doc).name }}</template></span>
             </div>
+            <button v-if="folders.length" type="button" class="doc-move-btn" @click.stop="moveDocTarget = doc" title="移动到文件夹">📁</button>
           </button>
         </div>
       </aside>
@@ -995,6 +1071,11 @@ import {
   removeKnowledgeDoc,
   updateKnowledgeDoc,
   saveKnowledgeDocs,
+  listFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
+  moveDocToFolder,
   setKnowledgeMeta,
   exportAllData,
   importAllData,
@@ -1076,6 +1157,13 @@ export default {
       highlights: {},
       selectionPopup: null,
       readingStats: { today: 0, week: [], sessionStart: 0 },
+      folders: [],
+      activeFolderId: null,
+      folderPanelOpen: false,
+      folderNewName: '',
+      folderEditId: null,
+      folderEditName: '',
+      moveDocTarget: null,
       readerMenuOpen: false,
       editMode: false,
       editContent: '',
@@ -1091,6 +1179,11 @@ export default {
     filteredDocs() {
       const keyword = String(this.listKeyword || '').trim().toLowerCase()
       return this.docs.filter((doc) => {
+        // 文件夹筛选
+        if (this.activeFolderId !== null) {
+          if (this.activeFolderId === 0) { if (doc.folderId && doc.folderId !== 0) return false }
+          else { if (doc.folderId !== this.activeFolderId) return false }
+        }
         if (this.typeFilter === 'starred') { if (!doc.starred) return false }
         else if (this.typeFilter !== 'all' && doc.type !== this.typeFilter) return false
         if (!keyword) return true
@@ -1198,6 +1291,7 @@ export default {
   methods: {
     async initApp() {
       await this.reloadDocs()
+      await this.loadFolders()
       await this.refreshStorageInfo()
       this.runDiagnostics()
       // 恢复书签数据
@@ -1335,6 +1429,41 @@ export default {
       window.getSelection()?.removeAllRanges()
       this.bookmarkToast = '已摘录到笔记'
       setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    // ─── 文件夹管理 ───
+    async loadFolders() {
+      this.folders = await listFolders()
+    },
+    getDocFolder(doc) {
+      if (!doc.folderId) return null
+      return this.folders.find(f => f.id === doc.folderId) || null
+    },
+    async doCreateFolder() {
+      if (!this.folderNewName) return
+      await createFolder(this.folderNewName)
+      this.folderNewName = ''
+      await this.loadFolders()
+    },
+    async doRenameFolder(f) {
+      if (!this.folderEditName) return
+      await renameFolder(f.id, this.folderEditName)
+      this.folderEditId = null
+      this.folderEditName = ''
+      await this.loadFolders()
+    },
+    async doDeleteFolder(f) {
+      const count = this.docs.filter(d => d.folderId === f.id).length
+      if (!confirm(`删除文件夹「${f.name}」？其中 ${count} 篇文档将移到未分类。`)) return
+      await deleteFolder(f.id)
+      if (this.activeFolderId === f.id) this.activeFolderId = null
+      await this.loadFolders()
+      await this.reloadDocs()
+    },
+    async doMoveDoc(folderId) {
+      if (!this.moveDocTarget) return
+      await moveDocToFolder(this.moveDocTarget.id, folderId)
+      this.moveDocTarget = null
+      await this.reloadDocs()
     },
     // ─── 编辑模式 ───
     toggleEditMode() {

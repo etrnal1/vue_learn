@@ -18,6 +18,16 @@ knowledgeBaseDb.version(3).stores({
   docVersions: '++id, docId, version, createdAt'
 })
 
+// 版本 4: 添加文件夹表，docs 增加 folderId 索引
+knowledgeBaseDb.version(4).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============

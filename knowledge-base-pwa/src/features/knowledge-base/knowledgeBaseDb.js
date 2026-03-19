@@ -47,6 +47,43 @@ export async function clearKnowledgeDocs() {
   await knowledgeBaseDb.docs.clear()
 }
 
+// ============ 文件夹管理 ============
+
+export async function listFolders() {
+  return knowledgeBaseDb.folders.orderBy('sortOrder').toArray()
+}
+
+export async function createFolder(name, color = '#2563eb') {
+  const existing = await knowledgeBaseDb.folders.where('name').equals(name).first()
+  if (existing) return existing
+  const count = await knowledgeBaseDb.folders.count()
+  const id = await knowledgeBaseDb.folders.add({
+    name,
+    color,
+    sortOrder: count,
+    createdAt: Date.now()
+  })
+  return knowledgeBaseDb.folders.get(id)
+}
+
+export async function renameFolder(id, name) {
+  await knowledgeBaseDb.folders.update(id, { name })
+  return knowledgeBaseDb.folders.get(id)
+}
+
+export async function deleteFolder(id) {
+  // 将该文件夹下的文档移到根目录
+  const docs = await knowledgeBaseDb.docs.where('folderId').equals(id).toArray()
+  for (const doc of docs) {
+    await knowledgeBaseDb.docs.update(doc.id, { folderId: 0 })
+  }
+  await knowledgeBaseDb.folders.delete(id)
+}
+
+export async function moveDocToFolder(docId, folderId) {
+  await knowledgeBaseDb.docs.update(docId, { folderId: folderId || 0, updatedAt: Date.now() })
+}
+
 export async function setKnowledgeMeta(key, value) {
   await knowledgeBaseDb.meta.put({ key, value, updatedAt: Date.now() })
 }

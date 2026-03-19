@@ -2221,6 +2221,139 @@ section.dashboard.panel {
   border-color: var(--primary) !important;
 }
 
+/* ─── 文件夹 ─── */
+.folder-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid var(--border, #e8e8e8);
+  flex-shrink: 0;
+}
+.folder-chips::-webkit-scrollbar { display: none; }
+.folder-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 20px;
+  background: var(--card-bg, #fff);
+  font-size: 13px;
+  color: var(--text, #555);
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.folder-chip.active {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border-color: var(--primary, #2563eb);
+}
+.folder-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.folder-create-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.folder-create-bar .input { flex: 1; min-width: 0; }
+.folder-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.folder-manage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  background: var(--bg, #f8f9fa);
+}
+.folder-manage-name {
+  flex: 1;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-manage-count {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  background: var(--card-bg, #fff);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.doc-move-btn {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(0,0,0,.06);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.doc-item { position: relative; }
+.doc-item:hover .doc-move-btn,
+.doc-item:active .doc-move-btn { opacity: 1; }
+@media (hover: none) {
+  .doc-move-btn { opacity: 1; }
+}
+.move-folder-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7001;
+  background: var(--card-bg, #fff);
+  border-radius: 14px;
+  padding: 16px;
+  width: 280px;
+  max-height: 60vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+.folder-move-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 10px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  color: var(--text, #333);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.folder-move-item:active {
+  background: var(--hover-bg, #f3f4f6);
+}
+[data-theme="dark"] .folder-manage-item {
+  background: #2a2a2a;
+}
+[data-theme="dark"] .move-folder-popup {
+  background: #2a2a2a;
+}
+[data-theme="dark"] .doc-move-btn {
+  background: rgba(255,255,255,.1);
+}
+
 /* ─── 阅读器工具菜单 ─── */
 .reader-menu-wrap {
   position: relative;
