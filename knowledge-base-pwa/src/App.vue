@@ -206,36 +206,7 @@
       </div>
     </section>
 
-    <section class="stats">
-      <article class="stat panel">
-        <span>文档总数</span>
-        <strong>{{ docs.length }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>Word</span>
-        <strong>{{ docCounts.docx }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>Excel</span>
-        <strong>{{ docCounts.xlsx }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>PDF</span>
-        <strong>{{ docCounts.pdf }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>HTML</span>
-        <strong>{{ docCounts.html }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>MD</span>
-        <strong>{{ docCounts.md }}</strong>
-      </article>
-      <article class="stat panel">
-        <span>存储状态</span>
-        <strong>{{ storageInfo.persisted ? '已持久化' : '未持久化' }}</strong>
-      </article>
-    </section>
+    <!-- 统计卡片已整合到仪表盘 -->
 
     <section class="layout">
       <aside class="panel sidebar">

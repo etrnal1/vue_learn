@@ -2027,16 +2027,15 @@ textarea {
 }
 
 /* ─── 仪表盘 ─── */
-.dashboard {
+section.dashboard.panel {
   padding: 20px 16px;
+  overflow: visible !important;
 }
 
 .dashboard-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
 .dashboard-greeting {
@@ -2051,7 +2050,8 @@ textarea {
 }
 
 .dashboard-actions {
-  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
 }
 
 .dashboard-cards {
