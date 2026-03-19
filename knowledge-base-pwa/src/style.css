@@ -2228,13 +2228,13 @@ section.dashboard.panel {
 .reader-menu-overlay {
   position: fixed;
   inset: 0;
-  z-index: 900;
+  z-index: 6000;
 }
 .reader-menu {
-  position: absolute;
-  top: 44px;
-  right: 8px;
-  z-index: 901;
+  position: fixed;
+  top: calc(var(--safe-top) + 48px);
+  right: 12px;
+  z-index: 6001;
   background: var(--card-bg, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,.18);
