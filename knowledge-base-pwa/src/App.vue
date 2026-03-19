@@ -230,6 +230,19 @@
           <span>{{ t.label }}</span>
         </div>
       </div>
+      <!-- 一键继续 -->
+      <div v-if="lastReadDoc" class="continue-reading" @click="openDoc(lastReadDoc)">
+        <div class="continue-icon">📖</div>
+        <div class="continue-info">
+          <strong>继续阅读</strong>
+          <span>{{ lastReadDoc.name }}</span>
+        </div>
+        <div class="continue-progress">
+          <div class="continue-bar"><div class="continue-fill" :style="{ width: (bookmarks[lastReadDoc.id]?.progress || 0) + '%' }"></div></div>
+          <span>{{ bookmarks[lastReadDoc.id]?.progress || 0 }}%</span>
+        </div>
+      </div>
+
       <div v-if="recentDocs.length" class="dashboard-recent">
         <p class="eyebrow">最近阅读</p>
         <div class="recent-list">
@@ -237,7 +250,10 @@
             <div class="doc-icon" :class="doc.type" style="width:28px;height:28px;font-size:11px">{{ { docx: 'W', xlsx: 'X', pdf: 'P', html: 'H', md: 'M', txt: 'T' }[doc.type] || '?' }}</div>
             <div class="recent-meta">
               <strong>{{ doc.name }}</strong>
-              <span v-if="bookmarks[doc.id]">{{ bookmarks[doc.id].progress }}%</span>
+              <span>{{ formatTimeAgo(bookmarks[doc.id]?.updatedAt) }} · {{ bookmarks[doc.id]?.progress || 0 }}%</span>
+            </div>
+            <div class="recent-progress-mini">
+              <div class="continue-bar"><div class="continue-fill" :style="{ width: (bookmarks[doc.id]?.progress || 0) + '%' }"></div></div>
             </div>
           </button>
         </div>
@@ -442,6 +458,15 @@
                 <button type="button" class="reader-menu-item" @click="openVersionPanel(); readerMenuOpen = false">
                   <span>⏱</span>版本历史
                 </button>
+                <div class="reader-menu-divider"></div>
+                <button type="button" class="reader-menu-item" @click="toggleTTS(); readerMenuOpen = false">
+                  <span>{{ ttsPlaying ? '⏸' : '🔊' }}</span>{{ ttsPlaying ? '停止朗读' : '全文朗读' }}
+                </button>
+                <div v-if="ttsPlaying" class="reader-menu-item tts-rate-row" @click.stop>
+                  <span>🐢</span>
+                  <input type="range" min="0.5" max="2.5" step="0.1" v-model.number="ttsRate" class="tts-slider" @input="updateTTSRate" />
+                  <span style="font-size:12px;min-width:32px">{{ ttsRate }}x</span>
+                </div>
               </div>
             </div>
           </transition>
@@ -1165,6 +1190,8 @@ export default {
       folderEditName: '',
       moveDocTarget: null,
       readerMenuOpen: false,
+      ttsPlaying: false,
+      ttsRate: 1,
       editMode: false,
       editContent: '',
       editSaving: false,
@@ -1251,12 +1278,17 @@ export default {
       if (h < 18) return '下午好，继续加油'
       return '晚上好，今日收获如何'
     },
+    lastReadDoc() {
+      const sorted = this.docs
+        .filter(d => this.bookmarks[d.id] && this.bookmarks[d.id].progress > 0 && this.bookmarks[d.id].progress < 100)
+        .sort((a, b) => (this.bookmarks[b.id]?.updatedAt || 0) - (this.bookmarks[a.id]?.updatedAt || 0))
+      return sorted[0] || null
+    },
     recentDocs() {
-      // 按书签 updatedAt 排序，取最近5个
       const withBookmark = this.docs
         .filter(d => this.bookmarks[d.id])
         .sort((a, b) => (this.bookmarks[b.id]?.updatedAt || 0) - (this.bookmarks[a.id]?.updatedAt || 0))
-      return withBookmark.slice(0, 5)
+      return withBookmark.slice(0, 8)
     },
     diagSummary() {
       const d = this.diag
@@ -1429,6 +1461,64 @@ export default {
       window.getSelection()?.removeAllRanges()
       this.bookmarkToast = '已摘录到笔记'
       setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    // ─── TTS 朗读 ───
+    toggleTTS() {
+      if (this.ttsPlaying) {
+        speechSynthesis.cancel()
+        this.ttsPlaying = false
+        return
+      }
+      const text = this.activeDoc?.contentText || ''
+      if (!text.trim()) {
+        this.bookmarkToast = '没有可朗读的文本内容'
+        setTimeout(() => { this.bookmarkToast = '' }, 1500)
+        return
+      }
+      if (!('speechSynthesis' in window)) {
+        this.bookmarkToast = '当前浏览器不支持语音合成'
+        setTimeout(() => { this.bookmarkToast = '' }, 1500)
+        return
+      }
+      // 分段朗读（每段最多200字，避免长文本被截断）
+      const chunks = []
+      const maxLen = 200
+      for (let i = 0; i < text.length; i += maxLen) {
+        chunks.push(text.slice(i, i + maxLen))
+      }
+      this.ttsPlaying = true
+      this._ttsChunks = chunks
+      this._ttsIndex = 0
+      this._speakNextChunk()
+    },
+    _speakNextChunk() {
+      if (!this.ttsPlaying || this._ttsIndex >= this._ttsChunks.length) {
+        this.ttsPlaying = false
+        return
+      }
+      const utter = new SpeechSynthesisUtterance(this._ttsChunks[this._ttsIndex])
+      utter.lang = 'zh-CN'
+      utter.rate = this.ttsRate
+      utter.onend = () => {
+        this._ttsIndex++
+        this._speakNextChunk()
+      }
+      utter.onerror = () => {
+        this.ttsPlaying = false
+      }
+      speechSynthesis.speak(utter)
+    },
+    updateTTSRate() {
+      if (!this.ttsPlaying) return
+      // 重启当前朗读以应用新速率
+      speechSynthesis.cancel()
+      this._speakNextChunk()
+    },
+    stopTTSIfNeeded() {
+      if (this.ttsPlaying) {
+        speechSynthesis.cancel()
+        this.ttsPlaying = false
+      }
     },
     // ─── 文件夹管理 ───
     async loadFolders() {
@@ -1982,6 +2072,7 @@ export default {
         this.editMode = false
         this.editContent = ''
       }
+      this.stopTTSIfNeeded()
       this.autoSaveBookmark()
       this.stopReadingTimer()
       this.selectionPopup = null
@@ -2257,6 +2348,18 @@ export default {
       const level = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)))
       const amount = size / (1024 ** level)
       return `${amount.toFixed(amount >= 10 || level === 0 ? 0 : 1)} ${units[level]}`
+    },
+    formatTimeAgo(ts) {
+      if (!ts) return ''
+      const diff = Date.now() - ts
+      const mins = Math.floor(diff / 60000)
+      if (mins < 1) return '刚刚'
+      if (mins < 60) return `${mins}分钟前`
+      const hours = Math.floor(mins / 60)
+      if (hours < 24) return `${hours}小时前`
+      const days = Math.floor(hours / 24)
+      if (days < 30) return `${days}天前`
+      return this.formatDate(ts)
     },
     formatDate(value) {
       if (!value) return '未知时间'

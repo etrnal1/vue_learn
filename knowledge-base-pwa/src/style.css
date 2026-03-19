@@ -2221,6 +2221,114 @@ section.dashboard.panel {
   border-color: var(--primary) !important;
 }
 
+/* ─── 一键继续阅读 ─── */
+.continue-reading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 8px 0;
+  background: linear-gradient(135deg, rgba(37,99,235,.08), rgba(37,99,235,.03));
+  border: 1px solid rgba(37,99,235,.15);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.continue-reading:active {
+  background: linear-gradient(135deg, rgba(37,99,235,.15), rgba(37,99,235,.06));
+}
+.continue-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.continue-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.continue-info strong {
+  font-size: 13px;
+  color: var(--primary, #2563eb);
+}
+.continue-info span {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.continue-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.continue-progress span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary, #2563eb);
+  min-width: 36px;
+  text-align: right;
+}
+.continue-bar {
+  width: 48px;
+  height: 5px;
+  background: rgba(0,0,0,.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.continue-fill {
+  height: 100%;
+  background: var(--primary, #2563eb);
+  border-radius: 3px;
+  transition: width .3s;
+}
+.recent-progress-mini {
+  flex-shrink: 0;
+  width: 36px;
+}
+.recent-progress-mini .continue-bar {
+  width: 100%;
+  height: 3px;
+}
+.recent-meta span {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+[data-theme="dark"] .continue-reading {
+  background: linear-gradient(135deg, rgba(37,99,235,.15), rgba(37,99,235,.05));
+  border-color: rgba(37,99,235,.25);
+}
+
+/* ─── TTS 控件 ─── */
+.reader-menu-divider {
+  height: 1px;
+  background: var(--border, #e8e8e8);
+  margin: 4px 0;
+}
+.tts-rate-row {
+  gap: 6px !important;
+}
+.tts-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border, #ddd);
+  border-radius: 2px;
+  outline: none;
+}
+.tts-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary, #2563eb);
+  cursor: pointer;
+}
+
 /* ─── 文件夹 ─── */
 .folder-chips {
   display: flex;
