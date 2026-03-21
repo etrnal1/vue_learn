@@ -77,6 +77,7 @@
       <ListenersView  v-show="activeTab === 'listeners'" :listeners="listeners" />
       <BandwidthChart v-show="activeTab === 'bandwidth'" :bw-history="bwHistory" />
       <HeatMap        v-show="activeTab === 'heatmap'"   :bw-history="bwHistory" />
+      <DataDashboard  v-show="activeTab === 'bigdata'"   :bigdata="bigdata" />
     </main>
 
     <!-- 进程详情侧栏 -->
@@ -116,6 +117,7 @@ import ReplayPanel from './components/ReplayPanel.vue'
 import BandwidthChart from './components/BandwidthChart.vue'
 import HeatMap from './components/HeatMap.vue'
 import ProcessDetail from './components/ProcessDetail.vue'
+import DataDashboard from './components/DataDashboard.vue'
 
 // 监听端口视图（内联简单组件）
 const ListenersView = defineComponent({
@@ -167,7 +169,7 @@ const HIGH_RISK_COUNTRIES = new Set(['KP','IR','RU']) // 仅示例
 
 export default {
   name: 'App',
-  components: { NodeGraph, SankeyChart, ConnectionList, ChainView, MapView, ReplayPanel, BandwidthChart, HeatMap, ProcessDetail, ListenersView, StatChip },
+  components: { NodeGraph, SankeyChart, ConnectionList, ChainView, MapView, ReplayPanel, BandwidthChart, HeatMap, ProcessDetail, ListenersView, StatChip, DataDashboard },
 
   setup() {
     // 实时数据
@@ -181,6 +183,7 @@ export default {
     const bwHistory = ref({})
     const selectedProc = ref(null)
     const newIds = ref(new Set())
+    const bigdata = ref({})
     const lastUpdate = ref(null)
     const snapshotCount = ref(0)
     const wsState = ref('disconnected')
@@ -283,9 +286,10 @@ export default {
       { id: 'list',      icon: '≡', label: '连接列表'   },
       { id: 'chain',     icon: '⛓', label: '链路追踪'   },
       { id: 'map',       icon: '🗺', label: '世界地图'   },
-      { id: 'listeners',  icon: '👂', label: '监听端口'   },
-      { id: 'bandwidth',  icon: '📊', label: '带宽趋势'   },
-      { id: 'heatmap',    icon: '🔥', label: '热力图'     },
+      { id: 'listeners', icon: '👂', label: '监听端口'   },
+      { id: 'bandwidth', icon: '📊', label: '带宽趋势'   },
+      { id: 'heatmap',   icon: '🔥', label: '热力图'     },
+      { id: 'bigdata',   icon: '📡', label: '大数据看板' },
     ]
 
     const timeAgo = computed(() => {
@@ -353,6 +357,7 @@ export default {
         if (data.homeGeo) homeGeo.value = data.homeGeo
         if (data.snapshotCount) snapshotCount.value = data.snapshotCount
         if (data.bwHistory) bwHistory.value = data.bwHistory
+        if (data.bigdata) bigdata.value = data.bigdata
         lastUpdate.value = data.timestamp
 
         const ids = new Set((data.newConns || []).map(c => c.id))
@@ -368,7 +373,7 @@ export default {
 
     return {
       connections, chains, history, trend, stats, listeners, homeGeo, bwHistory,
-      selectedProc,
+      bigdata, selectedProc,
       displayConnections, displayChains, displayStats,
       newIds, lastUpdate, wsState, wsLabel, timeAgo,
       activeTab, tabs, trendPath, trendEstPath, trendFill,
