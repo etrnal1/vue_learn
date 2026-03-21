@@ -55,7 +55,7 @@ const COLORS = [
   '#0969da', '#1a7f37', '#cf222e', '#6639ba', '#b08800',
 ]
 
-const M = { top: 24, right: 20, bottom: 28, left: 52 }
+const M = { top: 24, right: 72, bottom: 28, left: 52 }
 
 export default defineComponent({
   name: 'BandwidthChart',
@@ -170,12 +170,18 @@ export default defineComponent({
           .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-opacity', 0.9)
           .attr('d', line)
 
-        // 最新值标注
+        // 最新值标注 + 右侧进程名
         const last = pts[pts.length - 1]
         if (last && last.conns > 0) {
-          g.append('circle')
-            .attr('cx', xScale(last.t)).attr('cy', yScale(last.conns))
-            .attr('r', 3).attr('fill', color)
+          const cx = xScale(last.t), cy = yScale(last.conns)
+          g.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 3).attr('fill', color)
+          // 进程名（裁到14字符）
+          const label = proc.length > 14 ? proc.slice(0, 13) + '…' : proc
+          g.append('text')
+            .attr('x', cx + 6).attr('y', cy + 4)
+            .attr('fill', color).attr('font-size', '10px')
+            .attr('font-family', 'monospace')
+            .text(`${label} ${last.conns}`)
         }
       })
 
