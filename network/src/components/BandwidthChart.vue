@@ -55,7 +55,10 @@ const COLORS = [
   '#0969da', '#1a7f37', '#cf222e', '#6639ba', '#b08800',
 ]
 
-const M = { top: 24, right: 72, bottom: 28, left: 52 }
+// 右边距根据屏幕宽度自适应：手机用较小值避免浪费空间，桌面用较大值放标签
+function getMargin(W) {
+  return { top: 24, right: W < 500 ? 8 : 72, bottom: 28, left: W < 500 ? 36 : 52 }
+}
 
 export default defineComponent({
   name: 'BandwidthChart',
@@ -100,6 +103,8 @@ export default defineComponent({
       const H = svgRef.value.clientHeight
       if (W < 10 || H < 10) return
 
+      const M = getMargin(W)
+      const isMobile = W < 500
       const iW = W - M.left - M.right
       const iH = H - M.top  - M.bottom
       const now = Date.now()
@@ -124,18 +129,19 @@ export default defineComponent({
         .call(ax => ax.select('.domain').remove())
         .call(ax => ax.selectAll('line').attr('stroke', '#ffffff08'))
 
-      // X 轴
+      // X 轴（手机减少刻度、缩短时间格式）
+      const xFmt = isMobile ? d3.timeFormat('%M:%S') : d3.timeFormat('%H:%M:%S')
       g.append('g').attr('transform', `translate(0,${iH})`)
-        .call(d3.axisBottom(xScale).ticks(6).tickFormat(d3.timeFormat('%H:%M:%S')))
+        .call(d3.axisBottom(xScale).ticks(isMobile ? 3 : 6).tickFormat(xFmt))
         .call(ax => ax.select('.domain').attr('stroke', '#30363d'))
-        .call(ax => ax.selectAll('text').attr('fill', '#8b949e').attr('font-size', '10px'))
+        .call(ax => ax.selectAll('text').attr('fill', '#8b949e').attr('font-size', isMobile ? '9px' : '10px'))
         .call(ax => ax.selectAll('line').attr('stroke', '#30363d'))
 
       // Y 轴
       g.append('g')
-        .call(d3.axisLeft(yScale).ticks(5).tickFormat(d => Math.round(d)))
+        .call(d3.axisLeft(yScale).ticks(isMobile ? 3 : 5).tickFormat(d => Math.round(d)))
         .call(ax => ax.select('.domain').attr('stroke', '#30363d'))
-        .call(ax => ax.selectAll('text').attr('fill', '#8b949e').attr('font-size', '10px'))
+        .call(ax => ax.selectAll('text').attr('fill', '#8b949e').attr('font-size', isMobile ? '9px' : '10px'))
         .call(ax => ax.selectAll('line').attr('stroke', '#30363d'))
 
       // Y 轴标签
@@ -170,18 +176,19 @@ export default defineComponent({
           .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-opacity', 0.9)
           .attr('d', line)
 
-        // 最新值标注 + 右侧进程名
+        // 最新值标注；桌面额外显示右侧进程名
         const last = pts[pts.length - 1]
         if (last && last.conns > 0) {
           const cx = xScale(last.t), cy = yScale(last.conns)
           g.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 3).attr('fill', color)
-          // 进程名（裁到14字符）
-          const label = proc.length > 14 ? proc.slice(0, 13) + '…' : proc
-          g.append('text')
-            .attr('x', cx + 6).attr('y', cy + 4)
-            .attr('fill', color).attr('font-size', '10px')
-            .attr('font-family', 'monospace')
-            .text(`${label} ${last.conns}`)
+          if (!isMobile) {
+            const label = proc.length > 12 ? proc.slice(0, 11) + '…' : proc
+            g.append('text')
+              .attr('x', cx + 6).attr('y', cy + 4)
+              .attr('fill', color).attr('font-size', '10px')
+              .attr('font-family', 'monospace')
+              .text(`${label} ${last.conns}`)
+          }
         }
       })
 
