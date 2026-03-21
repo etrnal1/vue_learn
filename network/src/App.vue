@@ -77,7 +77,13 @@
       <ListenersView  v-show="activeTab === 'listeners'" :listeners="listeners" />
       <BandwidthChart v-show="activeTab === 'bandwidth'" :bw-history="bwHistory" />
       <HeatMap        v-show="activeTab === 'heatmap'"   :bw-history="bwHistory" />
-      <DataDashboard  v-show="activeTab === 'bigdata'"   :bigdata="bigdata" />
+      <DataDashboard  v-show="activeTab === 'bigdata'"
+        :connections="displayConnections"
+        :stats="displayStats"
+        :trend="trend"
+        :history="history"
+        :new-conns="recentNewConns"
+      />
     </main>
 
     <!-- 进程详情侧栏 -->
@@ -184,6 +190,7 @@ export default {
     const selectedProc = ref(null)
     const newIds = ref(new Set())
     const bigdata = ref({})
+    const recentNewConns = ref([])
     const lastUpdate = ref(null)
     const snapshotCount = ref(0)
     const wsState = ref('disconnected')
@@ -359,6 +366,10 @@ export default {
         if (data.snapshotCount) snapshotCount.value = data.snapshotCount
         if (data.bwHistory) bwHistory.value = data.bwHistory
         if (data.bigdata) bigdata.value = data.bigdata
+        if (data.newConns?.length) {
+          recentNewConns.value = data.newConns
+          setTimeout(() => { recentNewConns.value = [] }, 100)
+        }
         lastUpdate.value = data.timestamp
 
         const ids = new Set((data.newConns || []).map(c => c.id))
@@ -374,7 +385,7 @@ export default {
 
     return {
       connections, chains, history, trend, stats, listeners, homeGeo, bwHistory,
-      bigdata, selectedProc,
+      bigdata, recentNewConns, selectedProc,
       displayConnections, displayChains, displayStats,
       newIds, lastUpdate, wsState, wsLabel, timeAgo,
       activeTab, tabs, trendPath, trendEstPath, trendFill,
