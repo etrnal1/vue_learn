@@ -1,0 +1,42 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #060b14;
+  --bg2: #0a1120;
+  --card: #0d1726;
+  --card2: #111e30;
+  --border: #1a2d4a;
+  --border2: #243d5c;
+  --text: #d4e6ff;
+  --text2: #6b8aaa;
+  --text3: #3d5a7a;
+  --cyan: #00d4ff;
+  --cyan2: #0090cc;
+  --green: #00e676;
+  --green2: #00a854;
+  --orange: #ff9800;
+  --orange2: #c76a00;
+  --red: #ff4444;
+  --red2: #b02020;
+  --purple: #bd7dff;
+  --purple2: #7b3fd0;
+  --yellow: #ffe600;
+  --pink: #ff6ec7;
+  --glow-cyan: 0 0 20px #00d4ff44;
+  --glow-green: 0 0 20px #00e67644;
+  --glow-orange: 0 0 20px #ff980044;
+  --glow-red: 0 0 20px #ff444444;
+}
+
+html, body, #app {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
