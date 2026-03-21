@@ -11,6 +11,13 @@ import { refreshProcessStats, getProcessStats } from './process-stats.js'
 import { updateHistory, enrichWithTime, getHistory, getTrend } from './history.js'
 import { recordSample, getBandwidthHistory } from './bandwidth.js'
 import { tickBigdata, getBigdataSnapshot } from './bigdata.js'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import { existsSync } from 'fs'
+import { networkInterfaces } from 'os'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const distDir = join(__dirname, '../dist')
 
 const app = express()
 app.use(cors())
@@ -111,8 +118,20 @@ app.get('/api/replay/:idx', (req, res) => {
   res.json(snap)
 })
 
+// 静态文件（生产构建）
+if (existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.get('*', (_, res) => res.sendFile(join(distDir, 'index.html')))
+  console.log(`[server] 托管静态文件: ${distDir}`)
+} else {
+  console.log(`[server] 提示: 运行 npm start 可构建并以单端口部署`)
+}
+
 const PORT = 3100
 server.listen(PORT, '0.0.0.0', () => {
+  const ip = Object.values(networkInterfaces()).flat()
+    .find(i => i?.family === 'IPv4' && !i.internal)?.address ?? '<本机IP>'
   console.log(`[server] 网络监控服务运行在 http://localhost:${PORT}`)
-  console.log(`[server] WebSocket 端点: ws://localhost:${PORT}`)
+  console.log(`[server] 局域网访问: http://${ip}:${PORT}`)
+  console.log(`[server] WebSocket: ws://localhost:${PORT}`)
 })

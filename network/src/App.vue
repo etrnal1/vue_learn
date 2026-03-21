@@ -332,7 +332,8 @@ export default {
 
     function connect() {
       wsState.value = 'connecting'
-      ws = new WebSocket(`ws://${location.hostname}:3100`)
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      ws = new WebSocket(`${proto}//${location.host}`)
       ws.onopen = () => { wsState.value = 'connected' }
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data)
