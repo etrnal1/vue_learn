@@ -446,6 +446,7 @@ export default {
   font-size: 13px; font-family: inherit;
   transition: all 0.15s;
   display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; flex-shrink: 0;
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
