@@ -181,7 +181,8 @@ export default {
 
     function connect() {
       wsState.value = 'connecting'
-      ws = new WebSocket(`ws://${location.hostname}:3200`)
+      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      ws = new WebSocket(`${wsProto}//${location.host}`)
       ws.onopen = () => { wsState.value = 'connected'; sentAt = Date.now() }
       ws.onmessage = (e) => {
         latency.value = Date.now() - sentAt
@@ -219,13 +220,15 @@ export default {
 </script>
 
 <style scoped>
+/* ══════════════════════════════════════════════════
+   基础布局（桌面 >1024px）
+══════════════════════════════════════════════════ */
 .dashboard {
   display: grid;
-  grid-template-rows: 52px 96px 1fr 28px;
-  height: 100vh;
-  gap: 0;
+  grid-template-rows: 52px auto 1fr 28px;
+  min-height: 100dvh;
   background: var(--bg);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 /* ── Header ── */
@@ -236,15 +239,18 @@ export default {
   background: var(--card);
   border-bottom: 1px solid var(--border);
   gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
-.header-left  { display: flex; align-items: center; gap: 16px; }
+.header-left  { display: flex; align-items: center; gap: 12px; }
 .logo         { display: flex; align-items: center; gap: 8px; }
 .logo-icon    { font-size: 20px; color: #00d4ff; filter: drop-shadow(0 0 6px #00d4ff); }
 .logo-text    { font-size: 16px; font-weight: 800; color: #d4e6ff; letter-spacing: 1px; }
 .logo-sub     { font-size: 11px; color: var(--text2); border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
 
-.ws-status    { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.ws-dot       { width: 7px; height: 7px; border-radius: 50%; }
+.ws-status    { display: flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
+.ws-dot       { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .ws-status.connected    .ws-dot { background: #00e676; box-shadow: 0 0 6px #00e676; }
 .ws-status.connecting   .ws-dot { background: #ff9800; animation: pulse 1s infinite; }
 .ws-status.disconnected .ws-dot { background: #ff4444; }
@@ -253,12 +259,12 @@ export default {
 .ws-status.disconnected { color: #ff4444; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-.header-center { flex: 1; display: flex; justify-content: center; gap: 32px; }
+.header-center { flex: 1; display: flex; justify-content: center; gap: 28px; }
 .header-stat   { display: flex; flex-direction: column; align-items: center; }
 .hs-val        { font-size: 18px; font-weight: 700; line-height: 1.2; }
 .hs-lbl        { font-size: 10px; color: var(--text2); }
 
-.header-right  { text-align: right; }
+.header-right  { text-align: right; flex-shrink: 0; }
 .clock         { font-size: 22px; font-weight: 700; color: #d4e6ff; line-height: 1.1; }
 .date-str      { font-size: 10px; color: var(--text2); }
 
@@ -268,17 +274,15 @@ export default {
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
   padding: 8px 12px 4px;
-  background: var(--bg);
 }
 
-/* ── 主网格 ── */
+/* ── 主网格（桌面：3列2行） ── */
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 220px 220px;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 240px 220px;
   gap: 8px;
-  padding: 4px 12px 4px;
-  overflow: hidden;
+  padding: 4px 12px 8px;
 }
 
 .panel { overflow: hidden; display: flex; flex-direction: column; }
@@ -302,7 +306,6 @@ export default {
   padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-
 .panel-inner { display: flex; flex-direction: column; height: 100%; }
 
 /* 地区列表 */
@@ -318,25 +321,102 @@ export default {
 .region-rank.rank-2 { background: #aab8c2; color: #000; }
 .region-rank.rank-3 { background: #cd7f32; color: #fff; }
 .region-name { font-size: 12px; color: var(--text2); width: 28px; flex-shrink: 0; }
-.region-bar-wrap {
-  flex: 1; height: 8px; background: #0a1120; border-radius: 4px; overflow: hidden;
-}
-.region-bar-fill {
-  height: 100%; border-radius: 4px;
-  transition: width 0.6s ease;
-}
+.region-bar-wrap { flex: 1; height: 8px; background: #0a1120; border-radius: 4px; overflow: hidden; }
+.region-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
 .region-val { font-size: 11px; color: var(--text2); width: 44px; text-align: right; flex-shrink: 0; }
 
 /* ── Footer ── */
 .footer {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   padding: 0 16px;
   background: var(--card);
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text3);
+  flex-wrap: wrap;
+  min-height: 28px;
 }
 .footer-tag { margin-left: auto; color: var(--text2); }
+
+/* ══════════════════════════════════════════════════
+   平板（640px – 1024px）
+══════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .logo-sub { display: none; }
+
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+
+  .main-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 240px 220px 220px;
+  }
+  .panel-line   { grid-column: 1 / -1; grid-row: 1; }
+  .panel-pie    { grid-column: 1;      grid-row: 2; }
+  .panel-gauge  { grid-column: 2;      grid-row: 2; }
+  .panel-bar    { grid-column: 1 / -1; grid-row: 3; }
+  .panel-region { display: none; }
+  .panel-events { grid-column: 1 / -1; grid-row: 4; height: 200px; }
+}
+
+/* ══════════════════════════════════════════════════
+   手机（< 640px）—— 全部单列，可滚动
+══════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* 关掉固定高度，改为可滚动 */
+  .dashboard {
+    grid-template-rows: auto auto auto auto;
+    overflow-y: auto;
+    min-height: 100dvh;
+    height: auto;
+  }
+
+  /* Header 精简 */
+  .header {
+    padding: 0 12px;
+    gap: 10px;
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    position: sticky;
+  }
+  .logo-sub      { display: none; }
+  .header-center { display: none; }          /* 隐藏中间统计，节省空间 */
+  .header-right  { display: none; }          /* 手机隐藏时钟 */
+  .logo-text     { font-size: 14px; }
+
+  /* KPI：2列3行 */
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 8px;
+    gap: 6px;
+  }
+
+  /* 主网格：单列，每格固定高度 */
+  .main-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 8px 8px;
+  }
+  .panel-line   { height: 220px; }
+  .panel-bar    { height: 200px; }
+  .panel-pie    { height: 220px; }
+  .panel-gauge  { height: 240px; }
+  .panel-region { height: 220px; display: flex; }
+  .panel-events { height: 240px; }
+
+  /* grid-column/row 重置为自动 */
+  .panel-line, .panel-pie, .panel-gauge,
+  .panel-bar, .panel-region, .panel-events {
+    grid-column: unset;
+    grid-row: unset;
+  }
+
+  /* Footer 手机简化 */
+  .footer { gap: 10px; font-size: 10px; padding: 6px 12px; }
+  .footer > span:nth-child(2),
+  .footer > span:nth-child(3) { display: none; }
+}
 </style>

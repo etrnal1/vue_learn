@@ -29,12 +29,14 @@
 }
 
 html, body, #app {
+  min-height: 100%;
   height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: 'PingFang SC', 'Microsoft YaHei', 'SF Mono', 'Cascadia Code', monospace;
   font-size: 13px;
-  overflow: hidden;
+  -webkit-text-size-adjust: 100%; /* 防止 iOS 旋转时字体自动放大 */
+  touch-action: pan-y;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
