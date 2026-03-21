@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"node server/index.js\" \"vite --host 0.0.0.0\"",
     "build": "vite build",
     "server": "node server/index.js",
-    "start": "concurrently \"npm run server\" \"npm run dev\""
+    "start": "npm run build && node server/index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

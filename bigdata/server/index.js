@@ -2,6 +2,12 @@ import express from 'express'
 import { createServer } from 'http'
 import { WebSocketServer } from 'ws'
 import cors from 'cors'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import { existsSync } from 'fs'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const distDir = join(__dirname, '../dist')
 
 const app = express()
 app.use(cors())
@@ -195,8 +201,18 @@ app.get('/api/snapshot', (_, res) => res.json({
   kpi, channels, devices, regions, system, events: events.slice(0, 20)
 }))
 
-const PORT = 3200
+// ─── 静态文件（生产构建）────────────────────────────────────
+if (existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.get('*', (_, res) => res.sendFile(join(distDir, 'index.html')))
+  console.log(`[bigdata] 托管静态文件: ${distDir}`)
+} else {
+  console.log(`[bigdata] dist/ 不存在，请先运行 npm run build（或使用 npm run dev 开发模式）`)
+}
+
+const PORT = 5200
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[bigdata] 服务运行在 http://localhost:${PORT}`)
+  console.log(`[bigdata] 局域网访问: http://<本机IP>:${PORT}`)
   console.log(`[bigdata] WebSocket: ws://localhost:${PORT}`)
 })
