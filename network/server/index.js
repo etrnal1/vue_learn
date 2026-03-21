@@ -10,6 +10,7 @@ import { recordSnapshot, getSnapshotMeta, getSnapshot, getCount } from './record
 import { refreshProcessStats, getProcessStats } from './process-stats.js'
 import { updateHistory, enrichWithTime, getHistory, getTrend } from './history.js'
 import { recordSample, getBandwidthHistory } from './bandwidth.js'
+import { tickBigdata, getBigdataSnapshot } from './bigdata.js'
 
 const app = express()
 app.use(cors())
@@ -26,6 +27,8 @@ fetchHomeGeo()
 setInterval(refreshProcessStats, 5000)
 refreshProcessStats()
 // bandwidth sampler is driven by push loop
+// bigdata ticker (每秒与主循环同步)
+setInterval(tickBigdata, 1000)
 
 wss.on('connection', (ws) => {
   console.log('[ws] 客户端已连接')
@@ -81,7 +84,8 @@ wss.on('connection', (ws) => {
         homeGeo: getHomeGeo(),
         snapshotCount: getCount(),
         bwHistory: getBandwidthHistory(),
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        bigdata: getBigdataSnapshot(),
       }))
     } catch (err) {
       console.error('[ws] 推送错误:', err.message)
