@@ -435,7 +435,7 @@ export default {
 .trend-legend { display: flex; flex-direction: column; gap: 1px; font-size: 9px; white-space: nowrap; }
 
 .tabs {
-  display: flex; background: var(--card);
+  display: flex; flex-wrap: wrap; background: var(--card);
   border-bottom: 1px solid var(--border);
   padding: 0 16px; flex-shrink: 0;
 }
