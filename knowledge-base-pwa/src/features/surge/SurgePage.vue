@@ -24,70 +24,76 @@
     <!-- ============================================================ -->
     <div v-if="mode === 'generator'">
 
-      <!-- 步骤指示器 -->
-      <div class="steps-bar">
-        <div
-          v-for="(label, i) in stepLabels"
-          :key="i"
-          :class="['step-dot-wrap', { active: step === i, done: step > i }]"
-          @click="step > i ? step = i : null"
-        >
-          <span class="step-circle">{{ step > i ? '✓' : i + 1 }}</span>
-          <span class="step-name">{{ label }}</span>
+      <!-- ── General ── -->
+      <section class="panel step-panel">
+        <div class="section-header">
+          <h3 class="step-title">⚙️ General — 基础设置</h3>
+          <button class="section-copy-btn" @click="copySection(generalSection, 'general')">
+            {{ copiedSection === 'general' ? '✓ 已复制' : '复制此段' }}
+          </button>
         </div>
-      </div>
-
-      <!-- ── Step 0: General ── -->
-      <section v-if="step === 0" class="panel step-panel">
-        <h3 class="step-title">⚙️ General — 基础设置</h3>
 
         <div class="form-group">
-          <label class="form-label">日志级别</label>
+          <label class="form-label">loglevel <span class="hint">日志级别</span></label>
           <select v-model="general.loglevel" class="select">
-            <option value="verbose">verbose（详细）</option>
-            <option value="info">info（信息）</option>
-            <option value="notify">notify（通知）</option>
-            <option value="warning">warning（警告）</option>
+            <option value="verbose">verbose — 详细输出（调试用）</option>
+            <option value="info">info — 一般信息</option>
+            <option value="notify">notify — 重要通知（推荐）</option>
+            <option value="warning">warning — 仅警告</option>
           </select>
+          <span class="field-tip">控制日志详细程度，日常使用选 notify 即可</span>
         </div>
 
         <div class="form-group">
-          <label class="form-label">DNS 服务器</label>
+          <label class="form-label">dns-server <span class="hint">DNS 服务器</span></label>
           <input v-model="general.dns" class="input" placeholder="8.8.8.8, 1.1.1.1" />
-          <span class="form-hint">多个 DNS 用逗号分隔</span>
+          <span class="field-tip">域名解析服务器，多个用逗号分隔；留空使用系统默认</span>
         </div>
 
         <div class="form-group">
-          <label class="form-label">跳过代理（Skip Proxy）</label>
+          <label class="form-label">skip-proxy <span class="hint">跳过代理的地址</span></label>
           <input v-model="general.skipProxy" class="input" placeholder="127.0.0.1, localhost, 192.168.0.0/24" />
-          <span class="form-hint">局域网/本地地址填这里</span>
+          <span class="field-tip">这些地址不走代理，直接连接；局域网和本地回环地址填这里</span>
         </div>
 
         <div class="form-group form-row-check">
-          <label class="form-label">开启 WiFi 共享（allow-wifi-access）</label>
+          <div>
+            <label class="form-label" style="margin:0">allow-wifi-access <span class="hint">WiFi 局域网共享</span></label>
+            <span class="field-tip" style="margin:0">开启后，局域网内其他设备可将此机器作为代理使用</span>
+          </div>
           <input type="checkbox" v-model="general.allowWifi" class="check-box" />
         </div>
 
         <template v-if="general.allowWifi">
           <div class="form-group">
-            <label class="form-label">HTTP 监听端口</label>
+            <label class="form-label">http-listen <span class="hint">HTTP 代理监听端口</span></label>
             <input v-model.number="general.httpPort" class="input" type="number" placeholder="6152" />
+            <span class="field-tip">局域网设备将代理服务器设为此端口（HTTP 类型）</span>
           </div>
           <div class="form-group">
-            <label class="form-label">SOCKS5 监听端口</label>
+            <label class="form-label">socks5-listen <span class="hint">SOCKS5 代理监听端口</span></label>
             <input v-model.number="general.socksPort" class="input" type="number" placeholder="6153" />
+            <span class="field-tip">局域网设备将代理服务器设为此端口（SOCKS5 类型）</span>
           </div>
         </template>
 
         <div class="form-group form-row-check">
-          <label class="form-label">增强模式（enhanced-mode）</label>
+          <div>
+            <label class="form-label" style="margin:0">enhanced-mode <span class="hint">增强模式</span></label>
+            <span class="field-tip" style="margin:0">接管所有网络请求，代理更彻底；iOS 上可解决部分 App 不走代理的问题</span>
+          </div>
           <input type="checkbox" v-model="general.enhancedMode" class="check-box" />
         </div>
       </section>
 
-      <!-- ── Step 1: 代理节点 ── -->
-      <section v-if="step === 1" class="panel step-panel">
-        <h3 class="step-title">🌐 Proxy — 代理节点</h3>
+      <!-- ── 代理节点 ── -->
+      <section class="panel step-panel">
+        <div class="section-header">
+          <h3 class="step-title">🌐 Proxy — 代理节点</h3>
+          <button class="section-copy-btn" @click="copySection(proxySection, 'proxy')">
+            {{ copiedSection === 'proxy' ? '✓ 已复制' : '复制此段' }}
+          </button>
+        </div>
 
         <div v-if="proxies.length === 0" class="empty">
           <p>暂无代理节点，点击下方按钮添加</p>
@@ -109,11 +115,11 @@
               <div class="form-group">
                 <label class="form-label">协议类型</label>
                 <select v-model="proxy.type" class="select">
-                  <option value="ss">Shadowsocks</option>
-                  <option value="vmess">VMess</option>
-                  <option value="trojan">Trojan</option>
-                  <option value="http">HTTP</option>
-                  <option value="socks5">SOCKS5</option>
+                  <option value="ss">SS — Shadowsocks 经典代理</option>
+                  <option value="vmess">VMess — V2Ray 主协议</option>
+                  <option value="trojan">Trojan — 伪装 HTTPS 流量</option>
+                  <option value="http">HTTP — 标准 HTTP 代理</option>
+                  <option value="socks5">SOCKS5 — 通用代理协议</option>
                 </select>
               </div>
             </div>
@@ -132,21 +138,25 @@
             <!-- SS -->
             <template v-if="proxy.type === 'ss'">
               <div class="form-group">
-                <label class="form-label">加密方式</label>
+                <label class="form-label">encrypt-method <span class="hint">加密方式</span></label>
                 <select v-model="proxy.method" class="select">
-                  <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305（推荐）</option>
-                  <option value="aes-128-gcm">aes-128-gcm</option>
-                  <option value="aes-256-gcm">aes-256-gcm</option>
-                  <option value="aes-128-cfb">aes-128-cfb</option>
-                  <option value="aes-256-cfb">aes-256-cfb</option>
+                  <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305（推荐，性能好）</option>
+                  <option value="aes-128-gcm">aes-128-gcm（AES 128位）</option>
+                  <option value="aes-256-gcm">aes-256-gcm（AES 256位）</option>
+                  <option value="aes-128-cfb">aes-128-cfb（旧版兼容）</option>
+                  <option value="aes-256-cfb">aes-256-cfb（旧版兼容）</option>
                 </select>
+                <span class="field-tip">数据加密算法，服务端和客户端必须一致</span>
               </div>
               <div class="form-group">
-                <label class="form-label">密码</label>
+                <label class="form-label">password <span class="hint">密码</span></label>
                 <input v-model="proxy.password" class="input" type="password" placeholder="your-password" />
               </div>
               <div class="form-group form-row-check">
-                <label class="form-label">开启 UDP 转发</label>
+                <div>
+                  <label class="form-label" style="margin:0">udp-relay <span class="hint">UDP 转发</span></label>
+                  <span class="field-tip" style="margin:0">开启后 UDP 流量也走此代理（游戏/语音通话需要）</span>
+                </div>
                 <input type="checkbox" v-model="proxy.udp" class="check-box" />
               </div>
             </template>
@@ -154,45 +164,59 @@
             <!-- VMess -->
             <template v-if="proxy.type === 'vmess'">
               <div class="form-group">
-                <label class="form-label">UUID</label>
+                <label class="form-label">username / UUID <span class="hint">用户标识</span></label>
                 <input v-model="proxy.uuid" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                <span class="field-tip">VMess 协议的身份凭证，格式为 UUID，服务端配置里可以找到</span>
               </div>
               <div class="form-row-check-group">
                 <div class="form-group form-row-check">
-                  <label class="form-label">TLS</label>
+                  <div>
+                    <label class="form-label" style="margin:0">tls <span class="hint">加密传输</span></label>
+                    <span class="field-tip" style="margin:0">启用 TLS 加密，防止流量被识别（443端口时推荐开启）</span>
+                  </div>
                   <input type="checkbox" v-model="proxy.tls" class="check-box" />
                 </div>
                 <div class="form-group form-row-check">
-                  <label class="form-label">WebSocket</label>
+                  <div>
+                    <label class="form-label" style="margin:0">ws <span class="hint">WebSocket 传输</span></label>
+                    <span class="field-tip" style="margin:0">将流量伪装成 WebSocket 请求，更难被检测</span>
+                  </div>
                   <input type="checkbox" v-model="proxy.ws" class="check-box" />
                 </div>
               </div>
               <div v-if="proxy.tls" class="form-group">
-                <label class="form-label">SNI / TLS 主机名</label>
+                <label class="form-label">sni <span class="hint">服务器名称指示</span></label>
                 <input v-model="proxy.sni" class="input" placeholder="example.com" />
+                <span class="field-tip">TLS 握手时发送的域名，用于虚拟主机；通常填服务器域名</span>
               </div>
               <div v-if="proxy.ws" class="form-group">
-                <label class="form-label">WebSocket 路径</label>
+                <label class="form-label">ws-path <span class="hint">WebSocket 路径</span></label>
                 <input v-model="proxy.wsPath" class="input" placeholder="/path" />
+                <span class="field-tip">WebSocket 连接的 URL 路径，需与服务端配置一致</span>
               </div>
               <div v-if="proxy.ws" class="form-group">
-                <label class="form-label">WebSocket Host（可选）</label>
+                <label class="form-label">ws-headers Host <span class="hint">WebSocket 伪装域名（可选）</span></label>
                 <input v-model="proxy.wsHost" class="input" placeholder="example.com" />
+                <span class="field-tip">HTTP Host 头，CDN 中转时用来指向目标域名</span>
               </div>
             </template>
 
             <!-- Trojan -->
             <template v-if="proxy.type === 'trojan'">
               <div class="form-group">
-                <label class="form-label">密码</label>
+                <label class="form-label">password <span class="hint">密码</span></label>
                 <input v-model="proxy.password" class="input" type="password" placeholder="your-password" />
               </div>
               <div class="form-group">
-                <label class="form-label">SNI</label>
+                <label class="form-label">sni <span class="hint">服务器名称指示</span></label>
                 <input v-model="proxy.sni" class="input" placeholder="example.com" />
+                <span class="field-tip">TLS 握手发送的域名，Trojan 流量需与证书域名一致</span>
               </div>
               <div class="form-group form-row-check">
-                <label class="form-label">跳过证书验证（不推荐）</label>
+                <div>
+                  <label class="form-label" style="margin:0">skip-cert-verify <span class="hint">跳过证书验证</span></label>
+                  <span class="field-tip" style="margin:0">忽略 TLS 证书错误，仅用于测试；生产环境不推荐开启</span>
+                </div>
                 <input type="checkbox" v-model="proxy.skipCert" class="check-box" />
               </div>
             </template>
@@ -201,16 +225,19 @@
             <template v-if="proxy.type === 'http' || proxy.type === 'socks5'">
               <div class="form-row-2">
                 <div class="form-group">
-                  <label class="form-label">用户名（可选）</label>
+                  <label class="form-label">username <span class="hint">用户名（可选）</span></label>
                   <input v-model="proxy.username" class="input" placeholder="username" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">密码（可选）</label>
+                  <label class="form-label">password <span class="hint">密码（可选）</span></label>
                   <input v-model="proxy.password" class="input" type="password" placeholder="password" />
                 </div>
               </div>
               <div v-if="proxy.type === 'http'" class="form-group form-row-check">
-                <label class="form-label">TLS（HTTPS 代理）</label>
+                <div>
+                  <label class="form-label" style="margin:0">tls <span class="hint">HTTPS 代理</span></label>
+                  <span class="field-tip" style="margin:0">服务端为 HTTPS（加密 HTTP）代理时开启</span>
+                </div>
                 <input type="checkbox" v-model="proxy.tls" class="check-box" />
               </div>
             </template>
@@ -220,9 +247,14 @@
         <button class="btn btn-primary" style="width:100%;margin-top:8px" @click="addProxy">＋ 添加代理节点</button>
       </section>
 
-      <!-- ── Step 2: 代理组 ── -->
-      <section v-if="step === 2" class="panel step-panel">
-        <h3 class="step-title">🔀 Proxy Group — 代理组</h3>
+      <!-- ── 代理组 ── -->
+      <section class="panel step-panel">
+        <div class="section-header">
+          <h3 class="step-title">🔀 Proxy Group — 代理组</h3>
+          <button class="section-copy-btn" @click="copySection(proxyGroupSection, 'group')">
+            {{ copiedSection === 'group' ? '✓ 已复制' : '复制此段' }}
+          </button>
+        </div>
 
         <div v-if="proxyGroups.length === 0" class="empty">
           <p>暂无代理组，建议至少添加一个 select 组</p>
@@ -244,26 +276,27 @@
               <div class="form-group">
                 <label class="form-label">类型</label>
                 <select v-model="group.type" class="select">
-                  <option value="select">select（手动选择）</option>
-                  <option value="url-test">url-test（自动测速）</option>
-                  <option value="fallback">fallback（故障转移）</option>
-                  <option value="load-balance">load-balance（负载均衡）</option>
+                  <option value="select">select — 手动选择节点</option>
+                  <option value="url-test">url-test — 自动测速选最快</option>
+                  <option value="fallback">fallback — 故障转移备用</option>
+                  <option value="load-balance">load-balance — 多节点负载均衡</option>
                 </select>
               </div>
             </div>
 
             <template v-if="group.type !== 'select'">
               <div class="form-group">
-                <label class="form-label">测速 URL</label>
+                <label class="form-label">url <span class="hint">测速目标网址</span></label>
                 <input v-model="group.url" class="input" placeholder="http://www.gstatic.com/generate_204" />
+                <span class="field-tip">Surge 会定期请求此地址来测量延迟，推荐用 Google 的 generate_204</span>
               </div>
               <div class="form-row-2">
                 <div class="form-group">
-                  <label class="form-label">测速间隔（秒）</label>
+                  <label class="form-label">interval <span class="hint">测速间隔（秒）</span></label>
                   <input v-model.number="group.interval" class="input" type="number" placeholder="300" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">超时（ms）</label>
+                  <label class="form-label">timeout <span class="hint">超时（毫秒）</span></label>
                   <input v-model.number="group.timeout" class="input" type="number" placeholder="5000" />
                 </div>
               </div>
@@ -296,9 +329,14 @@
         <button class="btn btn-primary" style="width:100%;margin-top:8px" @click="addGroup">＋ 添加代理组</button>
       </section>
 
-      <!-- ── Step 3: 规则 ── -->
-      <section v-if="step === 3" class="panel step-panel">
-        <h3 class="step-title">📋 Rule — 规则</h3>
+      <!-- ── 规则 ── -->
+      <section class="panel step-panel">
+        <div class="section-header">
+          <h3 class="step-title">📋 Rule — 规则</h3>
+          <button class="section-copy-btn" @click="copySection(ruleSection, 'rule')">
+            {{ copiedSection === 'rule' ? '✓ 已复制' : '复制此段' }}
+          </button>
+        </div>
 
         <div class="quick-rules-bar">
           <p class="form-label" style="margin-bottom:6px">快速插入常用规则：</p>
@@ -344,9 +382,14 @@
         <button class="btn" style="width:100%;margin-top:6px" @click="addFinalRule">添加 FINAL 兜底</button>
       </section>
 
-      <!-- ── Step 4: 预览 & 导出 ── -->
-      <section v-if="step === 4" class="panel step-panel">
-        <h3 class="step-title">✅ 预览 & 导出</h3>
+      <!-- ── 预览 & 导出 ── -->
+      <section class="panel step-panel">
+        <div class="section-header">
+          <h3 class="step-title">✅ 预览 & 导出</h3>
+          <button class="section-copy-btn" @click="copySection(generatedConfig, 'all')">
+            {{ copiedSection === 'all' ? '✓ 已复制' : '复制全部' }}
+          </button>
+        </div>
 
         <div class="export-actions">
           <button class="btn btn-primary" @click="copyConfig">
@@ -363,13 +406,6 @@
 
         <pre class="config-preview">{{ generatedConfig }}</pre>
       </section>
-
-      <!-- 步骤导航 -->
-      <div class="step-nav-bar">
-        <button v-if="step > 0" class="btn" @click="step--">← 上一步</button>
-        <span class="step-nav-info">{{ step + 1 }} / {{ stepLabels.length }}</span>
-        <button v-if="step < stepLabels.length - 1" class="btn btn-primary" @click="step++">下一步 →</button>
-      </div>
 
       <!-- 已保存配置列表 -->
       <section v-if="savedConfigs.length" class="panel" style="margin:0 16px">
@@ -527,8 +563,7 @@ export default {
   data() {
     return {
       mode: 'generator',
-      step: 0,
-      stepLabels: ['General', '代理节点', '代理组', '规则', '预览导出'],
+      copiedSection: '',
 
       general: {
         loglevel: 'notify',
@@ -663,10 +698,8 @@ export default {
       return 'PROXY'
     },
 
-    generatedConfig() {
-      const lines = []
-
-      lines.push('[General]')
+    generalSection() {
+      const lines = ['[General]']
       lines.push(`loglevel = ${this.general.loglevel}`)
       lines.push(`dns-server = ${this.general.dns || '8.8.8.8, 1.1.1.1'}`)
       lines.push(`skip-proxy = ${this.general.skipProxy || '127.0.0.1, localhost, *.local'}`)
@@ -676,34 +709,43 @@ export default {
         lines.push(`http-listen = 0.0.0.0:${this.general.httpPort || 6152}`)
         lines.push(`socks5-listen = 0.0.0.0:${this.general.socksPort || 6153}`)
       }
-
-      if (this.proxies.length) {
-        lines.push('\n[Proxy]')
-        for (const p of this.proxies) {
-          const line = this.formatProxyLine(p)
-          if (line) lines.push(line)
-        }
-      }
-
-      if (this.proxyGroups.length) {
-        lines.push('\n[Proxy Group]')
-        for (const g of this.proxyGroups) {
-          lines.push(this.formatGroupLine(g))
-        }
-      }
-
-      if (this.rules.length) {
-        lines.push('\n[Rule]')
-        for (const r of this.rules) {
-          if (r.type === 'FINAL') {
-            lines.push(`FINAL,${r.policy}`)
-          } else if (r.value) {
-            lines.push(`${r.type},${r.value},${r.policy}`)
-          }
-        }
-      }
-
       return lines.join('\n')
+    },
+
+    proxySection() {
+      if (!this.proxies.length) return ''
+      const lines = ['[Proxy]']
+      for (const p of this.proxies) {
+        const line = this.formatProxyLine(p)
+        if (line) lines.push(line)
+      }
+      return lines.join('\n')
+    },
+
+    proxyGroupSection() {
+      if (!this.proxyGroups.length) return ''
+      const lines = ['[Proxy Group]']
+      for (const g of this.proxyGroups) lines.push(this.formatGroupLine(g))
+      return lines.join('\n')
+    },
+
+    ruleSection() {
+      if (!this.rules.length) return ''
+      const lines = ['[Rule]']
+      for (const r of this.rules) {
+        if (r.type === 'FINAL') lines.push(`FINAL,${r.policy}`)
+        else if (r.value) lines.push(`${r.type},${r.value},${r.policy}`)
+      }
+      return lines.join('\n')
+    },
+
+    generatedConfig() {
+      return [
+        this.generalSection,
+        this.proxySection,
+        this.proxyGroupSection,
+        this.ruleSection
+      ].filter(Boolean).join('\n\n')
     }
   },
 
@@ -763,19 +805,24 @@ export default {
       this.rules.push({ type, value, policy })
     },
 
-    async copyConfig() {
+    async copySection(text, key) {
+      if (!text) return
       try {
-        await navigator.clipboard.writeText(this.generatedConfig)
+        await navigator.clipboard.writeText(text)
       } catch {
         const el = document.createElement('textarea')
-        el.value = this.generatedConfig
+        el.value = text
         document.body.appendChild(el)
         el.select()
         document.execCommand('copy')
         document.body.removeChild(el)
       }
-      this.copied = true
-      setTimeout(() => { this.copied = false }, 2000)
+      this.copiedSection = key
+      setTimeout(() => { this.copiedSection = '' }, 2000)
+    },
+
+    async copyConfig() {
+      await this.copySection(this.generatedConfig, 'all')
     },
 
     downloadConfig() {
@@ -813,7 +860,6 @@ export default {
       this.proxyGroups = JSON.parse(JSON.stringify(c.proxyGroups || []))
       this.rules = JSON.parse(JSON.stringify(c.rules || []))
       this.saveName = saved.name
-      this.step = 0
       this.saveMsg = `✓ 已加载「${saved.name}」`
       setTimeout(() => { this.saveMsg = '' }, 2500)
     },
@@ -886,62 +932,48 @@ export default {
   border-color: var(--primary);
 }
 
-/* 步骤指示器 */
-.steps-bar {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 16px;
-  margin-bottom: 12px;
-  overflow-x: auto;
-  gap: 4px;
-}
-.step-dot-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-width: 44px;
-  cursor: default;
-}
-.step-dot-wrap.done { cursor: pointer; }
-.step-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--border, #e2e8f0);
-  color: var(--text-muted, #94a3b8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  transition: all 0.15s;
-}
-.step-dot-wrap.active .step-circle {
-  background: var(--primary);
-  color: #fff;
-}
-.step-dot-wrap.done .step-circle {
-  background: var(--primary);
-  color: #fff;
-  opacity: 0.65;
-}
-.step-name {
-  font-size: 10px;
-  color: var(--text-muted, #94a3b8);
-  white-space: nowrap;
-}
-.step-dot-wrap.active .step-name {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-/* 步骤面板 */
+/* 分段面板 */
 .step-panel { margin: 0 16px 12px; }
+
+/* 分段标题行 */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
 .step-title {
   font-size: 16px;
   font-weight: 600;
-  margin: 0 0 16px;
+  margin: 0;
+}
+.section-copy-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.section-copy-btn:hover { background: var(--primary); color: #fff; }
+
+/* 双语标注 */
+.hint {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  margin-left: 4px;
+  font-weight: 400;
+}
+.field-tip {
+  font-size: 11.5px;
+  color: var(--text-muted, #94a3b8);
+  margin: 3px 0 0;
+  display: block;
+  line-height: 1.4;
 }
 
 /* 表单 */
@@ -1064,16 +1096,6 @@ export default {
   white-space: pre;
   margin: 0;
 }
-
-/* 步骤导航 */
-.step-nav-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  margin-bottom: 16px;
-}
-.step-nav-info { font-size: 13px; color: var(--text-muted, #94a3b8); }
 
 /* 已保存 */
 .saved-item {
