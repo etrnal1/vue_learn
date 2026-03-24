@@ -70,6 +70,14 @@
               </div>
               <span class="sheet-arrow">›</span>
             </button>
+            <button type="button" class="sheet-item" :class="{ active: activeTab === 'surge' }" @click="goTab('surge')">
+              <span class="sheet-item-icon">⚡</span>
+              <div class="sheet-item-body">
+                <strong>Surge 配置</strong>
+                <p>快速生成代理配置文件 & 概念速查</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
             <button type="button" class="sheet-item" :class="{ active: activeTab === 'about' }" @click="goTab('about')">
               <span class="sheet-item-icon">📖</span>
               <div class="sheet-item-body">
@@ -1073,6 +1081,11 @@
         </div>
       </section>
     </div>
+
+    <!-- Surge 配置生成器 -->
+    <div v-if="activeTab === 'surge'" class="kb-scroll-area">
+      <SurgePage />
+    </div>
   </div>
 </template>
 
@@ -1087,6 +1100,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
+import SurgePage from './features/surge/SurgePage.vue'
 import { listNotes, createNote } from './features/notes/notesDb.js'
 import {
   knowledgeBaseDb,
@@ -1124,7 +1138,7 @@ function toSheetRows(rows) {
 
 export default {
   name: 'KnowledgeBaseStandaloneApp',
-  components: { PersonalNotes },
+  components: { PersonalNotes, SurgePage },
   data() {
     return {
       activeTab: 'kb',
@@ -1257,7 +1271,7 @@ export default {
       return idx >= 0 && idx < this.filteredDocs.length - 1 ? this.filteredDocs[idx + 1] : null
     },
     isMoreTabActive() {
-      return ['about', 'pwa', 'trash'].includes(this.activeTab)
+      return ['about', 'pwa', 'trash', 'surge'].includes(this.activeTab)
     },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
