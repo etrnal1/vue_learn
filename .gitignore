@@ -38,3 +38,4 @@ server/server/data/videos/thumbnails/
 *.mov
 *.flv
 *.mkv
+.gstack/

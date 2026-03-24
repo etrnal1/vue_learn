@@ -1212,4 +1212,70 @@ export default {
   padding: 0;
 }
 .btn-icon-sm:hover { background: #fee2e2; color: #ef4444; }
+
+/* ── 手机端响应式（≤480px） ── */
+@media (max-width: 480px) {
+  /* 两列表单改为单列 */
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* 分段标题行：标题小一点，按钮缩短 */
+  .section-header {
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .step-title {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .copy-sec-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  /* 规则行：换行布局 */
+  .rule-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  /* type select 和 policy select 各占一半 */
+  .select-compact {
+    flex: 1 1 calc(50% - 18px);
+    min-width: 0;
+    font-size: 11px;
+    padding: 6px 2px;
+  }
+  /* value input 占满整行 */
+  .input-compact {
+    flex: 1 1 100%;
+    order: 3;
+  }
+  /* 删除按钮放到最右 */
+  .rule-row .btn-icon-sm {
+    flex-shrink: 0;
+  }
+
+  /* 规则图例换行更紧凑 */
+  .rule-type-legend {
+    gap: 4px;
+  }
+  .legend-item {
+    font-size: 10.5px;
+  }
+
+  /* 节点/组卡片两列表单也变单列 */
+  .proxy-fields .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* 已保存配置：操作按钮换行 */
+  .saved-item {
+    flex-wrap: wrap;
+  }
+  .saved-item-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 </style>
