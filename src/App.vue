@@ -495,7 +495,8 @@ const tabLoaders = {
   flowManagement: () => import('./pages/workflow/FlowManagement.vue'),
   flowAutomation: () => import('./pages/workflow/FlowAutomation.vue'),
   streamingEngine: () => import('./pages/streaming-engine/PipelineEditor.vue'),
-  evopsych: () => import('./pages/EvoPsychPage.vue')
+  evopsych: () => import('./pages/EvoPsychPage.vue'),
+  screenRecorder: () => import('./pages/ScreenRecorder.vue')
 }
 
 function createAsyncPage(loader) {
@@ -560,6 +561,7 @@ const FlowManagement = createAsyncPage(tabLoaders.flowManagement)
 const FlowAutomation = createAsyncPage(tabLoaders.flowAutomation)
 const StreamingEngineEditor = createAsyncPage(tabLoaders.streamingEngine)
 const EvoPsychPage = createAsyncPage(tabLoaders.evopsych)
+const ScreenRecorder = createAsyncPage(tabLoaders.screenRecorder)
 const DEFAULT_PERMISSION_CONFIG = {
   roles: [
     { id: 'admin', label: '管理员' },
@@ -632,6 +634,7 @@ export default {
     AlbumManager,
     WikiCenter,
     EvoPsychPage,
+    ScreenRecorder,
     LogCenter,
     WeiboCrawler,
     ScheduledTaskManager,
@@ -685,6 +688,7 @@ export default {
         { id: 'album', label: '相册管理', roles: ['admin', 'operator'] },
         { id: 'wiki', label: '维基百科', roles: ['admin', 'operator', 'viewer'] },
         { id: 'evopsych', label: '🧬 进化心理学', roles: ['admin', 'operator', 'viewer'] },
+        { id: 'screenRecorder', label: '录屏工具', roles: ['admin', 'operator', 'viewer'] },
         { id: 'logs', label: '日志中心', roles: ['admin'] },
         { id: 'weibo', label: '微博抓取', roles: ['admin', 'operator'] },
         { id: 'scheduler', label: '定时任务', roles: ['admin'] },
@@ -911,6 +915,7 @@ export default {
         album: AlbumManager,
         wiki: WikiCenter,
         evopsych: EvoPsychPage,
+        screenRecorder: ScreenRecorder,
         logs: LogCenter,
         weibo: WeiboCrawler,
         scheduler: ScheduledTaskManager,
