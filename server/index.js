@@ -36,6 +36,7 @@ import dockerRouter from './routes/docker.js';
 import terminalRouter from './routes/terminal.js';
 import databaseRouter from './routes/database.js';
 import streamingEngineRouter from './routes/streamingEngine.js';
+import screenRecorderRouter from './routes/screenRecorder.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -57,7 +58,10 @@ const allowedOrigins = [
   'http://localhost:4000',
   'http://127.0.0.1:4000',
   'http://macdemac-mini.taileeb849.ts.net:5173',
-  'http://macdemac-mini.taileeb849.ts.net:5174'
+  'http://macdemac-mini.taileeb849.ts.net:5174',
+  'http://localhost:5200',
+  'http://127.0.0.1:5200',
+  'http://macdemac-mini.taileeb849.ts.net:5200'
 ];
 
 app.use(cors({
