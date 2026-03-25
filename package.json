@@ -20,7 +20,9 @@
     "prebuild": "node scripts/gen-git-log.js",
     "build": "vite build",
     "preview": "vite preview",
-    "git-log": "node scripts/gen-git-log.js"
+    "git-log": "node scripts/gen-git-log.js",
+    "screen-recorder:dev": "npm --prefix screen-recorder run dev",
+    "dev:all": "concurrently \"npm run server:test\" \"npm run client:test\" \"npm run screen-recorder:dev\""
   },
   "dependencies": {
     "@capacitor/cli": "^8.1.0",
