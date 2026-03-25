@@ -153,6 +153,7 @@ app.use('/api/docker', dockerRouter);
 app.use('/api/terminal', terminalRouter);
 app.use('/api/database', databaseRouter);
 app.use('/api/streaming-engine', streamingEngineRouter);
+app.use('/api/screen-recorder', screenRecorderRouter);
 
 // 404 处理
 app.use((req, res) => {
