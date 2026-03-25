@@ -1,0 +1,8 @@
+# 忽略实际录制文件和缩略图，只保留目录结构
+*
+!.gitignore
+!.gitkeep
+!tmp/
+!tmp/.gitkeep
+!thumbnails/
+!thumbnails/.gitkeep
