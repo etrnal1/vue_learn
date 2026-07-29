@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kb-pwa-v11'
+const CACHE_VERSION = 'kb-pwa-v12'
 const STATIC_CACHE = `knowledge-base-static-${CACHE_VERSION}`
 
 // 构建时由 vite 插件自动注入资源列表，不再运行时 fetch manifest
@@ -50,11 +50,61 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// ─── Web Share Target：接收系统分享的文件/文本，存入临时收件箱后交给页面处理 ───
+const SHARE_DB_NAME = 'kb-share-inbox'
+const SHARE_STORE_NAME = 'pendingShares'
+
+function openShareDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SHARE_DB_NAME, 1)
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(SHARE_STORE_NAME, { keyPath: 'id', autoIncrement: true })
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function handleShareTarget(event) {
+  try {
+    const formData = await event.request.formData()
+    const title = formData.get('title') || ''
+    const text = formData.get('text') || ''
+    const link = formData.get('url') || ''
+    const files = formData.getAll('file').filter((f) => f && typeof f.arrayBuffer === 'function' && f.size > 0)
+
+    const db = await openShareDb()
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SHARE_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(SHARE_STORE_NAME)
+      if (files.length) {
+        files.forEach((file) => {
+          store.add({ kind: 'file', name: file.name, type: file.type, size: file.size, file, title, text, link, createdAt: Date.now() })
+        })
+      } else if (title || text || link) {
+        store.add({ kind: 'text', title, text, link, createdAt: Date.now() })
+      }
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch (err) {
+    console.warn('[sw] share-target 处理失败:', err && err.message)
+  }
+  // 303 让浏览器用 GET 重新导航，避免 POST 表单重复提交
+  return Response.redirect('./index.html?shared=1', 303)
+}
+
 // ─── fetch：缓存优先 ───
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+
+  if (event.request.method === 'POST' && url.pathname.endsWith('/share-target')) {
+    event.respondWith(handleShareTarget(event))
+    return
+  }
+
   if (event.request.method !== 'GET') return
 
-  const url = new URL(event.request.url)
   if (url.origin !== self.location.origin) return
 
   // 导航请求 → 返回缓存的 index.html

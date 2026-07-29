@@ -28,6 +28,16 @@ knowledgeBaseDb.version(4).stores({
   folders: '++id, &name, sortOrder, createdAt'
 })
 
+// 版本 5: notes 增加 sourceDocId 索引，支持笔记 ↔ 文档双向关联
+knowledgeBaseDb.version(5).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt, sourceDocId',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============
@@ -75,7 +85,7 @@ export async function getNote(id) {
   return note
 }
 
-export async function createNote({ title, content = '', category = '', tags = [], isStarred = false, expiresAt = 0 }) {
+export async function createNote({ title, content = '', category = '', tags = [], isStarred = false, expiresAt = 0, sourceDocId = 0, sourceDocName = '' }) {
   const now = Date.now()
   const note = {
     title: title.trim(),
@@ -87,7 +97,10 @@ export async function createNote({ title, content = '', category = '', tags = []
     wordCount: content.length,
     createdAt: now,
     updatedAt: now,
-    deletedAt: 0
+    deletedAt: 0,
+    // 摘录/分享笔记的来源文档（0 或缺省表示无来源）
+    sourceDocId: sourceDocId || 0,
+    sourceDocName: sourceDocName || ''
   }
   const id = await db.notes.add(note)
 
@@ -206,6 +219,20 @@ export async function getStats() {
     .sort((a, b) => a.date.localeCompare(b.date))
 
   return { totalNotes, totalWords, starredCount, categories, tags, trendData, avgWordCount: totalNotes > 0 ? Math.round(totalWords / totalNotes) : 0 }
+}
+
+// ============ 笔记 ↔ 文档 双向关联 ============
+
+// 查询关联到某篇文档的所有未删除笔记（用于在文档阅读器里展示"关联笔记"）
+export async function getNotesByDocId(docId) {
+  if (!docId) return []
+  try {
+    const notes = await db.notes.where('sourceDocId').equals(docId).toArray()
+    return notes.filter(n => !n.deletedAt).sort((a, b) => b.createdAt - a.createdAt)
+  } catch (err) {
+    console.error('[notesDb] getNotesByDocId failed:', err)
+    return []
+  }
 }
 
 // ============ 获取所有标签 ============

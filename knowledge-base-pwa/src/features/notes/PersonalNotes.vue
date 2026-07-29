@@ -372,6 +372,7 @@
               <h2>{{ viewingNote.title }}</h2>
             </div>
             <div class="editor-head-actions">
+              <button v-if="viewingNote.sourceDocId" type="button" class="mini-btn" @click="goToSourceDoc(viewingNote)">📄 查看原文档</button>
               <button type="button" class="mini-btn" @click="editNote(viewingNote)">编辑</button>
               <button type="button" class="mini-btn" @click="shareNote(viewingNote)">分享</button>
               <button type="button" class="mini-btn danger" @click="doDelete(viewingNote)">删除</button>
@@ -387,6 +388,7 @@
             <span class="note-date">更新: {{ formatDate(viewingNote.updatedAt) }}</span>
             <span class="note-date">字数: {{ viewingNote.wordCount }}</span>
             <span v-if="viewingNote.isStarred" class="star-badge">★ 重要</span>
+            <span v-if="viewingNote.sourceDocId" class="note-cat-tag" title="此笔记摘录自某篇文档">🔗 {{ viewingNote.sourceDocName || '来源文档' }}</span>
           </div>
           <div class="note-detail-content">{{ viewingNote.content }}</div>
         </section>
@@ -405,11 +407,19 @@ import {
   listCategories,
   getAllTags,
   getStats,
-  exportNotes
+  exportNotes,
+  getNote
 } from './notesDb.js'
 
 export default {
   name: 'PersonalNotes',
+
+  props: {
+    // 从文档阅读器"关联笔记"面板跳转过来时，需要自动打开的笔记 id
+    focusNoteId: { type: Number, default: null }
+  },
+
+  emits: ['jump-to-doc', 'consumed-focus'],
 
   data() {
     return {
@@ -470,9 +480,31 @@ export default {
 
   async mounted() {
     await this.reload()
+    if (this.focusNoteId) await this.openFocusedNote()
+  },
+
+  watch: {
+    async focusNoteId(val) {
+      if (val) await this.openFocusedNote()
+    }
   },
 
   methods: {
+    // 从文档阅读器"关联笔记"面板跳转过来，自动打开指定笔记
+    async openFocusedNote() {
+      const note = await getNote(this.focusNoteId)
+      if (note) {
+        this.currentView = 'list'
+        this.viewingNote = note
+      } else {
+        alert('该笔记不存在或已被删除')
+      }
+      this.$emit('consumed-focus')
+    },
+    goToSourceDoc(note) {
+      if (!note?.sourceDocId) return
+      this.$emit('jump-to-doc', note.sourceDocId)
+    },
     async reload() {
       try {
         this.notes = await listNotes({

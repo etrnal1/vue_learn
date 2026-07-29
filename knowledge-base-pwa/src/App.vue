@@ -466,6 +466,9 @@
                 <button type="button" class="reader-menu-item" @click="openVersionPanel(); readerMenuOpen = false">
                   <span>⏱</span>版本历史
                 </button>
+                <button type="button" class="reader-menu-item" @click="openLinkedNotesPanel">
+                  <span>🔗</span>关联笔记{{ linkedNotes.length ? `（${linkedNotes.length}）` : '' }}
+                </button>
                 <div class="reader-menu-divider"></div>
                 <button type="button" class="reader-menu-item" @click="toggleTTS(); readerMenuOpen = false">
                   <span>{{ ttsPlaying ? '⏸' : '🔊' }}</span>{{ ttsPlaying ? '停止朗读' : '全文朗读' }}
@@ -671,6 +674,39 @@
         </div>
       </transition>
 
+      <!-- 关联笔记面板 -->
+      <transition name="sheet">
+        <div v-if="linkedNotesPanelOpen" class="version-overlay" @click.self="linkedNotesPanelOpen = false">
+          <div class="version-panel">
+            <div class="version-header">
+              <h3>关联笔记</h3>
+              <button type="button" class="mini-btn" @click="linkedNotesPanelOpen = false">✕</button>
+            </div>
+
+            <div v-if="linkedNotes.length === 0" class="empty compact" style="padding:20px">
+              <strong>暂无关联笔记</strong>
+              <p>在正文里划词选中文字，点击"摘录"即可生成一条关联到本文档的笔记。</p>
+            </div>
+            <div v-else class="version-list">
+              <button
+                v-for="note in linkedNotes"
+                :key="note.id"
+                type="button"
+                class="version-item"
+                style="width:100%;text-align:left;background:none;border:none;cursor:pointer"
+                @click="jumpToNote(note)"
+              >
+                <div class="version-dot"></div>
+                <div class="version-info">
+                  <strong>{{ note.title }}</strong>
+                  <span>{{ formatDate(note.createdAt) }} · {{ (note.content || '').slice(0, 40) }}</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+
       <!-- 选中文字操作弹窗 -->
       <div v-if="selectionPopup" class="selection-popup" :style="{ top: selectionPopup.y + 'px', left: selectionPopup.x + 'px' }">
         <button type="button" class="sel-btn" @click="highlightSelection">高亮</button>
@@ -704,7 +740,11 @@
 
     <!-- 个人笔记 -->
     <div v-if="activeTab === 'notes'" class="kb-scroll-area">
-      <PersonalNotes />
+      <PersonalNotes
+        :focus-note-id="pendingOpenNoteId"
+        @consumed-focus="pendingOpenNoteId = null"
+        @jump-to-doc="onJumpToDoc"
+      />
     </div>
 
     <!-- 备份迁移 -->
@@ -1101,7 +1141,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
 import SurgePage from './features/surge/SurgePage.vue'
-import { listNotes, createNote } from './features/notes/notesDb.js'
+import { listNotes, createNote, getNotesByDocId } from './features/notes/notesDb.js'
 import {
   knowledgeBaseDb,
   clearKnowledgeDocs,
@@ -1213,7 +1253,11 @@ export default {
       docVersions: [],
       diffView: null,
       versionMessage: '',
-      changelog: []
+      changelog: [],
+      // 笔记 ↔ 文档 双向关联
+      linkedNotes: [],
+      linkedNotesPanelOpen: false,
+      pendingOpenNoteId: null
     }
   },
   computed: {
@@ -1368,6 +1412,67 @@ export default {
       if (this.autoBackupEnabled) {
         this._setupAutoBackup()
       }
+      // 处理来自系统分享（Web Share Target）的待导入内容
+      if (new URLSearchParams(location.search).get('shared') === '1') {
+        await this.consumePendingShares()
+      }
+    },
+    // ─── Web Share Target：读取 sw.js 存到 kb-share-inbox 的待导入内容 ───
+    _openShareDb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('kb-share-inbox', 1)
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore('pendingShares', { keyPath: 'id', autoIncrement: true })
+        }
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+    },
+    async consumePendingShares() {
+      // 清理地址栏上的 ?shared=1，避免刷新时重复处理
+      history.replaceState(null, '', location.pathname)
+      try {
+        const db = await this._openShareDb()
+        const items = await new Promise((resolve, reject) => {
+          const tx = db.transaction('pendingShares', 'readonly')
+          const req = tx.objectStore('pendingShares').getAll()
+          req.onsuccess = () => resolve(req.result || [])
+          req.onerror = () => reject(req.error)
+        })
+        if (!items.length) return
+
+        const files = items.filter(item => item.kind === 'file' && item.file).map(item => item.file)
+        const textItems = items.filter(item => item.kind === 'text')
+
+        if (files.length) {
+          await this.importFiles(files)
+          this.activeTab = 'kb'
+        }
+        for (const item of textItems) {
+          const title = item.title || item.link || '分享内容'
+          const contentParts = [item.text, item.link].filter(Boolean)
+          await createNote({
+            title: '分享：' + title,
+            content: contentParts.join('\n\n') || '(无正文)',
+            category: '分享',
+            tags: ['分享']
+          })
+        }
+
+        // 清空收件箱
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('pendingShares', 'readwrite')
+          tx.objectStore('pendingShares').clear()
+          tx.oncomplete = resolve
+          tx.onerror = () => reject(tx.error)
+        })
+
+        if (files.length || textItems.length) {
+          alert(`已从系统分享导入 ${files.length} 个文件` + (textItems.length ? `，${textItems.length} 条分享笔记` : ''))
+        }
+      } catch (err) {
+        console.error('[share-target] 导入分享内容失败:', err)
+      }
     },
     openGlobalSearch() {
       this.globalSearchOpen = true
@@ -1470,11 +1575,43 @@ export default {
       if (!this.selectionPopup?.text) return
       const title = '摘录：' + (this.activeDoc?.name || '未知文档')
       const content = '> ' + this.selectionPopup.text + '\n\n— 来自《' + (this.activeDoc?.name || '') + '》'
-      await createNote({ title, content, category: '摘录', tags: ['摘录'] })
+      await createNote({
+        title,
+        content,
+        category: '摘录',
+        tags: ['摘录'],
+        sourceDocId: this.activeDoc?.id || 0,
+        sourceDocName: this.activeDoc?.name || ''
+      })
+      // 摘录后来源文档新增了一条关联笔记，刷新一下列表
+      if (this.activeDocId) this.loadLinkedNotes(this.activeDocId)
       this.selectionPopup = null
       window.getSelection()?.removeAllRanges()
       this.bookmarkToast = '已摘录到笔记'
       setTimeout(() => { this.bookmarkToast = '' }, 1500)
+    },
+    // ─── 关联笔记（笔记 ↔ 文档）───
+    async loadLinkedNotes(docId) {
+      this.linkedNotes = await getNotesByDocId(docId)
+    },
+    openLinkedNotesPanel() {
+      this.linkedNotesPanelOpen = true
+      this.readerMenuOpen = false
+    },
+    jumpToNote(note) {
+      this.linkedNotesPanelOpen = false
+      this.readerMenuOpen = false
+      this.pendingOpenNoteId = note.id
+      this.activeTab = 'notes'
+    },
+    onJumpToDoc(docId) {
+      const doc = this.docs.find(d => d.id === docId)
+      if (!doc) {
+        alert('原文档不存在或已被删除')
+        return
+      }
+      this.activeTab = 'kb'
+      this.openDoc(doc)
     },
     // ─── TTS 朗读 ───
     toggleTTS() {
@@ -2079,6 +2216,7 @@ export default {
       this.startReadingTimer()
       await setKnowledgeMeta('lastOpenedDocId', doc.id)
       this.restoreBookmark()
+      this.loadLinkedNotes(doc.id)
     },
     closeReader() {
       if (this.editMode) {
@@ -2093,6 +2231,8 @@ export default {
       this.readerOpen = false
       this.clearReaderSearch()
       this.readerProgress = 0
+      this.linkedNotesPanelOpen = false
+      this.linkedNotes = []
     },
     goDoc(doc) {
       if (!doc) return
@@ -2100,6 +2240,7 @@ export default {
       this.readerProgress = 0
       this.activeDocId = doc.id
       this.syncActiveSheet()
+      this.loadLinkedNotes(doc.id)
       this.$nextTick(() => {
         this.$refs.readerBody?.scrollTo({ top: 0 })
       })
