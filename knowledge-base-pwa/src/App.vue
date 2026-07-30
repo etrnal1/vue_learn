@@ -78,6 +78,14 @@
               </div>
               <span class="sheet-arrow">›</span>
             </button>
+            <button type="button" class="sheet-item" :class="{ active: activeTab === 'ai' }" @click="goTab('ai'); loadAiPanel()">
+              <span class="sheet-item-icon">🤖</span>
+              <div class="sheet-item-body">
+                <strong>AI 语义搜索</strong>
+                <p>按含义搜索文档，而不只是关键词</p>
+              </div>
+              <span class="sheet-arrow">›</span>
+            </button>
             <button type="button" class="sheet-item" :class="{ active: activeTab === 'about' }" @click="goTab('about')">
               <span class="sheet-item-icon">📖</span>
               <div class="sheet-item-body">
@@ -173,7 +181,7 @@
     </transition>
 
     <!-- 全局搜索浮动按钮 -->
-    <button v-if="!locked && !readerOpen && !globalSearchOpen" type="button" class="global-search-fab" @click="openGlobalSearch">🔍</button>
+    <button v-if="!locked && !readerOpen && !globalSearchOpen && activeTab !== 'ai'" type="button" class="global-search-fab" @click="openGlobalSearch">🔍</button>
 
     <!-- 全局搜索面板 -->
     <transition name="sheet">
@@ -238,6 +246,36 @@
           <span>{{ t.label }}</span>
         </div>
       </div>
+      <!-- 阅读打卡热力图 -->
+      <div class="heatmap-wrap">
+        <div class="section-head" style="margin-bottom:8px">
+          <div>
+            <p class="eyebrow">Streak</p>
+            <h2>阅读打卡</h2>
+          </div>
+        </div>
+        <div class="heatmap-grid">
+          <div v-for="(week, wi) in heatmapWeeks" :key="wi" class="heatmap-week">
+            <div
+              v-for="(day, di) in week"
+              :key="di"
+              class="heatmap-cell"
+              :class="day ? `level-${heatmapLevel(day.minutes)}` : 'empty-cell'"
+              :title="day ? `${day.key}：${day.minutes} 分钟` : ''"
+            ></div>
+          </div>
+        </div>
+        <div class="heatmap-legend">
+          <span>少</span>
+          <span class="heatmap-cell level-0"></span>
+          <span class="heatmap-cell level-1"></span>
+          <span class="heatmap-cell level-2"></span>
+          <span class="heatmap-cell level-3"></span>
+          <span class="heatmap-cell level-4"></span>
+          <span>多</span>
+        </div>
+      </div>
+
       <!-- 一键继续 -->
       <div v-if="lastReadDoc" class="continue-reading" @click="openDoc(lastReadDoc)">
         <div class="continue-icon">📖</div>
@@ -587,7 +625,7 @@
             <div v-if="activeDoc.parseWarnings?.length" class="warning">
               {{ activeDoc.parseWarnings.join('；') }}
             </div>
-            <article ref="readerContent" class="docx-content" v-html="activeDoc.contentHtml"></article>
+            <article ref="readerContent" class="docx-content" v-html="wikiLinkedContentHtml" @click="onReaderContentClick"></article>
           </div>
 
           <div v-else class="reader-block">
@@ -1126,6 +1164,201 @@
     <div v-if="activeTab === 'surge'" class="kb-scroll-area">
       <SurgePage />
     </div>
+
+    <!-- AI 语义搜索（只负责搜索本身，设置单独拆到 ai-settings 页面） -->
+    <div v-if="activeTab === 'ai'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AI Search</p>
+          <h1>AI 语义搜索</h1>
+          <p class="hero-text">按含义找文档，不只是关键词精确匹配。需要先去设置里选一个 embedding 来源并建立索引。</p>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn" @click="goTab('ai-settings')">⚙️ 来源 / 索引设置</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Index</p>
+            <h2>索引状态</h2>
+          </div>
+          <span class="pill">{{ aiIndexStats.docs }} 篇 / {{ aiIndexStats.chunks }} 段</span>
+        </div>
+        <p class="backup-desc" v-if="!aiIndexStats.chunks">
+          还没有索引。新增/编辑文档后会自动建索引，也可以去"来源 / 索引设置"手动重建。
+        </p>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Search</p>
+            <h2>语义搜索</h2>
+          </div>
+        </div>
+        <div class="ai-search-bar">
+          <input
+            v-model.trim="aiSearchKeyword"
+            class="input"
+            placeholder="用一句话描述你要找的内容..."
+            @keydown.enter="doAiSearch"
+            @focus="onAiSearchFocus"
+          />
+          <button type="button" class="btn btn-primary" :disabled="aiSearching" @click="doAiSearch">{{ aiSearching ? '搜索中...' : '搜索' }}</button>
+        </div>
+        <p v-if="aiSearchMsg" class="password-msg">{{ aiSearchMsg }}</p>
+        <div v-if="aiSearchResults.length" class="search-list" style="margin-top:12px">
+          <button
+            v-for="r in aiSearchResults"
+            :key="r.docId + '-' + r.chunkIndex"
+            type="button"
+            class="search-item"
+            @click="openAiResult(r)"
+          >
+            <div>
+              <strong>{{ r.docName }}</strong>
+              <p>{{ r.chunkText }}</p>
+            </div>
+            <span>{{ (r.score * 100).toFixed(0) }}%</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- AI 设置 - 入口页（只做导航，三块内容各自独立成页） -->
+    <div v-if="activeTab === 'ai-settings'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AI Settings</p>
+          <h1>Embedding 设置</h1>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn" @click="goTab('ai')">← 返回搜索</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <button type="button" class="ai-settings-nav-item" @click="goTab('ai-local')">
+          <span>本地模型</span>
+          <span class="ai-settings-nav-arrow">›</span>
+        </button>
+      </section>
+      <section class="panel" style="margin-top:16px">
+        <button type="button" class="ai-settings-nav-item" @click="goTab('ai-cloud')">
+          <span>云端 API</span>
+          <span class="ai-settings-nav-arrow">›</span>
+        </button>
+      </section>
+      <section class="panel" style="margin-top:16px">
+        <button type="button" class="ai-settings-nav-item" @click="goTab('ai-index')">
+          <span>索引建立</span>
+          <span class="ai-settings-nav-arrow">›</span>
+        </button>
+      </section>
+    </div>
+
+    <!-- AI 设置 - 本地模型 -->
+    <div v-if="activeTab === 'ai-local'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AI Settings</p>
+          <h1>本地模型</h1>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn" @click="goTab('ai-settings')">← 返回</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ai-radio-row">
+          <input id="ai-provider-local" type="radio" value="local" v-model="aiConfig.provider" />
+          <label for="ai-provider-local">使用本地模型</label>
+        </div>
+        <p class="ai-plain-desc">浏览器里跑轻量模型，数据完全不离开设备。首次使用要联网下载模型（约几十 MB），之后可离线用。</p>
+
+        <p class="ai-plain-label" style="margin-top:14px">下载状态</p>
+        <p class="ai-plain-desc">
+          {{ aiLocalModelStatus === 'ready' ? '模型已就绪（本次会话内）' : aiLocalModelStatus === 'loading' ? (aiLocalModelProgress || '加载中...') : aiLocalModelStatus === 'error' ? aiLocalModelProgress : '还不确定是否已下载' }}
+        </p>
+        <button
+          type="button"
+          class="btn btn-primary"
+          style="width:100%"
+          :disabled="aiLocalModelStatus === 'loading'"
+          @click="checkOrLoadLocalModel"
+        >{{ aiLocalModelStatus === 'ready' ? '重新检测' : '检测 / 下载模型' }}</button>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <button type="button" class="btn btn-primary" style="width:100%" @click="saveAiConfig">保存设置</button>
+        <p v-if="aiConfigMsg" class="password-msg">{{ aiConfigMsg }}</p>
+      </section>
+    </div>
+
+    <!-- AI 设置 - 云端 API -->
+    <div v-if="activeTab === 'ai-cloud'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AI Settings</p>
+          <h1>云端 API</h1>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn" @click="goTab('ai-settings')">← 返回</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ai-radio-row">
+          <input id="ai-provider-cloud" type="radio" value="cloud" v-model="aiConfig.provider" />
+          <label for="ai-provider-cloud">使用云端 API</label>
+        </div>
+        <p class="ai-plain-desc">调用你自己的 OpenAI 兼容 embedding 接口，效果通常更好，但会把文档内容发送到你填写的地址，且可能产生调用费用。</p>
+        <p class="ai-plain-desc">注意：选了云端 API 后，新增/编辑文档会自动调用这个接口生成索引，每次都会产生请求（可能产生费用），不需要每次手动确认。</p>
+
+        <p class="ai-plain-label" style="margin-top:14px">API Base URL</p>
+        <input v-model.trim="aiConfig.cloud.baseUrl" class="input" placeholder="例如 https://api.openai.com/v1" />
+
+        <p class="ai-plain-label" style="margin-top:10px">API Key</p>
+        <input v-model.trim="aiConfig.cloud.apiKey" type="password" class="input" placeholder="sk-..." />
+
+        <p class="ai-plain-label" style="margin-top:10px">模型名称</p>
+        <input v-model.trim="aiConfig.cloud.model" class="input" placeholder="text-embedding-3-small" />
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <button type="button" class="btn btn-primary" style="width:100%" @click="saveAiConfig">保存设置</button>
+        <p v-if="aiConfigMsg" class="password-msg">{{ aiConfigMsg }}</p>
+      </section>
+    </div>
+
+    <!-- AI 设置 - 索引建立 -->
+    <div v-if="activeTab === 'ai-index'" class="kb-scroll-area">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AI Settings</p>
+          <h1>索引建立</h1>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn" @click="goTab('ai-settings')">← 返回</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="ai-plain-label">当前状态</p>
+        <p class="ai-plain-desc">已索引 {{ aiIndexStats.docs }} 篇文档 / {{ aiIndexStats.chunks }} 段。</p>
+        <p class="ai-plain-desc">索引会把每篇文档切成小段落，逐段生成向量存起来，语义搜索靠比对向量实现。现在新增、编辑、恢复文档时会自动在后台更新索引，删除文档也会自动清理对应索引，不用手动操作。</p>
+        <p class="ai-plain-desc">如果切换过 embedding 来源（本地/云端），或者想确保所有文档都是最新索引，可以在这里手动全量重建一次：</p>
+        <button type="button" class="btn btn-primary" style="width:100%" :disabled="aiIndexing || !docs.length" @click="rebuildAiIndex">
+          {{ aiIndexing ? '索引中...' : '全量重建索引' }}
+        </button>
+        <p v-if="aiIndexing" class="ai-plain-desc">{{ aiIndexProgress.done }} / {{ aiIndexProgress.total }} · {{ aiIndexProgress.name }}</p>
+      </section>
+    </div>
+
+    <!-- 图片放大器（全局，文档正文里的图片点击后弹出） -->
+    <ImageLightbox v-model:src="lightboxSrc" />
   </div>
 </template>
 
@@ -1141,6 +1374,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).href
 import PersonalNotes from './features/notes/PersonalNotes.vue'
 import SurgePage from './features/surge/SurgePage.vue'
+import ImageLightbox from './components/ImageLightbox.vue'
 import { listNotes, createNote, getNotesByDocId } from './features/notes/notesDb.js'
 import {
   knowledgeBaseDb,
@@ -1167,6 +1401,18 @@ import {
   rollbackDocVersion,
   deleteDocVersion
 } from './features/knowledge-base/knowledgeBaseDb.js'
+import {
+  getEmbedConfig,
+  setEmbedConfig,
+  buildAllIndex,
+  buildDocIndex,
+  getIndexStats,
+  semanticSearch,
+  removeDocIndex,
+  clearAllIndex,
+  preloadLocalModel,
+  isLocalModelLoaded
+} from './features/knowledge-base/semanticSearch.js'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -1178,7 +1424,7 @@ function toSheetRows(rows) {
 
 export default {
   name: 'KnowledgeBaseStandaloneApp',
-  components: { PersonalNotes, SurgePage },
+  components: { PersonalNotes, SurgePage, ImageLightbox },
   data() {
     return {
       activeTab: 'kb',
@@ -1236,6 +1482,7 @@ export default {
       highlights: {},
       selectionPopup: null,
       readingStats: { today: 0, week: [], sessionStart: 0 },
+      readingStatsAll: {},
       folders: [],
       activeFolderId: null,
       folderPanelOpen: false,
@@ -1257,7 +1504,23 @@ export default {
       // 笔记 ↔ 文档 双向关联
       linkedNotes: [],
       linkedNotesPanelOpen: false,
-      pendingOpenNoteId: null
+      pendingOpenNoteId: null,
+      // 图片放大器
+      lightboxSrc: '',
+
+      // AI 语义搜索
+      aiConfig: { provider: 'local', localModel: 'Xenova/all-MiniLM-L6-v2', cloud: { baseUrl: '', apiKey: '', model: 'text-embedding-3-small' } },
+      aiConfigMsg: '',
+      aiIndexStats: { chunks: 0, docs: 0 },
+      aiIndexing: false,
+      aiIndexProgress: { done: 0, total: 0, name: '' },
+      aiSearchKeyword: '',
+      aiSearchResults: [],
+      aiSearching: false,
+      aiSearchMsg: '',
+      // 本地模型下载/加载状态：unknown | loading | ready | error
+      aiLocalModelStatus: 'unknown',
+      aiLocalModelProgress: ''
     }
   },
   computed: {
@@ -1277,6 +1540,19 @@ export default {
     },
     activeDoc() {
       return this.docs.find((doc) => doc.id === this.activeDocId) || null
+    },
+    // 把正文里的 [[文档名]] 语法转成可点击的 wiki 式互链
+    wikiLinkedContentHtml() {
+      const html = this.activeDoc?.contentHtml || ''
+      if (!html) return html
+      return html.replace(/\[\[([^\[\]]{1,80})\]\]/g, (match, rawName) => {
+        const name = rawName.trim()
+        if (!name) return match
+        const escaped = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        const exists = !!this.findDocByLooseName(name)
+        const cls = exists ? 'wiki-link' : 'wiki-link wiki-link-missing'
+        return `<a href="#" class="${cls}" data-wiki-name="${escaped}" title="${exists ? '跳转到《' + escaped + '》' : '未找到匹配的文档'}">[[${escaped}]]</a>`
+      })
     },
     activeSheet() {
       const fallback = { headers: [], rows: [] }
@@ -1315,7 +1591,7 @@ export default {
       return idx >= 0 && idx < this.filteredDocs.length - 1 ? this.filteredDocs[idx + 1] : null
     },
     isMoreTabActive() {
-      return ['about', 'pwa', 'trash', 'surge'].includes(this.activeTab)
+      return ['about', 'pwa', 'trash', 'surge', 'ai', 'ai-settings', 'ai-local', 'ai-cloud', 'ai-index'].includes(this.activeTab)
     },
     docCounts() {
       return this.docs.reduce((acc, doc) => {
@@ -1347,6 +1623,31 @@ export default {
         .filter(d => this.bookmarks[d.id])
         .sort((a, b) => (this.bookmarks[b.id]?.updatedAt || 0) - (this.bookmarks[a.id]?.updatedAt || 0))
       return withBookmark.slice(0, 8)
+    },
+    // 最近 14 周（98 天）的阅读打卡数据，按周分列，周日在最上面（GitHub 贡献图风格）
+    heatmapWeeks() {
+      const totalDays = 98
+      const now = new Date()
+      const days = []
+      for (let i = totalDays - 1; i >= 0; i--) {
+        const d = new Date(now)
+        d.setDate(now.getDate() - i)
+        const key = d.toDateString()
+        const minutes = Math.round((this.readingStatsAll[key] || 0) / 60000)
+        days.push({ key, minutes })
+      }
+      const firstDow = new Date(days[0].key).getDay()
+      const weeks = []
+      let week = new Array(firstDow).fill(null)
+      for (const d of days) {
+        week.push(d)
+        if (week.length === 7) { weeks.push(week); week = [] }
+      }
+      if (week.length) {
+        while (week.length < 7) week.push(null)
+        weeks.push(week)
+      }
+      return weeks
     },
     diagSummary() {
       const d = this.diag
@@ -1416,6 +1717,8 @@ export default {
       if (new URLSearchParams(location.search).get('shared') === '1') {
         await this.consumePendingShares()
       }
+      // 提前加载 AI 语义搜索的配置和索引统计
+      this.loadAiPanel().catch(() => {})
     },
     // ─── Web Share Target：读取 sw.js 存到 kb-share-inbox 的待导入内容 ───
     _openShareDb() {
@@ -1604,6 +1907,33 @@ export default {
       this.pendingOpenNoteId = note.id
       this.activeTab = 'notes'
     },
+    // ─── wiki 式文档互链 [[文档名]] ───
+    findDocByLooseName(name) {
+      const target = String(name || '').trim().toLowerCase()
+      if (!target) return null
+      return this.docs.find(d => {
+        const full = d.name.toLowerCase()
+        const noExt = full.replace(/\.[^.]+$/, '')
+        return full === target || noExt === target
+      }) || null
+    },
+    onReaderContentClick(event) {
+      // 点图片 → 打开放大器
+      if (event.target.tagName === 'IMG') {
+        this.lightboxSrc = event.target.currentSrc || event.target.src
+        return
+      }
+      const link = event.target.closest?.('.wiki-link')
+      if (!link) return
+      event.preventDefault()
+      const name = link.getAttribute('data-wiki-name') || ''
+      const doc = this.findDocByLooseName(name)
+      if (!doc) {
+        alert(`未找到名为"${name}"的文档（互链按文档名匹配，忽略扩展名）`)
+        return
+      }
+      this.goDoc(doc)
+    },
     onJumpToDoc(docId) {
       const doc = this.docs.find(d => d.id === docId)
       if (!doc) {
@@ -1777,7 +2107,11 @@ export default {
 
         // 保存编辑后的版本快照
         const updated = this.docs.find(d => d.id === doc.id)
-        if (updated) await saveDocVersion(updated, '编辑保存')
+        if (updated) {
+          await saveDocVersion(updated, '编辑保存')
+          // 内容变了，自动重新索引这一篇（后台静默进行）
+          this.autoIndexDoc(updated)
+        }
 
         this.editMode = false
         this.editContent = ''
@@ -1879,11 +2213,21 @@ export default {
       saved[today] = (saved[today] || 0) + elapsed
       localStorage.setItem('kb-reading-stats', JSON.stringify(saved))
       this.readingStats.today = saved[today]
+      this.readingStatsAll = saved
     },
     loadReadingStats() {
       const saved = JSON.parse(localStorage.getItem('kb-reading-stats') || '{}')
       const today = new Date().toDateString()
       this.readingStats.today = saved[today] || 0
+      this.readingStatsAll = saved
+    },
+    // ─── 阅读打卡热力图 ───
+    heatmapLevel(minutes) {
+      if (!minutes) return 0
+      if (minutes < 10) return 1
+      if (minutes < 30) return 2
+      if (minutes < 60) return 3
+      return 4
     },
     toggleTheme() {
       this.darkMode = !this.darkMode
@@ -1896,6 +2240,126 @@ export default {
     goTab(id) {
       this.activeTab = id
       this.moreMenuOpen = false
+    },
+    // ─── AI 语义搜索 ───
+    async loadAiPanel() {
+      this.aiConfig = await getEmbedConfig()
+      this.aiIndexStats = await getIndexStats()
+      // 如果本地模型这个会话里已经加载过了（比如之前搜索时自动下载过），
+      // 直接同步状态，避免又显示"还不确定是否已下载"
+      if (this.aiConfig.provider === 'local' && isLocalModelLoaded(this.aiConfig.localModel)) {
+        this.aiLocalModelStatus = 'ready'
+      }
+    },
+    // 单篇文档自动建索引：导入新文档 / 编辑保存后调用，静默进行，不打断当前操作。
+    // 用的是 embedTexts 里已有的懒加载逻辑，本地模型没下载过的话会在这里自动触发下载。
+    async autoIndexDoc(doc) {
+      if (!doc) return
+      try {
+        await buildDocIndex(doc)
+        this.aiIndexStats = await getIndexStats()
+      } catch (err) {
+        console.warn('[auto-index] 自动索引失败:', doc?.name, err)
+      }
+    },
+    async saveAiConfig() {
+      await setEmbedConfig(JSON.parse(JSON.stringify(this.aiConfig)))
+      this.aiConfigMsg = '✅ 已保存'
+      setTimeout(() => { this.aiConfigMsg = '' }, 1500)
+    },
+    // 手动"检测/下载模型"：主动触发一次本地模型加载，让用户能看到下载进度和最终状态，
+    // 而不是等到真正搜索/建索引时才第一次悄悄触发下载
+    async checkOrLoadLocalModel() {
+      this.aiLocalModelStatus = 'loading'
+      this.aiLocalModelProgress = '正在连接...'
+      try {
+        await preloadLocalModel(this.aiConfig.localModel, (event) => {
+          if (!event) return
+          if (event.status === 'progress' && event.file) {
+            const pct = event.progress ? event.progress.toFixed(0) : '0'
+            this.aiLocalModelProgress = `下载中 ${event.file}：${pct}%`
+          } else if (event.status === 'ready' || event.status === 'done') {
+            this.aiLocalModelProgress = '处理中...'
+          } else if (event.file) {
+            this.aiLocalModelProgress = `${event.status || '准备中'}：${event.file}`
+          }
+        })
+        this.aiLocalModelStatus = 'ready'
+        this.aiLocalModelProgress = '模型已就绪，可以离线使用'
+      } catch (err) {
+        this.aiLocalModelStatus = 'error'
+        this.aiLocalModelProgress = '加载失败: ' + (err.message || '未知错误')
+      }
+    },
+    // 手机上搜索框获得焦点、键盘弹出后，把输入框滚动到可见区域，
+    // 避免下面紧挨着的"搜索"按钮被键盘挡住
+    onAiSearchFocus(event) {
+      const el = event.target
+      setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 350)
+    },
+    async rebuildAiIndex() {
+      if (this.aiConfig.provider === 'cloud') {
+        if (!window.confirm(`将把 ${this.docs.length} 篇文档的内容发送到你填写的 API 地址生成向量，确定继续吗？`)) return
+      }
+      await this.saveAiConfig()
+      this.aiIndexing = true
+      this.aiIndexProgress = { done: 0, total: this.docs.length, name: '' }
+      try {
+        await buildAllIndex(this.docs, (done, total, name) => {
+          this.aiIndexProgress = { done, total, name }
+        })
+        this.aiIndexStats = await getIndexStats()
+      } catch (err) {
+        alert('建立索引失败: ' + (err.message || '未知错误'))
+      } finally {
+        this.aiIndexing = false
+      }
+    },
+    async doAiSearch() {
+      if (!this.aiSearchKeyword.trim()) return
+      this.aiSearching = true
+      this.aiSearchMsg = ''
+      try {
+        // 本地模型还没加载过的话，就地下载，不用先切去设置页——
+        // 进度直接显示在搜索结果上方，下载完接着自动搜索
+        if (this.aiConfig.provider === 'local' && this.aiLocalModelStatus !== 'ready') {
+          this.aiLocalModelStatus = 'loading'
+          this.aiSearchMsg = '首次使用需要下载本地模型，请稍候...'
+          try {
+            await preloadLocalModel(this.aiConfig.localModel, (event) => {
+              if (!event) return
+              if (event.status === 'progress' && event.file) {
+                const pct = event.progress ? event.progress.toFixed(0) : '0'
+                this.aiSearchMsg = `下载模型中 ${event.file}：${pct}%`
+              }
+            })
+            this.aiLocalModelStatus = 'ready'
+            this.aiSearchMsg = ''
+          } catch (err) {
+            this.aiLocalModelStatus = 'error'
+            this.aiSearchMsg = '模型加载失败: ' + (err.message || '未知错误')
+            return
+          }
+        }
+        this.aiSearchResults = await semanticSearch(this.aiSearchKeyword, 10)
+        if (!this.aiSearchResults.length) this.aiSearchMsg = '没有匹配结果，先确认已经建立过索引'
+      } catch (err) {
+        this.aiSearchMsg = '搜索失败: ' + (err.message || '未知错误')
+        this.aiSearchResults = []
+      } finally {
+        this.aiSearching = false
+      }
+    },
+    openAiResult(r) {
+      const doc = this.docs.find(d => d.id === r.docId)
+      if (!doc) {
+        alert('原文档不存在，可能已被删除，建议重建索引')
+        return
+      }
+      this.activeTab = 'kb'
+      this.openDoc(doc)
     },
     applySwUpdate() {
       const sw = window.__swUpdate?.worker
@@ -2072,6 +2536,8 @@ export default {
             if (versions.length === 0) {
               await saveDocVersion(doc, '初始导入')
             }
+            // 自动建索引，不等待完成（后台静默进行，不卡住导入流程）
+            this.autoIndexDoc(doc)
           }
         }
         await this.refreshStorageInfo()
@@ -2418,6 +2884,7 @@ export default {
       await setKnowledgeMeta('trashDocs', this.trashDocs)
       await setKnowledgeMeta('trashDoc_' + doc.id, doc)
       await removeKnowledgeDoc(doc.id)
+      await removeDocIndex(doc.id)
       await this.reloadDocs()
       await this.refreshStorageInfo()
     },
@@ -2430,17 +2897,20 @@ export default {
       await setKnowledgeMeta('trashDoc_' + item.id, null)
       await this.reloadDocs()
       await this.refreshStorageInfo()
+      this.autoIndexDoc(fullDoc)
     },
     async permanentDeleteTrash(item) {
       if (!window.confirm(`永久删除”${item.name}”？此操作不可恢复。`)) return
       this.trashDocs = this.trashDocs.filter(d => d.id !== item.id)
       await setKnowledgeMeta('trashDocs', this.trashDocs)
       await setKnowledgeMeta('trashDoc_' + item.id, null)
+      await removeDocIndex(item.id)
     },
     async emptyTrash() {
       if (!window.confirm('清空回收站？所有文档将永久删除。')) return
       for (const item of this.trashDocs) {
         await setKnowledgeMeta('trashDoc_' + item.id, null)
+        await removeDocIndex(item.id)
       }
       this.trashDocs = []
       await setKnowledgeMeta('trashDocs', [])
@@ -2454,6 +2924,7 @@ export default {
           createdAt: doc.createdAt, deletedAt: Date.now()
         })
         await setKnowledgeMeta('trashDoc_' + doc.id, doc)
+        await removeDocIndex(doc.id)
       }
       if (this.trashDocs.length > 100) this.trashDocs = this.trashDocs.slice(-100)
       await setKnowledgeMeta('trashDocs', this.trashDocs)

@@ -38,6 +38,29 @@ knowledgeBaseDb.version(5).stores({
   folders: '++id, &name, sortOrder, createdAt'
 })
 
+// 版本 6: 添加笔记版本历史表（与 docVersions 同构）
+knowledgeBaseDb.version(6).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt, sourceDocId',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt',
+  noteVersions: '++id, noteId, version, createdAt'
+})
+
+// 版本 7: 添加文档语义搜索的向量索引表
+knowledgeBaseDb.version(7).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt, sourceDocId',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt',
+  noteVersions: '++id, noteId, version, createdAt',
+  docEmbeddings: '++id, docId, provider, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============
@@ -141,6 +164,62 @@ export async function toggleStar(id) {
   if (!note || note.deletedAt) return null
   await db.notes.update(id, { isStarred: !note.isStarred, updatedAt: Date.now() })
   return db.notes.get(id)
+}
+
+// ============ 笔记版本管理（与文档 docVersions 同构） ============
+
+export async function saveNoteVersion(note, message = '') {
+  const noteId = Number(note.id)
+  const title = String(note.title || '')
+  const content = String(note.content || '')
+  const category = String(note.category || '')
+  let tags = []
+  try { tags = JSON.parse(JSON.stringify(note.tags || [])) } catch (_) {}
+
+  const versions = await db.noteVersions.where('noteId').equals(noteId).toArray()
+  const nextVer = versions.length + 1
+  await db.noteVersions.add({
+    noteId,
+    version: nextVer,
+    message: String(message || `v${nextVer}`),
+    title,
+    content,
+    category,
+    tags,
+    createdAt: Date.now()
+  })
+  // 最多保留 50 个版本
+  if (versions.length >= 50) {
+    const oldest = versions.sort((a, b) => a.createdAt - b.createdAt)[0]
+    await db.noteVersions.delete(oldest.id)
+  }
+  return nextVer
+}
+
+export async function listNoteVersions(noteId) {
+  const versions = await db.noteVersions.where('noteId').equals(noteId).toArray()
+  return versions.sort((a, b) => b.version - a.version)
+}
+
+export async function getNoteVersion(versionId) {
+  return db.noteVersions.get(versionId)
+}
+
+export async function rollbackNoteVersion(noteId, versionId) {
+  const ver = await db.noteVersions.get(versionId)
+  if (!ver) throw new Error('版本不存在')
+  await db.notes.update(noteId, {
+    title: ver.title,
+    content: ver.content,
+    category: ver.category,
+    tags: ver.tags,
+    wordCount: ver.content.length,
+    updatedAt: Date.now()
+  })
+}
+
+export async function deleteNoteVersion(versionId) {
+  await db.noteVersions.delete(versionId)
 }
 
 // ============ 分类 ============

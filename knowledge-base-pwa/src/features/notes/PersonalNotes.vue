@@ -212,6 +212,8 @@
               <h2>{{ editingNote ? '编辑笔记' : '新建笔记' }}</h2>
             </div>
             <div class="editor-head-actions">
+              <button v-if="editingNote" type="button" class="mini-btn" @click="openNoteVersionPanel(editingNote)">⏱ 版本历史</button>
+              <button type="button" class="mini-btn" :class="{ active: previewMode }" @click="togglePreview">{{ previewMode ? '✏️ 编辑' : '👁 预览' }}</button>
               <button type="button" class="mini-btn" @click="cancelEdit">取消</button>
               <button type="button" class="mini-btn primary" @click="saveNote">保存</button>
             </div>
@@ -225,11 +227,21 @@
               placeholder="笔记标题..."
             />
 
+            <div v-if="!previewMode" class="editor-media-toolbar">
+              <button type="button" class="mini-btn" @click="$refs.imageFileInput?.click()">🖼 插入图片</button>
+              <button type="button" class="mini-btn" @click="openDoodle">✍️ 手绘</button>
+              <input ref="imageFileInput" type="file" accept="image/*" class="hidden-input" @change="onImageFileChange" />
+            </div>
+
             <textarea
+              v-if="!previewMode"
+              ref="contentTextarea"
               v-model="form.content"
               class="input editor-content"
-              placeholder="输入笔记内容..."
+              placeholder="输入笔记内容...（支持 Markdown 语法，点击「预览」查看渲染效果；也可以直接粘贴图片）"
+              @paste="onContentPaste"
             ></textarea>
+            <div v-else class="editor-content docx-content markdown-preview" v-html="formPreviewHtml" @click="onContentClick"></div>
 
             <div class="editor-meta">
               <div class="form-group">
@@ -373,6 +385,7 @@
             </div>
             <div class="editor-head-actions">
               <button v-if="viewingNote.sourceDocId" type="button" class="mini-btn" @click="goToSourceDoc(viewingNote)">📄 查看原文档</button>
+              <button type="button" class="mini-btn" @click="openNoteVersionPanel(viewingNote)">⏱ 版本历史</button>
               <button type="button" class="mini-btn" @click="editNote(viewingNote)">编辑</button>
               <button type="button" class="mini-btn" @click="shareNote(viewingNote)">分享</button>
               <button type="button" class="mini-btn danger" @click="doDelete(viewingNote)">删除</button>
@@ -390,14 +403,85 @@
             <span v-if="viewingNote.isStarred" class="star-badge">★ 重要</span>
             <span v-if="viewingNote.sourceDocId" class="note-cat-tag" title="此笔记摘录自某篇文档">🔗 {{ viewingNote.sourceDocName || '来源文档' }}</span>
           </div>
-          <div class="note-detail-content">{{ viewingNote.content }}</div>
+          <div class="note-detail-content docx-content" v-html="renderMarkdown(viewingNote.content)" @click="onContentClick"></div>
         </section>
       </main>
     </section>
+
+    <!-- 手绘涂鸦弹窗 -->
+    <transition name="fade">
+      <div v-if="doodleOpen" class="sheet-overlay" style="z-index:8000" @click.self="closeDoodle">
+        <div class="doodle-popup">
+          <h3 style="margin:0 0 8px;font-size:15px">手绘涂鸦</h3>
+          <canvas
+            ref="doodleCanvas"
+            class="doodle-canvas"
+            @mousedown="startDoodle"
+            @mousemove="moveDoodle"
+            @mouseup="endDoodle"
+            @mouseleave="endDoodle"
+            @touchstart="startDoodle"
+            @touchmove="moveDoodle"
+            @touchend="endDoodle"
+          ></canvas>
+          <div class="doodle-toolbar">
+            <button
+              v-for="c in ['#0f172a', '#dc2626', '#0f766e', '#2563eb', '#d97706']"
+              :key="c"
+              type="button"
+              class="doodle-color-btn"
+              :class="{ active: doodleColor === c }"
+              :style="{ background: c }"
+              @click="doodleColor = c"
+            ></button>
+            <button type="button" class="mini-btn" @click="clearDoodle">清空</button>
+          </div>
+          <div class="backup-actions" style="margin-top:10px">
+            <button type="button" class="btn" @click="closeDoodle">取消</button>
+            <button type="button" class="btn btn-primary" @click="insertDoodle">插入笔记</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 笔记版本历史面板 -->
+    <transition name="sheet">
+      <div v-if="noteVersionsPanelOpen" class="version-overlay" @click.self="noteVersionsPanelOpen = false">
+        <div class="version-panel">
+          <div class="version-header">
+            <h3>笔记版本历史</h3>
+            <button type="button" class="mini-btn" @click="noteVersionsPanelOpen = false">✕</button>
+          </div>
+
+          <div v-if="noteVersions.length === 0" class="empty compact" style="padding:20px">
+            <strong>暂无版本记录</strong>
+            <p>每次保存笔记都会自动生成一条版本快照。</p>
+          </div>
+          <div v-else class="version-list">
+            <div v-for="(ver, idx) in noteVersions" :key="ver.id" class="version-item">
+              <div class="version-dot" :class="{ first: idx === 0 }"></div>
+              <div class="version-info">
+                <strong>v{{ ver.version }} · {{ ver.message }}</strong>
+                <span>{{ formatDate(ver.createdAt) }} · {{ (ver.content || '').length }} 字</span>
+              </div>
+              <div class="version-actions">
+                <button v-if="idx > 0" type="button" class="mini-btn" @click="doRollbackNote(ver)">回滚</button>
+                <button type="button" class="mini-btn danger" @click="doDeleteNoteVersion(ver)">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 图片放大器 -->
+    <ImageLightbox v-model:src="lightboxSrc" />
   </div>
 </template>
 
 <script>
+import { marked } from 'marked'
+import ImageLightbox from '../../components/ImageLightbox.vue'
 import {
   listNotes,
   createNote,
@@ -408,11 +492,17 @@ import {
   getAllTags,
   getStats,
   exportNotes,
-  getNote
+  getNote,
+  saveNoteVersion,
+  listNoteVersions,
+  rollbackNoteVersion,
+  deleteNoteVersion
 } from './notesDb.js'
 
 export default {
   name: 'PersonalNotes',
+
+  components: { ImageLightbox },
 
   props: {
     // 从文档阅读器"关联笔记"面板跳转过来时，需要自动打开的笔记 id
@@ -443,6 +533,21 @@ export default {
 
       form: { title: '', content: '', category: '', tags: [], isStarred: false, expiresAt: '' },
       newTagInput: '',
+      previewMode: false,
+
+      // 笔记版本历史
+      noteVersionsPanelOpen: false,
+      noteVersions: [],
+      versioningNoteId: null,
+
+      // 图片粘贴 / 手绘涂鸦
+      doodleOpen: false,
+      doodleColor: '#0f766e',
+      _doodleCtx: null,
+      _doodleDrawing: false,
+
+      // 图片放大器
+      lightboxSrc: '',
 
       _searchTimer: null
     }
@@ -475,6 +580,10 @@ export default {
         ...c,
         count: catMap[c.name] || 0
       }))
+    },
+
+    formPreviewHtml() {
+      return this.renderMarkdown(this.form.content)
     }
   },
 
@@ -504,6 +613,142 @@ export default {
     goToSourceDoc(note) {
       if (!note?.sourceDocId) return
       this.$emit('jump-to-doc', note.sourceDocId)
+    },
+    // 笔记支持 Markdown 渲染（跟文档阅读器里 .md 文件用同一套 marked 解析）
+    renderMarkdown(text) {
+      try {
+        return marked(text || '') || '<p></p>'
+      } catch (_) {
+        return `<p>${(text || '').replace(/</g, '&lt;')}</p>`
+      }
+    },
+    togglePreview() {
+      this.previewMode = !this.previewMode
+    },
+    // 笔记里的图片（插入的图/手绘/粘贴的图）点击放大
+    onContentClick(event) {
+      if (event.target.tagName === 'IMG') {
+        this.lightboxSrc = event.target.currentSrc || event.target.src
+      }
+    },
+    // ─── 图片粘贴 / 插入 ───
+    insertAtCursor(text) {
+      const el = this.$refs.contentTextarea
+      if (!el) {
+        this.form.content += text
+        return
+      }
+      const start = el.selectionStart ?? this.form.content.length
+      const end = el.selectionEnd ?? this.form.content.length
+      this.form.content = this.form.content.slice(0, start) + text + this.form.content.slice(end)
+      this.$nextTick(() => {
+        const pos = start + text.length
+        el.focus()
+        el.setSelectionRange(pos, pos)
+      })
+    },
+    fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+    },
+    async onImageFileChange(event) {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+      if (file.size > 5 * 1024 * 1024) {
+        alert('图片超过 5MB，建议先压缩再插入')
+        return
+      }
+      try {
+        const dataUrl = await this.fileToDataUrl(file)
+        this.insertAtCursor(`\n![图片](${dataUrl})\n`)
+      } catch (err) {
+        alert('图片读取失败: ' + (err.message || '未知错误'))
+      }
+    },
+    async onContentPaste(event) {
+      const items = Array.from(event.clipboardData?.items || [])
+      const imageItem = items.find(item => item.kind === 'file' && item.type.startsWith('image/'))
+      if (!imageItem) return // 普通文本粘贴，交给浏览器默认行为
+      event.preventDefault()
+      const file = imageItem.getAsFile()
+      if (!file) return
+      try {
+        const dataUrl = await this.fileToDataUrl(file)
+        this.insertAtCursor(`\n![粘贴图片](${dataUrl})\n`)
+      } catch (err) {
+        console.error('[notes] paste image failed:', err)
+      }
+    },
+    // ─── 手绘涂鸦 ───
+    openDoodle() {
+      this.doodleOpen = true
+      this.$nextTick(() => this.setupDoodleCanvas())
+    },
+    closeDoodle() {
+      this.doodleOpen = false
+      this._doodleCtx = null
+    },
+    setupDoodleCanvas() {
+      const canvas = this.$refs.doodleCanvas
+      if (!canvas) return
+      // 提高清晰度：按设备像素比放大画布
+      const dpr = window.devicePixelRatio || 1
+      const cssWidth = canvas.clientWidth || 320
+      const cssHeight = 260
+      canvas.width = cssWidth * dpr
+      canvas.height = cssHeight * dpr
+      canvas.style.height = cssHeight + 'px'
+      const ctx = canvas.getContext('2d')
+      ctx.scale(dpr, dpr)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, cssWidth, cssHeight)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = this.doodleColor
+      this._doodleCtx = ctx
+    },
+    doodlePointerPos(canvas, event) {
+      const rect = canvas.getBoundingClientRect()
+      const point = event.touches ? event.touches[0] : event
+      return { x: point.clientX - rect.left, y: point.clientY - rect.top }
+    },
+    startDoodle(event) {
+      const canvas = this.$refs.doodleCanvas
+      if (!canvas || !this._doodleCtx) return
+      event.preventDefault()
+      this._doodleDrawing = true
+      const { x, y } = this.doodlePointerPos(canvas, event)
+      this._doodleCtx.strokeStyle = this.doodleColor
+      this._doodleCtx.beginPath()
+      this._doodleCtx.moveTo(x, y)
+    },
+    moveDoodle(event) {
+      if (!this._doodleDrawing) return
+      const canvas = this.$refs.doodleCanvas
+      if (!canvas || !this._doodleCtx) return
+      event.preventDefault()
+      const { x, y } = this.doodlePointerPos(canvas, event)
+      this._doodleCtx.lineTo(x, y)
+      this._doodleCtx.stroke()
+    },
+    endDoodle() {
+      this._doodleDrawing = false
+    },
+    clearDoodle() {
+      this.setupDoodleCanvas()
+    },
+    insertDoodle() {
+      const canvas = this.$refs.doodleCanvas
+      if (!canvas) return
+      const dataUrl = canvas.toDataURL('image/png')
+      this.insertAtCursor(`\n![手绘](${dataUrl})\n`)
+      this.closeDoodle()
     },
     async reload() {
       try {
@@ -541,6 +786,7 @@ export default {
         this.form = { title: '', content: '', category: '', tags: [], isStarred: false, expiresAt: '' }
       }
       this.newTagInput = ''
+      this.previewMode = false
       this.currentView = 'edit'
       this.viewingNote = null
     },
@@ -567,9 +813,14 @@ export default {
         }
 
         if (this.editingNote) {
+          // 编辑前先给旧内容存一个版本快照，再应用更新、给新内容也存一个快照
+          await saveNoteVersion(this.editingNote, '编辑前自动保存')
           await updateNote(this.editingNote.id, payload)
+          const updated = await getNote(this.editingNote.id)
+          if (updated) await saveNoteVersion(updated, '编辑保存')
         } else {
-          await createNote(payload)
+          const created = await createNote(payload)
+          await saveNoteVersion(created, '初始创建')
         }
 
         this.currentView = 'list'
@@ -579,6 +830,28 @@ export default {
         console.error('[notes] save failed:', err)
         alert('保存失败: ' + (err.message || '未知错误'))
       }
+    },
+    // ─── 笔记版本历史 ───
+    async openNoteVersionPanel(note) {
+      if (!note) return
+      this.versioningNoteId = note.id
+      this.noteVersions = await listNoteVersions(note.id)
+      this.noteVersionsPanelOpen = true
+    },
+    async doRollbackNote(ver) {
+      if (!confirm(`回滚到 v${ver.version}？当前内容会被覆盖（回滚前会自动存一份快照，可以再回滚回来）。`)) return
+      const current = await getNote(this.versioningNoteId)
+      if (current) await saveNoteVersion(current, '回滚前自动保存')
+      await rollbackNoteVersion(this.versioningNoteId, ver.id)
+      this.noteVersions = await listNoteVersions(this.versioningNoteId)
+      const refreshed = await getNote(this.versioningNoteId)
+      if (this.viewingNote?.id === this.versioningNoteId) this.viewingNote = refreshed
+      await this.reload()
+    },
+    async doDeleteNoteVersion(ver) {
+      if (!confirm(`删除版本 v${ver.version}？此操作不可撤销。`)) return
+      await deleteNoteVersion(ver.id)
+      this.noteVersions = await listNoteVersions(this.versioningNoteId)
     },
 
     editNote(note) {

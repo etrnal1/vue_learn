@@ -468,6 +468,19 @@ textarea {
   max-width: 100%;
 }
 
+.docx-content a.wiki-link {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.docx-content a.wiki-link-missing {
+  color: var(--muted);
+  border-bottom: 1px dashed var(--muted);
+}
+
 .docx-content img {
   max-width: 100%;
   height: auto;
@@ -2143,6 +2156,58 @@ section.dashboard.panel {
   color: var(--primary);
 }
 
+/* 阅读打卡热力图 */
+.heatmap-wrap {
+  margin-top: 16px;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.heatmap-cell.empty-cell {
+  background: transparent;
+}
+
+.heatmap-cell.level-0 { background: rgba(15, 118, 110, 0.10); }
+.heatmap-cell.level-1 { background: rgba(15, 118, 110, 0.32); }
+.heatmap-cell.level-2 { background: rgba(15, 118, 110, 0.55); }
+.heatmap-cell.level-3 { background: rgba(15, 118, 110, 0.78); }
+.heatmap-cell.level-4 { background: rgba(15, 118, 110, 1); }
+
+[data-theme="dark"] .heatmap-cell.level-0 { background: rgba(45, 212, 191, 0.12); }
+[data-theme="dark"] .heatmap-cell.level-1 { background: rgba(45, 212, 191, 0.35); }
+[data-theme="dark"] .heatmap-cell.level-2 { background: rgba(45, 212, 191, 0.58); }
+[data-theme="dark"] .heatmap-cell.level-3 { background: rgba(45, 212, 191, 0.8); }
+[data-theme="dark"] .heatmap-cell.level-4 { background: rgba(45, 212, 191, 1); }
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* ─── 回收站 ─── */
 .trash-item {
   display: flex;
@@ -2458,6 +2523,275 @@ section.dashboard.panel {
 [data-theme="dark"] .move-folder-popup {
   background: #2a2a2a;
 }
+
+/* ─── 笔记：图片插入 / 手绘涂鸦 ─── */
+.editor-media-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.doodle-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 8001;
+  background: var(--card-bg, #fff);
+  border-radius: 14px;
+  padding: 16px;
+  width: min(360px, 92vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+
+.doodle-canvas {
+  width: 100%;
+  height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  touch-action: none;
+  background: #fff;
+}
+
+.doodle-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.doodle-color-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.doodle-color-btn.active {
+  border-color: var(--primary);
+}
+
+[data-theme="dark"] .doodle-popup {
+  background: #2a2a2a;
+}
+
+/* ─── 图片放大器（因为全局 viewport 禁用了原生缩放，图片自己实现手势缩放） ─── */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.lightbox-viewport {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.lightbox-img {
+  max-width: 92vw;
+  max-height: 82vh;
+  object-fit: contain;
+  will-change: transform;
+  user-select: none;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: 16px;
+  z-index: 9001;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.lightbox-hint {
+  position: absolute;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 正文/笔记里的图片：提示可点击放大 */
+.docx-content img,
+.markdown-preview img {
+  cursor: zoom-in;
+}
+
+/* ─── AI 语义搜索 ─── */
+.ai-provider-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 用纯块级堆叠（不用 flex 行）避免个别 WebKit 版本在 grid 容器里嵌套 flex 卡片时
+   出现内容高度计算错误、文字被裁掉的问题 */
+.ai-provider-option {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.ai-provider-option.active {
+  border-color: var(--primary);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.ai-provider-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-provider-radio-row label {
+  cursor: pointer;
+}
+
+.ai-provider-option p {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.ai-cloud-form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Embedding 设置页：全部用最朴素的块级堆叠 + 极简的单选行，
+   不再用卡片/flex 容器套 flex 容器那种结构 */
+.ai-plain-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+}
+
+.ai-plain-desc {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+
+.ai-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-radio-row label {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-settings-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, inherit);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-settings-nav-arrow {
+  font-size: 1.3rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.ai-index-progress {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.ai-index-progress .continue-bar {
+  margin-bottom: 4px;
+}
+
+/* 搜索框 + 按钮固定同一行，避免小屏堆叠后按钮被手机键盘顶起来的部分挡住 */
+.ai-search-bar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ai-search-bar .input {
+  flex: 1;
+  min-width: 0;
+}
+.ai-search-bar .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ai-provider-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.ai-local-model-panel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.ai-local-model-panel .mini-btn {
+  margin-top: 8px;
+}
+
+.ai-status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.ai-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.ai-status-dot.ready { background: #16a34a; }
+.ai-status-dot.loading { background: #d97706; }
+.ai-status-dot.unknown { background: var(--muted); }
 [data-theme="dark"] .doc-move-btn {
   background: rgba(255,255,255,.1);
 }

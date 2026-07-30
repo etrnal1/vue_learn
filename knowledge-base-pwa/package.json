@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4180"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "dexie": "^4.2.0",
     "mammoth": "^1.11.0",
     "marked": "^17.0.4",
