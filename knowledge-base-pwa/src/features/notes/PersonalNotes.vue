@@ -205,7 +205,7 @@
       <!-- 主内容 -->
       <main class="content-stack">
         <!-- 编辑器 -->
-        <section v-if="currentView === 'edit'" class="panel">
+        <section v-if="currentView === 'edit'" ref="editorSection" class="panel editor-panel">
           <div class="section-head">
             <div>
               <p class="eyebrow">Editor</p>
@@ -221,6 +221,7 @@
 
           <div class="editor-form">
             <input
+              ref="titleInput"
               v-model="form.title"
               type="text"
               class="input editor-title"
@@ -789,6 +790,12 @@ export default {
       this.previewMode = false
       this.currentView = 'edit'
       this.viewingNote = null
+
+      // 打开编辑器后自动滚动到编辑区并聚焦标题，避免手机上要先划过统计卡片和分类侧栏才能看到表单
+      this.$nextTick(() => {
+        this.$refs.editorSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        this.$refs.titleInput?.focus({ preventScroll: true })
+      })
     },
 
     cancelEdit() {
