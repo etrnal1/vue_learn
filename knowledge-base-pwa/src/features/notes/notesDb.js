@@ -61,6 +61,19 @@ knowledgeBaseDb.version(7).stores({
   docEmbeddings: '++id, docId, provider, createdAt'
 })
 
+// 版本 8: 笔记也支持语义搜索索引（与 docEmbeddings 同构）
+knowledgeBaseDb.version(8).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt, sourceDocId',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt',
+  noteVersions: '++id, noteId, version, createdAt',
+  docEmbeddings: '++id, docId, provider, createdAt',
+  noteEmbeddings: '++id, noteId, provider, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============

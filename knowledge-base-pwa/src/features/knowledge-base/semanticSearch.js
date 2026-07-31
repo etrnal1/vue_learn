@@ -144,20 +144,10 @@ export function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
-// ============ 索引管理 ============
+// ============ 索引管理（文档） ============
 
 export async function removeDocIndex(docId) {
   await knowledgeBaseDb.docEmbeddings.where('docId').equals(docId).delete()
-}
-
-export async function clearAllIndex() {
-  await knowledgeBaseDb.docEmbeddings.clear()
-}
-
-export async function getIndexStats() {
-  const rows = await knowledgeBaseDb.docEmbeddings.toArray()
-  const docIds = new Set(rows.map((r) => r.docId))
-  return { chunks: rows.length, docs: docIds.size }
 }
 
 export async function buildDocIndex(doc) {
@@ -196,22 +186,91 @@ export async function buildAllIndex(docs, onProgress) {
   }
 }
 
-// ============ 语义搜索 ============
+// ============ 索引管理（笔记，结构与文档一致） ============
+
+export async function removeNoteIndex(noteId) {
+  await knowledgeBaseDb.noteEmbeddings.where('noteId').equals(noteId).delete()
+}
+
+export async function buildNoteIndex(note) {
+  await removeNoteIndex(note.id)
+  const chunks = chunkText(note.content || '')
+  if (!chunks.length) return 0
+  const config = await getEmbedConfig()
+  const vectors = await embedTexts(chunks)
+  const now = Date.now()
+  const rows = chunks.map((chunk, i) => ({
+    noteId: note.id,
+    noteTitle: note.title,
+    chunkIndex: i,
+    chunkText: chunk,
+    vector: vectors[i],
+    provider: config.provider,
+    createdAt: now
+  }))
+  await knowledgeBaseDb.noteEmbeddings.bulkAdd(rows)
+  return chunks.length
+}
+
+// 给一批笔记重建索引，onProgress(doneCount, total, currentNoteTitle) 用来展示进度
+export async function buildAllNoteIndex(notes, onProgress) {
+  let done = 0
+  for (const note of notes) {
+    try {
+      await buildNoteIndex(note)
+    } catch (err) {
+      console.error('[semanticSearch] 索引笔记失败:', note.title, err)
+      throw err
+    } finally {
+      done++
+      if (onProgress) onProgress(done, notes.length, note.title)
+    }
+  }
+}
+
+// ============ 索引统计 / 清空（文档 + 笔记） ============
+
+export async function clearAllIndex() {
+  await knowledgeBaseDb.docEmbeddings.clear()
+  await knowledgeBaseDb.noteEmbeddings.clear()
+}
+
+export async function getIndexStats() {
+  const docRows = await knowledgeBaseDb.docEmbeddings.toArray()
+  const noteRows = await knowledgeBaseDb.noteEmbeddings.toArray()
+  const docIds = new Set(docRows.map((r) => r.docId))
+  const noteIds = new Set(noteRows.map((r) => r.noteId))
+  return {
+    docs: docIds.size,
+    chunks: docRows.length,
+    notes: noteIds.size,
+    noteChunks: noteRows.length
+  }
+}
+
+// ============ 语义搜索（文档 + 笔记 混合排序） ============
 
 export async function semanticSearch(query, topK = 10) {
   const trimmed = String(query || '').trim()
   if (!trimmed) return []
   const [queryVector] = await embedTexts([trimmed])
-  const rows = await knowledgeBaseDb.docEmbeddings.toArray()
-  if (!rows.length) return []
-  const scored = rows.map((row) => ({ ...row, score: cosineSimilarity(queryVector, row.vector) }))
+  const [docRows, noteRows] = await Promise.all([
+    knowledgeBaseDb.docEmbeddings.toArray(),
+    knowledgeBaseDb.noteEmbeddings.toArray()
+  ])
+  if (!docRows.length && !noteRows.length) return []
+  const scored = [
+    ...docRows.map((row) => ({ ...row, kind: 'doc', score: cosineSimilarity(queryVector, row.vector) })),
+    ...noteRows.map((row) => ({ ...row, kind: 'note', score: cosineSimilarity(queryVector, row.vector) }))
+  ]
   scored.sort((a, b) => b.score - a.score)
-  // 同一篇文档只保留分数最高的一段，避免长文档霸占结果列表
-  const seenDocs = new Set()
+  // 同一篇文档/笔记只保留分数最高的一段，避免长内容霸占结果列表
+  const seen = new Set()
   const results = []
   for (const item of scored) {
-    if (seenDocs.has(item.docId)) continue
-    seenDocs.add(item.docId)
+    const key = item.kind + ':' + (item.kind === 'doc' ? item.docId : item.noteId)
+    if (seen.has(key)) continue
+    seen.add(key)
     results.push(item)
     if (results.length >= topK) break
   }

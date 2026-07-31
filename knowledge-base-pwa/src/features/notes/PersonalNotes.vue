@@ -499,6 +499,7 @@ import {
   rollbackNoteVersion,
   deleteNoteVersion
 } from './notesDb.js'
+import { buildNoteIndex, removeNoteIndex } from '../knowledge-base/semanticSearch.js'
 
 export default {
   name: 'PersonalNotes',
@@ -824,10 +825,14 @@ export default {
           await saveNoteVersion(this.editingNote, '编辑前自动保存')
           await updateNote(this.editingNote.id, payload)
           const updated = await getNote(this.editingNote.id)
-          if (updated) await saveNoteVersion(updated, '编辑保存')
+          if (updated) {
+            await saveNoteVersion(updated, '编辑保存')
+            this.autoIndexNote(updated)
+          }
         } else {
           const created = await createNote(payload)
           await saveNoteVersion(created, '初始创建')
+          this.autoIndexNote(created)
         }
 
         this.currentView = 'list'
@@ -853,6 +858,7 @@ export default {
       this.noteVersions = await listNoteVersions(this.versioningNoteId)
       const refreshed = await getNote(this.versioningNoteId)
       if (this.viewingNote?.id === this.versioningNoteId) this.viewingNote = refreshed
+      if (refreshed) this.autoIndexNote(refreshed)
       await this.reload()
     },
     async doDeleteNoteVersion(ver) {
@@ -872,8 +878,18 @@ export default {
     async doDelete(note) {
       if (!confirm(`确定删除笔记"${note.title}"吗？`)) return
       await deleteNote(note.id)
+      await removeNoteIndex(note.id)
       if (this.viewingNote?.id === note.id) this.viewingNote = null
       await this.reload()
+    },
+    // 笔记内容变了（新建/编辑/回滚）后台自动重建这一条的语义索引，不阻塞 UI
+    async autoIndexNote(note) {
+      if (!note) return
+      try {
+        await buildNoteIndex(note)
+      } catch (err) {
+        console.warn('[auto-index] 笔记自动索引失败:', note?.title, err)
+      }
     },
 
     async doToggleStar(id) {

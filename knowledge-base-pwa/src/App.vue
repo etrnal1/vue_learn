@@ -1184,10 +1184,10 @@
             <p class="eyebrow">Index</p>
             <h2>索引状态</h2>
           </div>
-          <span class="pill">{{ aiIndexStats.docs }} 篇 / {{ aiIndexStats.chunks }} 段</span>
+          <span class="pill">{{ aiIndexStats.docs }} 篇文档 / {{ aiIndexStats.notes }} 条笔记</span>
         </div>
-        <p class="backup-desc" v-if="!aiIndexStats.chunks">
-          还没有索引。新增/编辑文档后会自动建索引，也可以去"来源 / 索引设置"手动重建。
+        <p class="backup-desc" v-if="!aiIndexStats.chunks && !aiIndexStats.noteChunks">
+          还没有索引。新增/编辑文档或笔记后会自动建索引，也可以去"来源 / 索引设置"手动重建。
         </p>
       </section>
 
@@ -1208,20 +1208,33 @@
           />
           <button type="button" class="btn btn-primary" :disabled="aiSearching" @click="doAiSearch">{{ aiSearching ? '搜索中...' : '搜索' }}</button>
         </div>
-        <p v-if="aiSearchMsg" class="password-msg">{{ aiSearchMsg }}</p>
-        <div v-if="aiSearchResults.length" class="search-list" style="margin-top:12px">
+        <p v-if="aiSearchMsg" class="ai-search-msg">{{ aiSearchMsg }}</p>
+        <div v-if="aiSearchResults.length" class="ai-result-list" style="margin-top:12px">
           <button
             v-for="r in aiSearchResults"
-            :key="r.docId + '-' + r.chunkIndex"
+            :key="(r.kind || 'doc') + '-' + (r.kind === 'note' ? r.noteId : r.docId) + '-' + r.chunkIndex"
             type="button"
-            class="search-item"
+            class="ai-result-item"
             @click="openAiResult(r)"
           >
-            <div>
-              <strong>{{ r.docName }}</strong>
-              <p>{{ r.chunkText }}</p>
-            </div>
-            <span>{{ (r.score * 100).toFixed(0) }}%</span>
+            <span class="ai-result-icon">{{ r.kind === 'note' ? '📝' : '📄' }}</span>
+            <span class="ai-result-body">
+              <span class="ai-result-top">
+                <span class="ai-result-name">{{ r.kind === 'note' ? r.noteTitle : r.docName }}</span>
+                <span class="ai-result-kind">{{ r.kind === 'note' ? '笔记' : '文档' }}</span>
+              </span>
+              <p class="ai-result-snippet">{{ r.chunkText }}</p>
+            </span>
+            <span class="ai-result-score">
+              <span class="ai-result-score-value" :class="'score-' + aiScoreTier(r.score)">{{ (r.score * 100).toFixed(0) }}%</span>
+              <span class="ai-result-score-bar">
+                <span
+                  class="ai-result-score-fill"
+                  :class="'score-' + aiScoreTier(r.score)"
+                  :style="{ width: Math.max(6, r.score * 100) + '%' }"
+                ></span>
+              </span>
+            </span>
           </button>
         </div>
       </section>
@@ -1347,10 +1360,10 @@
 
       <section class="panel">
         <p class="ai-plain-label">当前状态</p>
-        <p class="ai-plain-desc">已索引 {{ aiIndexStats.docs }} 篇文档 / {{ aiIndexStats.chunks }} 段。</p>
-        <p class="ai-plain-desc">索引会把每篇文档切成小段落，逐段生成向量存起来，语义搜索靠比对向量实现。现在新增、编辑、恢复文档时会自动在后台更新索引，删除文档也会自动清理对应索引，不用手动操作。</p>
-        <p class="ai-plain-desc">如果切换过 embedding 来源（本地/云端），或者想确保所有文档都是最新索引，可以在这里手动全量重建一次：</p>
-        <button type="button" class="btn btn-primary" style="width:100%" :disabled="aiIndexing || !docs.length" @click="rebuildAiIndex">
+        <p class="ai-plain-desc">已索引 {{ aiIndexStats.docs }} 篇文档 / {{ aiIndexStats.chunks }} 段，{{ aiIndexStats.notes }} 条笔记 / {{ aiIndexStats.noteChunks }} 段。</p>
+        <p class="ai-plain-desc">索引会把每篇文档/笔记切成小段落，逐段生成向量存起来，语义搜索靠比对向量实现。现在新增、编辑、恢复文档或笔记时会自动在后台更新索引，删除时也会自动清理对应索引，不用手动操作。</p>
+        <p class="ai-plain-desc">如果切换过 embedding 来源（本地/云端），或者想确保所有内容都是最新索引，可以在这里手动全量重建一次：</p>
+        <button type="button" class="btn btn-primary" style="width:100%" :disabled="aiIndexing" @click="rebuildAiIndex">
           {{ aiIndexing ? '索引中...' : '全量重建索引' }}
         </button>
         <p v-if="aiIndexing" class="ai-plain-desc">{{ aiIndexProgress.done }} / {{ aiIndexProgress.total }} · {{ aiIndexProgress.name }}</p>
@@ -1406,9 +1419,12 @@ import {
   setEmbedConfig,
   buildAllIndex,
   buildDocIndex,
+  buildAllNoteIndex,
+  buildNoteIndex,
   getIndexStats,
   semanticSearch,
   removeDocIndex,
+  removeNoteIndex,
   clearAllIndex,
   preloadLocalModel,
   isLocalModelLoaded
@@ -1511,7 +1527,7 @@ export default {
       // AI 语义搜索
       aiConfig: { provider: 'local', localModel: 'Xenova/all-MiniLM-L6-v2', cloud: { baseUrl: '', apiKey: '', model: 'text-embedding-3-small' } },
       aiConfigMsg: '',
-      aiIndexStats: { chunks: 0, docs: 0 },
+      aiIndexStats: { chunks: 0, docs: 0, notes: 0, noteChunks: 0 },
       aiIndexing: false,
       aiIndexProgress: { done: 0, total: 0, name: '' },
       aiSearchKeyword: '',
@@ -1754,12 +1770,13 @@ export default {
         for (const item of textItems) {
           const title = item.title || item.link || '分享内容'
           const contentParts = [item.text, item.link].filter(Boolean)
-          await createNote({
+          const created = await createNote({
             title: '分享：' + title,
             content: contentParts.join('\n\n') || '(无正文)',
             category: '分享',
             tags: ['分享']
           })
+          this.autoIndexNote(created)
         }
 
         // 清空收件箱
@@ -1878,7 +1895,7 @@ export default {
       if (!this.selectionPopup?.text) return
       const title = '摘录：' + (this.activeDoc?.name || '未知文档')
       const content = '> ' + this.selectionPopup.text + '\n\n— 来自《' + (this.activeDoc?.name || '') + '》'
-      await createNote({
+      const created = await createNote({
         title,
         content,
         category: '摘录',
@@ -1886,6 +1903,7 @@ export default {
         sourceDocId: this.activeDoc?.id || 0,
         sourceDocName: this.activeDoc?.name || ''
       })
+      this.autoIndexNote(created)
       // 摘录后来源文档新增了一条关联笔记，刷新一下列表
       if (this.activeDocId) this.loadLinkedNotes(this.activeDocId)
       this.selectionPopup = null
@@ -2262,6 +2280,17 @@ export default {
         console.warn('[auto-index] 自动索引失败:', doc?.name, err)
       }
     },
+    // 单条笔记自动建索引（分享导入 / 摘录到笔记 时调用，PersonalNotes.vue 内部编辑/删除笔记
+    // 有它自己的一份同逻辑，因为那些操作发生在子组件内，够不到这里的 state）
+    async autoIndexNote(note) {
+      if (!note) return
+      try {
+        await buildNoteIndex(note)
+        this.aiIndexStats = await getIndexStats()
+      } catch (err) {
+        console.warn('[auto-index] 笔记自动索引失败:', note?.title, err)
+      }
+    },
     async saveAiConfig() {
       await setEmbedConfig(JSON.parse(JSON.stringify(this.aiConfig)))
       this.aiConfigMsg = '✅ 已保存'
@@ -2300,15 +2329,20 @@ export default {
       }, 350)
     },
     async rebuildAiIndex() {
+      const allNotes = await listNotes()
       if (this.aiConfig.provider === 'cloud') {
-        if (!window.confirm(`将把 ${this.docs.length} 篇文档的内容发送到你填写的 API 地址生成向量，确定继续吗？`)) return
+        if (!window.confirm(`将把 ${this.docs.length} 篇文档 + ${allNotes.length} 条笔记的内容发送到你填写的 API 地址生成向量，确定继续吗？`)) return
       }
       await this.saveAiConfig()
       this.aiIndexing = true
-      this.aiIndexProgress = { done: 0, total: this.docs.length, name: '' }
+      const total = this.docs.length + allNotes.length
+      this.aiIndexProgress = { done: 0, total, name: '' }
       try {
-        await buildAllIndex(this.docs, (done, total, name) => {
+        await buildAllIndex(this.docs, (done, _t, name) => {
           this.aiIndexProgress = { done, total, name }
+        })
+        await buildAllNoteIndex(allNotes, (done, _t, name) => {
+          this.aiIndexProgress = { done: this.docs.length + done, total, name }
         })
         this.aiIndexStats = await getIndexStats()
       } catch (err) {
@@ -2353,6 +2387,11 @@ export default {
       }
     },
     openAiResult(r) {
+      if (r.kind === 'note') {
+        this.pendingOpenNoteId = r.noteId
+        this.activeTab = 'notes'
+        return
+      }
       const doc = this.docs.find(d => d.id === r.docId)
       if (!doc) {
         alert('原文档不存在，可能已被删除，建议重建索引')
@@ -2360,6 +2399,12 @@ export default {
       }
       this.activeTab = 'kb'
       this.openDoc(doc)
+    },
+    // 结果分数分档，用于结果卡片的颜色深浅
+    aiScoreTier(score) {
+      if (score >= 0.6) return 'high'
+      if (score >= 0.4) return 'mid'
+      return 'low'
     },
     applySwUpdate() {
       const sw = window.__swUpdate?.worker
