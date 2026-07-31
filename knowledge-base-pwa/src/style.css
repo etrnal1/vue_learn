@@ -1176,7 +1176,8 @@ textarea {
 }
 
 /* Note cards */
-.notes-card-grid {
+.notes-card-grid,
+.word-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 12px;
@@ -1473,7 +1474,8 @@ textarea {
     grid-template-columns: 280px minmax(0, 1fr);
   }
 
-  .notes-card-grid {
+  .notes-card-grid,
+  .word-card-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 
@@ -1829,8 +1831,9 @@ textarea {
   margin: 4px 0 0;
 }
 
-/* ─── 过期标签 ─── */
-.note-expired-tag {
+/* ─── 过期标签 / 背单词记错标签 ─── */
+.note-expired-tag,
+.mistake-tag {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
@@ -3267,4 +3270,242 @@ section.dashboard.panel {
 }
 [data-theme="dark"] .diff-content {
   background: #111;
+}
+
+/* ══════════════ 背单词模块 ══════════════ */
+
+.vocab-mistake-pill {
+  margin-left: 6px;
+  padding: 1px 8px;
+  min-width: auto;
+  font-size: 11px;
+}
+
+/* ─── 单词表 / 记错本 卡片 ─── */
+.word-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.word-card:hover {
+  border-color: rgba(15, 118, 110, 0.25);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.word-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.word-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.word-text {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.word-phonetic {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.word-meanings {
+  margin: 4px 0 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.word-review-btn {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.word-master-btn {
+  flex-shrink: 0;
+  color: #16a34a;
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+/* ─── 添加/编辑单词表单 ─── */
+.meaning-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.meaning-row .input {
+  flex: 1;
+}
+
+.new-category-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.new-category-row .input {
+  flex: 1;
+}
+
+.word-example-textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.form-error {
+  color: #dc2626;
+  font-size: 0.88rem;
+  margin: 8px 0 0;
+}
+
+.word-form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.word-form-submit {
+  flex: 1;
+}
+
+/* ─── 背单词卡片翻面 ─── */
+.study-config {
+  display: grid;
+  gap: 16px;
+  max-width: 420px;
+}
+
+.study-start-btn {
+  width: 100%;
+}
+
+.study-session {
+  display: grid;
+  gap: 16px;
+}
+
+.study-progress {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.flip-card {
+  min-height: 240px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  cursor: pointer;
+}
+
+.flip-face {
+  width: 100%;
+}
+
+.flip-word {
+  font-size: 30px;
+  font-weight: 800;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.flip-word.small {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.flip-phonetic {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.flip-hint {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.flip-meanings {
+  text-align: left;
+  margin: 0 auto 10px;
+  padding-left: 20px;
+  font-size: 16px;
+  max-width: 320px;
+  color: var(--text);
+}
+
+.flip-example {
+  color: var(--muted);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.study-answer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-answer {
+  flex: 1;
+  min-height: 52px;
+  font-size: 16px;
+}
+
+.btn-success {
+  border: none;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: white;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
+}
+
+[data-theme="dark"] .btn-success {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
+}
+
+.study-summary {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+
+.study-summary-line {
+  font-size: 16px;
+  margin: 0;
+}
+
+.study-summary-line.success {
+  color: #16a34a;
+}
+
+.study-summary-line.danger {
+  color: var(--danger);
+}
+
+.study-summary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
 }
