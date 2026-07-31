@@ -21,7 +21,15 @@
       "Bash(rsync -a --exclude node_modules --exclude dist /Users/mac/vue-learning-app/knowledge-base-pwa/ /tmp/kb-pwa-build-check/)",
       "Read(//tmp/**)",
       "Bash(npm install *)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(rm -rf /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build-check)",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build-check)",
+      "Bash(rsync -a --exclude node_modules --exclude dist /Users/mac/vue-learning-app/knowledge-base-pwa/ /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build-check/)",
+      "Bash(git -C /Users/mac/vue-learning-app status --porcelain)",
+      "Bash(git -C /Users/mac/vue-learning-app add knowledge-base-pwa/src/features/notes/PersonalNotes.vue)",
+      "Bash(git -C /Users/mac/vue-learning-app commit -m ' *)",
+      "Bash(git -C /Users/mac/vue-learning-app diff .claude/settings.local.json)",
+      "Bash(git -C /Users/mac/vue-learning-app add .claude/settings.local.json)"
     ]
   },
   "hooks": {
