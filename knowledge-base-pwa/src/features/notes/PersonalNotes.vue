@@ -229,6 +229,10 @@
             />
 
             <div v-if="!previewMode" class="editor-media-toolbar">
+              <button type="button" class="mini-btn" @click="insertHeading(1)" title="一级标题">H1</button>
+              <button type="button" class="mini-btn" @click="insertHeading(2)" title="二级标题">H2</button>
+              <button type="button" class="mini-btn" @click="insertHeading(3)" title="三级标题">H3</button>
+              <span class="toolbar-sep"></span>
               <button type="button" class="mini-btn" @click="$refs.imageFileInput?.click()">🖼 插入图片</button>
               <button type="button" class="mini-btn" @click="openDoodle">✍️ 手绘</button>
               <input ref="imageFileInput" type="file" accept="image/*" class="hidden-input" @change="onImageFileChange" />
@@ -645,6 +649,24 @@ export default {
       this.form.content = this.form.content.slice(0, start) + text + this.form.content.slice(end)
       this.$nextTick(() => {
         const pos = start + text.length
+        el.focus()
+        el.setSelectionRange(pos, pos)
+      })
+    },
+    // 标题快捷按钮：在光标所在行的行首插入 #/##/### （标题标记必须在行首才能被 Markdown 识别）
+    insertHeading(level) {
+      const prefix = '#'.repeat(level) + ' '
+      const el = this.$refs.contentTextarea
+      if (!el) {
+        this.form.content = prefix + this.form.content
+        return
+      }
+      const value = this.form.content
+      const cursorPos = el.selectionStart ?? value.length
+      const lineStart = value.lastIndexOf('\n', cursorPos - 1) + 1
+      this.form.content = value.slice(0, lineStart) + prefix + value.slice(lineStart)
+      this.$nextTick(() => {
+        const pos = cursorPos + prefix.length
         el.focus()
         el.setSelectionRange(pos, pos)
       })
