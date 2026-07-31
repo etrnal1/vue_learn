@@ -494,6 +494,29 @@ textarea {
   height: auto;
 }
 
+/* 笔记附件引用链接 [📎 文件名](attachment://id) */
+.docx-content a[href^="attachment://"],
+.markdown-preview a[href^="attachment://"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0;
+  padding: 6px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.25);
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.06);
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.docx-content a[href^="attachment://"]:active,
+.markdown-preview a[href^="attachment://"]:active {
+  background: rgba(15, 118, 110, 0.14);
+}
+
 .docx-content table {
   max-width: 100%;
   overflow-x: auto;
@@ -2548,11 +2571,16 @@ section.dashboard.panel {
   background: #2a2a2a;
 }
 
-/* ─── 笔记：图片插入 / 手绘涂鸦 ─── */
+/* ─── 笔记：标题快捷键 / 图片插入 / 手绘涂鸦 / 附件 ─── */
 .editor-media-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+.editor-media-toolbar .mini-btn {
+  white-space: nowrap;
 }
 
 .doodle-popup {

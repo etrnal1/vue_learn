@@ -74,6 +74,21 @@ knowledgeBaseDb.version(8).stores({
   noteEmbeddings: '++id, noteId, provider, createdAt'
 })
 
+// 版本 9: 笔记附件（任意文件类型，Blob 独立存表，不占用 content 字符串本身，
+// 笔记正文里只留一条 [📎 文件名](attachment://<id>) 形式的引用链接）
+knowledgeBaseDb.version(9).stores({
+  docs: '++id, name, type, folderId, createdAt, updatedAt',
+  meta: 'key',
+  notes: '++id, title, category, isStarred, createdAt, updatedAt, deletedAt, sourceDocId',
+  noteCategories: '++id, &name, sortOrder',
+  docVersions: '++id, docId, version, createdAt',
+  folders: '++id, &name, sortOrder, createdAt',
+  noteVersions: '++id, noteId, version, createdAt',
+  docEmbeddings: '++id, docId, provider, createdAt',
+  noteEmbeddings: '++id, noteId, provider, createdAt',
+  noteAttachments: '++id, mimeType, createdAt'
+})
+
 const db = knowledgeBaseDb
 
 // ============ 笔记 CRUD ============
@@ -336,6 +351,41 @@ export async function getAllTags() {
     for (const t of (n.tags || [])) tagSet.add(t)
   }
   return [...tagSet].sort()
+}
+
+// ============ 笔记附件（任意文件类型） ============
+// 附件 Blob 单独存表，不塞进笔记 content 字符串里（避免笔记列表加载、
+// 语义索引分段、导出/备份这些逐字段处理 content 的地方被大文件拖慢）。
+// 代价：附件不随"导出全部数据"JSON 备份走，换设备/清缓存前要留意。
+
+export async function addNoteAttachment(file) {
+  const id = await db.noteAttachments.add({
+    fileName: file.name || '未命名文件',
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size || 0,
+    blob: file,
+    createdAt: Date.now()
+  })
+  return db.noteAttachments.get(id)
+}
+
+export async function getNoteAttachment(id) {
+  return db.noteAttachments.get(Number(id))
+}
+
+export async function deleteNoteAttachments(ids) {
+  const list = (ids || []).map(Number).filter(Boolean)
+  if (!list.length) return
+  await db.noteAttachments.bulkDelete(list)
+}
+
+// 从笔记正文里解析出引用到的附件 id（[📎 文件名](attachment://123) 形式）
+export function extractAttachmentIds(content) {
+  const ids = new Set()
+  const re = /attachment:\/\/(\d+)/g
+  let m
+  while ((m = re.exec(content || ''))) ids.add(Number(m[1]))
+  return [...ids]
 }
 
 // ============ 导出 ============

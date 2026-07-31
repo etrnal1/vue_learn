@@ -235,7 +235,9 @@
               <span class="toolbar-sep"></span>
               <button type="button" class="mini-btn" @click="$refs.imageFileInput?.click()">🖼 插入图片</button>
               <button type="button" class="mini-btn" @click="openDoodle">✍️ 手绘</button>
+              <button type="button" class="mini-btn" @click="$refs.attachmentFileInput?.click()">📎 添加附件</button>
               <input ref="imageFileInput" type="file" accept="image/*" class="hidden-input" @change="onImageFileChange" />
+              <input ref="attachmentFileInput" type="file" class="hidden-input" @change="onAttachmentFileChange" />
             </div>
 
             <textarea
@@ -501,7 +503,11 @@ import {
   saveNoteVersion,
   listNoteVersions,
   rollbackNoteVersion,
-  deleteNoteVersion
+  deleteNoteVersion,
+  addNoteAttachment,
+  getNoteAttachment,
+  deleteNoteAttachments,
+  extractAttachmentIds
 } from './notesDb.js'
 import { buildNoteIndex, removeNoteIndex } from '../knowledge-base/semanticSearch.js'
 
@@ -598,12 +604,6 @@ export default {
     if (this.focusNoteId) await this.openFocusedNote()
   },
 
-  watch: {
-    async focusNoteId(val) {
-      if (val) await this.openFocusedNote()
-    }
-  },
-
   methods: {
     // 从文档阅读器"关联笔记"面板跳转过来，自动打开指定笔记
     async openFocusedNote() {
@@ -631,8 +631,15 @@ export default {
     togglePreview() {
       this.previewMode = !this.previewMode
     },
-    // 笔记里的图片（插入的图/手绘/粘贴的图）点击放大
+    // 笔记里的图片（插入的图/手绘/粘贴的图）点击放大；附件链接点击打开/预览
     onContentClick(event) {
+      const link = event.target.closest?.('a')
+      const href = link?.getAttribute('href') || ''
+      if (href.startsWith('attachment://')) {
+        event.preventDefault()
+        this.openAttachment(href.slice('attachment://'.length))
+        return
+      }
       if (event.target.tagName === 'IMG') {
         this.lightboxSrc = event.target.currentSrc || event.target.src
       }
@@ -692,6 +699,50 @@ export default {
         this.insertAtCursor(`\n![图片](${dataUrl})\n`)
       } catch (err) {
         alert('图片读取失败: ' + (err.message || '未知错误'))
+      }
+    },
+    // ─── 附件（任意文件类型，不限大小；Blob 单独存表，正文里只留引用链接） ───
+    formatFileSize(bytes) {
+      if (!bytes) return '0B'
+      if (bytes < 1024) return bytes + 'B'
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB'
+      if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + 'MB'
+      return (bytes / 1024 / 1024 / 1024).toFixed(2) + 'GB'
+    },
+    async onAttachmentFileChange(event) {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+      try {
+        const attachment = await addNoteAttachment(file)
+        const label = `📎 ${file.name}（${this.formatFileSize(file.size)}）`
+        this.insertAtCursor(`\n[${label}](attachment://${attachment.id})\n`)
+      } catch (err) {
+        console.error('[notes] attachment add failed:', err)
+        const quotaHint = err?.name === 'QuotaExceededError' ? '本地存储空间不足，建议清理旧附件，或在"更多 → PWA 状态"里申请持久化存储。' : ''
+        alert('附件保存失败: ' + (err.message || '未知错误') + (quotaHint ? '\n' + quotaHint : ''))
+      }
+    },
+    // 打开/预览附件：图片用应用自带的放大器；其他类型交给浏览器（能预览的原生预览，不能的自动下载）
+    async openAttachment(id) {
+      // 在用户点击手势内先同步打开空白页，避免下面 await 取数据后 window.open 被浏览器当弹窗拦截
+      const preOpened = window.open('', '_blank')
+      const attachment = await getNoteAttachment(id)
+      if (!attachment) {
+        preOpened?.close()
+        alert('附件不存在，可能已被删除')
+        return
+      }
+      const url = URL.createObjectURL(attachment.blob)
+      if (attachment.mimeType.startsWith('image/')) {
+        preOpened?.close()
+        this.lightboxSrc = url
+      } else if (preOpened) {
+        preOpened.location.href = url
+        setTimeout(() => URL.revokeObjectURL(url), 60000)
+      } else {
+        window.open(url, '_blank')
+        setTimeout(() => URL.revokeObjectURL(url), 60000)
       }
     },
     async onContentPaste(event) {
@@ -901,6 +952,7 @@ export default {
       if (!confirm(`确定删除笔记"${note.title}"吗？`)) return
       await deleteNote(note.id)
       await removeNoteIndex(note.id)
+      await deleteNoteAttachments(extractAttachmentIds(note.content))
       if (this.viewingNote?.id === note.id) this.viewingNote = null
       await this.reload()
     },
@@ -1026,6 +1078,15 @@ export default {
   },
 
   watch: {
+    async focusNoteId(val) {
+      if (val) await this.openFocusedNote()
+    },
+    // 附件/图片放大器的 src 从一个 blob: URL 切走后，释放掉旧的，避免累积占用内存
+    lightboxSrc(newVal, oldVal) {
+      if (oldVal && oldVal.startsWith('blob:') && oldVal !== newVal) {
+        URL.revokeObjectURL(oldVal)
+      }
+    },
     sortBy() { this.reload() },
     filterCategory() { this.viewingNote = null },
     filterTag() { this.viewingNote = null }
