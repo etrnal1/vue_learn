@@ -14,7 +14,14 @@
       "Bash(npm run build:*)",
       "Bash(pkill:*)",
       "Bash(/tmp/test_git_parsing.js << 'EOF'\nconst { exec } = require\\('child_process'\\);\nconst util = require\\('util'\\);\nconst execPromise = util.promisify\\(exec\\);\n\n\\(async \\(\\) => {\n  try {\n    const { stdout } = await execPromise\\('git log dev/current-changes --name-status --pretty=format:\"COMMIT|%h|%an|%ad|%s\" --date=iso'\\);\n    \n    const fileStats = new Map\\(\\);\n    let currentCommit = null;\n    \n    stdout.split\\('\\\\n'\\).forEach\\(line => {\n      if \\(line.startsWith\\('COMMIT|'\\)\\) {\n        const parts = line.split\\('|'\\);\n        currentCommit = {\n          hash: parts[1],\n          author: parts[2],\n          date: parts[3],\n          subject: parts[4]\n        };\n      } else if \\(/^[MADR]\\\\t/.test\\(line\\)\\) {\n        const filePath = line.substring\\(2\\);\n        \n        if \\(!fileStats.has\\(filePath\\)\\) {\n          fileStats.set\\(filePath, {\n            path: filePath,\n            name: filePath.split\\('/'\\).pop\\(\\),\n            modifyCount: 0,\n            lastModifiedDate: '',\n            lastModifiedBy: '',\n            lastCommitHash: '',\n            lastCommitMessage: ''\n          }\\);\n        }\n        \n        const stat = fileStats.get\\(filePath\\);\n        stat.modifyCount++;\n        \n        if \\(!stat.lastModifiedDate\\) {\n          stat.lastModifiedDate = currentCommit.date;\n          stat.lastModifiedBy = currentCommit.author;\n          stat.lastCommitHash = currentCommit.hash;\n          stat.lastCommitMessage = currentCommit.subject;\n        }\n      }\n    }\\);\n    \n    const files = Array.from\\(fileStats.values\\(\\)\\).sort\\(\\(a, b\\) => b.modifyCount - a.modifyCount\\);\n    \n    console.log\\('Total files:', files.length\\);\n    console.log\\('Total commits:', \\(stdout.match\\(/COMMIT\\\\|/g\\) || []\\).length\\);\n    console.log\\('\\\\nTop 5 most modified files:'\\);\n    files.slice\\(0, 5\\).forEach\\(f => {\n      console.log\\(`  - ${f.path}: ${f.modifyCount} modifications`\\);\n      console.log\\(`    Last by: ${f.lastModifiedBy} at ${f.lastModifiedDate}`\\);\n    }\\);\n  } catch \\(err\\) {\n    console.error\\('Error:', err.message\\);\n  }\n}\\)\\(\\);\nEOF)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(mkdir -p /Users/mac/vue-learning-app/.claude && ls -la /Users/mac/vue-learning-app/.claude/)",
+      "Bash(rm -rf /tmp/kb-pwa-build-check)",
+      "Bash(mkdir -p /tmp/kb-pwa-build-check)",
+      "Bash(rsync -a --exclude node_modules --exclude dist /Users/mac/vue-learning-app/knowledge-base-pwa/ /tmp/kb-pwa-build-check/)",
+      "Read(//tmp/**)",
+      "Bash(npm install *)",
+      "Bash(git diff *)"
     ]
   },
   "hooks": {
