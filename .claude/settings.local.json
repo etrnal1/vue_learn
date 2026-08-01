@@ -31,7 +31,16 @@
       "Bash(git -C /Users/mac/vue-learning-app diff .claude/settings.local.json)",
       "Bash(git -C /Users/mac/vue-learning-app add .claude/settings.local.json)",
       "Bash(git -C /Users/mac/vue-learning-app status)",
-      "Bash(git -C /Users/mac/vue-learning-app log --oneline -8)"
+      "Bash(git -C /Users/mac/vue-learning-app log --oneline -8)",
+      "Bash(rsync -a --exclude node_modules --exclude dist /Users/mac/vue-learning-app/knowledge-base-pwa/ /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/)",
+      "Bash(echo \"rsync done\")",
+      "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/index.html /Users/mac/vue-learning-app/knowledge-base-pwa/dist/index.html)",
+      "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/sw.js /Users/mac/vue-learning-app/knowledge-base-pwa/dist/sw.js)",
+      "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/.vite/manifest.json /Users/mac/vue-learning-app/knowledge-base-pwa/dist/.vite/manifest.json)",
+      "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/assets/index-C9KiGRJS.css /Users/mac/vue-learning-app/knowledge-base-pwa/dist/assets/index-C9KiGRJS.css)",
+      "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/assets/index-Chbyzazt.js /Users/mac/vue-learning-app/knowledge-base-pwa/dist/assets/index-Chbyzazt.js)",
+      "Bash(rm -f /tmp/claude_auto_commit_lock *)",
+      "Bash(git status *)"
     ]
   },
   "hooks": {
