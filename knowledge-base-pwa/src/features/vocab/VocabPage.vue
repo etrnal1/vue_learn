@@ -7,7 +7,7 @@
         <h1>背单词</h1>
         <p class="hero-text">碎片时间记单词，翻卡片背诵，答错自动进记错本。离线可用。</p>
       </div>
-      <div class="hero-actions">
+      <div class="hero-actions vocab-hero-actions">
         <button type="button" class="btn" :class="{ 'btn-active': subView === 'list' }" @click="subView = 'list'">📖 单词表</button>
         <button type="button" class="btn" :class="{ 'btn-active': subView === 'study' }" @click="subView = 'study'">🗂️ 背单词</button>
         <button type="button" class="btn" :class="{ 'btn-active': subView === 'mistakes' }" @click="subView = 'mistakes'">
@@ -41,14 +41,16 @@
     <transition name="sheet">
       <div v-if="editId !== null" class="sheet-overlay" @click.self="closeEdit">
         <div class="sheet-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Edit</p>
-              <h2>编辑单词</h2>
+          <div class="sheet-content">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Edit</p>
+                <h2>编辑单词</h2>
+              </div>
+              <button type="button" class="mini-btn" @click="closeEdit">关闭</button>
             </div>
-            <button type="button" class="mini-btn" @click="closeEdit">关闭</button>
+            <WordForm :word-id="editId" @done="closeEdit" @deleted="closeEdit" />
           </div>
-          <WordForm :word-id="editId" @done="closeEdit" @deleted="closeEdit" />
         </div>
       </div>
     </transition>

@@ -834,8 +834,12 @@ textarea {
   background: #f2f2f7;
   border-radius: 14px 14px 0 0;
   padding-bottom: calc(var(--safe-bottom) + 8px);
-  max-height: 70vh;
+  max-height: 88vh;
   overflow-y: auto;
+}
+
+.sheet-content {
+  padding: 16px 16px 0;
 }
 
 .sheet-handle {
@@ -3282,13 +3286,22 @@ section.dashboard.panel {
 }
 
 /* ─── 单词表 / 记错本 卡片 ─── */
+.vocab-hero-actions {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.vocab-filter-bar {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
 .word-card {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--card);
   padding: 16px;
   cursor: pointer;
   transition: all 0.15s;

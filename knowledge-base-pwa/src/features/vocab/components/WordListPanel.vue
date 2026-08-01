@@ -8,7 +8,7 @@
       <span class="pill">{{ filteredWords.length }}</span>
     </div>
 
-    <div class="toolbar-group">
+    <div class="toolbar-group vocab-filter-bar">
       <select v-model="categoryFilter" class="input select">
         <option value="">全部分类</option>
         <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
