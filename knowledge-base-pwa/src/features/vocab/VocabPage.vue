@@ -38,22 +38,24 @@
     </section>
 
     <!-- 编辑单词 -->
-    <transition name="sheet">
-      <div v-if="editId !== null" class="sheet-overlay" @click.self="closeEdit">
-        <div class="sheet-panel">
-          <div class="sheet-content">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Edit</p>
-                <h2>编辑单词</h2>
+    <Teleport to="body">
+      <transition name="sheet">
+        <div v-if="editId !== null" class="sheet-overlay" @click.self="closeEdit">
+          <div class="sheet-panel">
+            <div class="sheet-content">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Edit</p>
+                  <h2>编辑单词</h2>
+                </div>
+                <button type="button" class="mini-btn" @click="closeEdit">关闭</button>
               </div>
-              <button type="button" class="mini-btn" @click="closeEdit">关闭</button>
+              <WordForm :word-id="editId" @done="closeEdit" @deleted="closeEdit" />
             </div>
-            <WordForm :word-id="editId" @done="closeEdit" @deleted="closeEdit" />
           </div>
         </div>
-      </div>
-    </transition>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
