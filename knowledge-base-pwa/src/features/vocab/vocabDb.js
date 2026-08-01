@@ -9,6 +9,22 @@ vocabDb.version(1).stores({
   categories: '++id, name, createdAt'
 })
 
+// v2: 加 srsDue 索引支持间隔重复查询
+vocabDb.version(2).stores({
+  words: '++id, categoryId, favorite, isMistake, word, createdAt, srsDue',
+  categories: '++id, name, createdAt'
+}).upgrade((tx) => {
+  const now = Date.now()
+  return tx.table('words').toCollection().modify((word) => {
+    if (word.srsDue === undefined) {
+      word.srsInterval = 0
+      word.srsEase = 2.5
+      word.srsDue = now
+      word.srsReviews = 0
+    }
+  })
+})
+
 // ============ 单词 ============
 
 export async function listWords({ categoryId, favoriteOnly, mistakeOnly } = {}) {
@@ -41,7 +57,11 @@ export async function addWord(data) {
     correctCount: 0,
     wrongCount: 0,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    srsInterval: 0,
+    srsEase: 2.5,
+    srsDue: now,
+    srsReviews: 0
   }
   const id = await vocabDb.words.add(payload)
   return vocabDb.words.get(id)
@@ -73,6 +93,57 @@ export async function toggleFavorite(id) {
 
 export async function setMistake(id, isMistake) {
   await vocabDb.words.update(id, { isMistake: isMistake ? 1 : 0 })
+}
+
+// ============ SRS (间隔重复 SM-2) ============
+
+export async function getDueWords({ categoryId } = {}) {
+  const now = Date.now()
+  let words = await vocabDb.words.where('srsDue').belowOrEqual(now).toArray()
+  if (categoryId) words = words.filter((w) => w.categoryId === categoryId)
+  return words
+}
+
+export async function getDueCount() {
+  return vocabDb.words.where('srsDue').belowOrEqual(Date.now()).count()
+}
+
+// quality: 1=不认识 3=模糊 5=认识（SM-2）
+export async function updateSrs(id, quality) {
+  const word = await vocabDb.words.get(id)
+  if (!word) return 1
+
+  const ease = word.srsEase ?? 2.5
+  const reviews = word.srsReviews ?? 0
+  const interval = word.srsInterval ?? 0
+
+  let newInterval, newEase
+
+  if (quality < 3) {
+    newInterval = 1
+    newEase = Math.max(1.3, parseFloat((ease - 0.2).toFixed(2)))
+  } else {
+    if (reviews === 0) newInterval = 1
+    else if (reviews === 1) newInterval = 6
+    else newInterval = Math.max(1, Math.round(interval * ease))
+
+    newEase = ease + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)
+    newEase = Math.max(1.3, parseFloat(newEase.toFixed(2)))
+  }
+
+  const newDue = Date.now() + newInterval * 24 * 60 * 60 * 1000
+
+  await vocabDb.words.update(id, {
+    srsInterval: newInterval,
+    srsEase: newEase,
+    srsDue: newDue,
+    srsReviews: reviews + 1,
+    isMistake: quality < 3 ? 1 : quality === 5 ? 0 : (word.isMistake || 0),
+    correctCount: quality >= 3 ? (word.correctCount || 0) + 1 : (word.correctCount || 0),
+    wrongCount: quality < 3 ? (word.wrongCount || 0) + 1 : (word.wrongCount || 0)
+  })
+
+  return newInterval
 }
 
 export async function recordStudyResult(id, remembered) {

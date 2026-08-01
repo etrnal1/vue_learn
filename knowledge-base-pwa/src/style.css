@@ -3516,12 +3516,16 @@ section.dashboard.panel {
 }
 
 .study-answer-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
+.srs-actions {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 .btn-answer {
-  flex: 1;
   min-height: 52px;
   font-size: 16px;
 }
@@ -3538,6 +3542,51 @@ section.dashboard.panel {
   color: #fff;
   border-color: #16a34a;
 }
+
+.btn-warning {
+  border: none;
+  background: linear-gradient(135deg, #d97706, #b45309);
+  color: white;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.28);
+}
+[data-theme="dark"] .btn-warning {
+  background: #d97706;
+  color: #fff;
+  border-color: #d97706;
+}
+
+/* SRS 配置区 */
+.srs-due-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.srs-due-count {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+}
+.srs-due-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.srs-free-link {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  font-size: 0.82rem;
+  text-align: left;
+  padding: 0;
+  box-shadow: none;
+}
+.srs-free-link:hover {
+  color: var(--primary);
+}
+
+/* SRS 总结 */
+.study-summary-line.warning { color: #d97706; }
 
 .study-summary {
   display: grid;

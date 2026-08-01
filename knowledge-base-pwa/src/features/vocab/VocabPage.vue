@@ -9,7 +9,10 @@
       </div>
       <div class="hero-actions vocab-hero-actions">
         <button type="button" class="btn" :class="{ 'btn-active': subView === 'list' }" @click="subView = 'list'">📖 单词表</button>
-        <button type="button" class="btn" :class="{ 'btn-active': subView === 'study' }" @click="subView = 'study'">🗂️ 背单词</button>
+        <button type="button" class="btn" :class="{ 'btn-active': subView === 'srs' }" @click="subView = 'srs'">
+          🗂️ 背单词
+          <span v-if="dueCount > 0" class="pill vocab-mistake-pill">{{ dueCount }}</span>
+        </button>
         <button type="button" class="btn" :class="{ 'btn-active': subView === 'mistakes' }" @click="subView = 'mistakes'">
           📕 记错本
           <span v-if="mistakeCount > 0" class="pill vocab-mistake-pill">{{ mistakeCount }}</span>
@@ -21,6 +24,10 @@
     <!-- 子视图 -->
     <section class="panel">
       <WordListPanel v-if="subView === 'list'" ref="listPanel" @edit="openEdit" />
+
+      <StudyPanel v-else-if="subView === 'srs'" source="srs"
+        @mistake-count-change="onMistakeCountChange"
+        @switch-to-free="subView = 'study'" />
 
       <StudyPanel v-else-if="subView === 'study'" source="all" @mistake-count-change="onMistakeCountChange" />
 
@@ -64,7 +71,7 @@ import WordForm from './components/WordForm.vue'
 import WordListPanel from './components/WordListPanel.vue'
 import StudyPanel from './components/StudyPanel.vue'
 import MistakeBookPanel from './components/MistakeBookPanel.vue'
-import { listWords } from './vocabDb.js'
+import { listWords, getDueCount } from './vocabDb.js'
 
 export default {
   name: 'VocabPage',
@@ -75,14 +82,21 @@ export default {
 
   data() {
     return {
-      subView: 'list', // list | study | mistakes | add
+      subView: 'list', // list | srs | study | mistakes | add
       editId: null,
-      mistakeCount: 0
+      mistakeCount: 0,
+      dueCount: 0
     }
   },
 
   async mounted() {
-    await this.refreshMistakeCount()
+    await Promise.all([this.refreshMistakeCount(), this.refreshDueCount()])
+  },
+
+  watch: {
+    subView(val) {
+      if (val === 'srs' || val === 'list') this.refreshDueCount()
+    }
   },
 
   methods: {
@@ -106,6 +120,9 @@ export default {
     async refreshMistakeCount() {
       const mistakes = await listWords({ mistakeOnly: true })
       this.onMistakeCountChange(mistakes.length)
+    },
+    async refreshDueCount() {
+      this.dueCount = await getDueCount()
     }
   }
 }
