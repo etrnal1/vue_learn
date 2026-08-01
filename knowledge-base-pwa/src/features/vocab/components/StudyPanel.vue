@@ -35,10 +35,12 @@
         <div v-if="!flipped" class="flip-face">
           <div class="flip-word">{{ currentWord.word }}</div>
           <div v-if="currentWord.phonetic" class="flip-phonetic">{{ currentWord.phonetic }}</div>
+          <button type="button" class="speak-btn flip-speak" @click.stop="speakCurrent" title="朗读">🔊</button>
           <p class="flip-hint">点击卡片查看释义</p>
         </div>
         <div v-else class="flip-face flip-back">
           <div class="flip-word small">{{ currentWord.word }}</div>
+          <button type="button" class="speak-btn" style="margin: 4px auto 8px; display: block" @click.stop="speakCurrent" title="朗读">🔊</button>
           <ul class="flip-meanings">
             <li v-for="(m, i) in currentWord.meanings" :key="i">{{ m }}</li>
           </ul>
@@ -66,6 +68,7 @@
 
 <script>
 import { listWords, listCategories, recordStudyResult } from '../vocabDb.js'
+import { speak } from '../tts.js'
 
 export default {
   name: 'StudyPanel',
@@ -132,6 +135,9 @@ export default {
       } else {
         this.currentIndex++
       }
+    },
+    speakCurrent() {
+      speak(this.currentWord.word)
     },
     async emitMistakeCount() {
       const mistakes = await listWords({ mistakeOnly: true })

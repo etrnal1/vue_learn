@@ -3394,6 +3394,48 @@ section.dashboard.panel {
   flex: 1;
 }
 
+.speak-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 4px 6px;
+  cursor: pointer;
+  opacity: 0.6;
+  border-radius: 8px;
+  line-height: 1;
+  transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.speak-btn:hover, .speak-btn:active {
+  opacity: 1;
+  background: rgba(15, 118, 110, 0.1);
+}
+
+.flip-speak {
+  display: block;
+  margin: 10px auto 2px;
+  font-size: 22px;
+}
+
+.phonetic-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.phonetic-row .input {
+  flex: 1;
+}
+
+.form-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.form-hint-err {
+  color: #dc2626;
+}
+
 /* ─── 背单词卡片翻面 ─── */
 .study-config {
   display: grid;

@@ -15,8 +15,14 @@
     </div>
 
     <div class="form-group">
-      <label>音标 / 备注</label>
-      <input v-model.trim="form.phonetic" class="input" type="text" placeholder="例如 /ˈæpl/（选填）" />
+      <label>音标</label>
+      <div class="phonetic-row">
+        <input v-model.trim="form.phonetic" class="input" type="text" placeholder="例如 /ˈæpl/（选填）" />
+        <button type="button" class="mini-btn" :disabled="!form.word || lookingUp" @click="autoLookup">
+          {{ lookingUp ? '查询中…' : '自动查询' }}
+        </button>
+      </div>
+      <p v-if="lookupMsg" class="form-hint" :class="{ 'form-hint-err': lookupFailed }">{{ lookupMsg }}</p>
     </div>
 
     <div class="form-group">
@@ -47,6 +53,7 @@
 
 <script>
 import { addWord, updateWord, deleteWord, getWord, listCategories, addCategory } from '../vocabDb.js'
+import { lookupPhonetic } from '../tts.js'
 
 export default {
   name: 'WordForm',
@@ -62,6 +69,9 @@ export default {
       categories: [],
       newCategoryName: '',
       error: '',
+      lookingUp: false,
+      lookupMsg: '',
+      lookupFailed: false,
       form: {
         word: '',
         meanings: [''],
@@ -87,6 +97,28 @@ export default {
   },
 
   methods: {
+    async autoLookup() {
+      if (!this.form.word) return
+      this.lookingUp = true
+      this.lookupMsg = ''
+      this.lookupFailed = false
+      try {
+        const phonetic = await lookupPhonetic(this.form.word)
+        if (phonetic) {
+          this.form.phonetic = phonetic
+          this.lookupMsg = '音标已自动填入'
+          this.lookupFailed = false
+        } else {
+          this.lookupMsg = '未找到音标，可手动输入'
+          this.lookupFailed = true
+        }
+      } catch {
+        this.lookupMsg = '查询失败（可能未联网），可手动输入'
+        this.lookupFailed = true
+      } finally {
+        this.lookingUp = false
+      }
+    },
     addMeaning() {
       this.form.meanings.push('')
     },

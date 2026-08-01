@@ -26,6 +26,7 @@
           </div>
           <p class="word-meanings">{{ w.meanings.join('；') }}</p>
         </div>
+        <button type="button" class="speak-btn" @click="speak(w.word)" title="朗读">🔊</button>
         <button type="button" class="mini-btn word-master-btn" @click="markMastered(w.id)">已掌握</button>
       </div>
     </div>
@@ -37,6 +38,7 @@
 <script>
 import StudyPanel from './StudyPanel.vue'
 import { listWords, setMistake } from '../vocabDb.js'
+import { speak } from '../tts.js'
 
 export default {
   name: 'MistakeBookPanel',
@@ -61,6 +63,7 @@ export default {
       this.words = await listWords({ mistakeOnly: true })
       this.$emit('mistake-count-change', this.words.length)
     },
+    speak(word) { speak(word) },
     async markMastered(id) {
       await setMistake(id, false)
       await this.loadWords()
