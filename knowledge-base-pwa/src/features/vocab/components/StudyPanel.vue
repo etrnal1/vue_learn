@@ -90,7 +90,7 @@
 
 <script>
 import { listWords, listCategories, recordStudyResult, getDueWords, getDueCount, updateSrs } from '../vocabDb.js'
-import { speak } from '../tts.js'
+import { speakWithAudio } from '../tts.js'
 
 export default {
   name: 'StudyPanel',
@@ -187,7 +187,7 @@ export default {
     },
 
     speakCurrent() {
-      speak(this.currentWord.word)
+      speakWithAudio(this.currentWord.audioUrl, this.currentWord.word)
     },
 
     async emitMistakeCount() {

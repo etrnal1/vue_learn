@@ -44,7 +44,8 @@
       "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/assets/index-BWSYHFKr.css /Users/mac/vue-learning-app/knowledge-base-pwa/dist/assets/index-BWSYHFKr.css)",
       "Bash(cp -f /private/tmp/claude-501/-Users-mac-vue-learning-app/d33efb52-962d-42c1-8ad3-eaa118c753a5/scratchpad/kb-pwa-build/dist/assets/index-CO5FXKUn.js /Users/mac/vue-learning-app/knowledge-base-pwa/dist/assets/index-CO5FXKUn.js)",
       "Bash(rsync -a --delete --exclude=node_modules --exclude=dist --exclude=.git /Users/mac/vue-learning-app/knowledge-base-pwa/ /private/tmp/kb-pwa-build-srs/)",
-      "Bash(rsync -a --delete --exclude=.git --exclude=.nojekyll /private/tmp/kb-pwa-build-srs/dist/ /Users/mac/vue-learning-app/knowledge-base-pwa/dist/)"
+      "Bash(rsync -a --delete --exclude=.git --exclude=.nojekyll /private/tmp/kb-pwa-build-srs/dist/ /Users/mac/vue-learning-app/knowledge-base-pwa/dist/)",
+      "Bash(python3 -c ' *)"
     ]
   },
   "hooks": {

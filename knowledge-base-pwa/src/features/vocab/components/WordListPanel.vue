@@ -38,7 +38,7 @@
           <p class="word-meanings">{{ w.meanings.join('；') }}</p>
           <span v-if="categoryName(w.categoryId)" class="note-cat-tag">{{ categoryName(w.categoryId) }}</span>
         </div>
-        <button type="button" class="speak-btn" @click.stop="speak(w.word)" title="朗读">🔊</button>
+        <button type="button" class="speak-btn" @click.stop="speakWithAudio(w.audioUrl, w.word)" title="朗读">🔊</button>
         <button type="button" class="star-btn" :class="{ starred: w.favorite === 1 }" @click.stop="toggleFav(w.id)">
           {{ w.favorite === 1 ? '★' : '☆' }}
         </button>
@@ -49,7 +49,7 @@
 
 <script>
 import { listWords, listCategories, toggleFavorite } from '../vocabDb.js'
-import { speak } from '../tts.js'
+import { speakWithAudio } from '../tts.js'
 
 export default {
   name: 'WordListPanel',
@@ -103,8 +103,8 @@ export default {
       await toggleFavorite(id)
       await this.loadAll()
     },
-    speak(word) {
-      speak(word)
+    speakWithAudio(audioUrl, word) {
+      speakWithAudio(audioUrl, word)
     }
   }
 }

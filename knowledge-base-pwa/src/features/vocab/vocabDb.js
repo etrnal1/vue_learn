@@ -61,7 +61,8 @@ export async function addWord(data) {
     srsInterval: 0,
     srsEase: 2.5,
     srsDue: now,
-    srsReviews: 0
+    srsReviews: 0,
+    audioUrl: String(data.audioUrl || '')
   }
   const id = await vocabDb.words.add(payload)
   return vocabDb.words.get(id)
@@ -76,6 +77,7 @@ export async function updateWord(id, changes) {
   if (changes.example !== undefined) patch.example = String(changes.example).trim()
   if (changes.phonetic !== undefined) patch.phonetic = String(changes.phonetic).trim()
   if (changes.note !== undefined) patch.note = String(changes.note).trim()
+  if (changes.audioUrl !== undefined) patch.audioUrl = changes.audioUrl || ''
   if (changes.categoryId !== undefined) patch.categoryId = changes.categoryId || null
   await vocabDb.words.update(id, patch)
   return vocabDb.words.get(id)

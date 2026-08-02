@@ -53,7 +53,7 @@
 
 <script>
 import { addWord, updateWord, deleteWord, getWord, listCategories, addCategory } from '../vocabDb.js'
-import { lookupPhonetic } from '../tts.js'
+import { lookupPhoneticAndAudio } from '../tts.js'
 
 export default {
   name: 'WordForm',
@@ -76,6 +76,7 @@ export default {
         word: '',
         meanings: [''],
         phonetic: '',
+        audioUrl: '',
         example: '',
         categoryId: null
       }
@@ -90,6 +91,7 @@ export default {
         this.form.word = word.word
         this.form.meanings = word.meanings && word.meanings.length ? [...word.meanings] : ['']
         this.form.phonetic = word.phonetic || ''
+        this.form.audioUrl = word.audioUrl || ''
         this.form.example = word.example || ''
         this.form.categoryId = word.categoryId || null
       }
@@ -103,10 +105,11 @@ export default {
       this.lookupMsg = ''
       this.lookupFailed = false
       try {
-        const phonetic = await lookupPhonetic(this.form.word)
+        const { phonetic, audioUrl } = await lookupPhoneticAndAudio(this.form.word)
         if (phonetic) {
           this.form.phonetic = phonetic
-          this.lookupMsg = '音标已自动填入'
+          this.form.audioUrl = audioUrl || ''
+          this.lookupMsg = audioUrl ? '音标 + 真人发音已获取' : '音标已自动填入'
           this.lookupFailed = false
         } else {
           this.lookupMsg = '未找到音标，可手动输入'
@@ -148,6 +151,7 @@ export default {
         word,
         meanings,
         phonetic: this.form.phonetic,
+        audioUrl: this.form.audioUrl,
         example: this.form.example,
         categoryId: this.form.categoryId
       }
