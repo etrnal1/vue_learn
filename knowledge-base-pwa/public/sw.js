@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kb-pwa-v19'
+const CACHE_VERSION = 'kb-pwa-v20'
 const STATIC_CACHE = `knowledge-base-static-${CACHE_VERSION}`
 
 // 构建时由 vite 插件自动注入资源列表，不再运行时 fetch manifest

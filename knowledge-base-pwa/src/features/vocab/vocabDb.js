@@ -146,6 +146,35 @@ export async function updateSrs(id, quality) {
   return newInterval
 }
 
+// ============ 批量导入 ============
+
+export async function bulkImport(rows, { categoryId = null, skipDuplicates = true } = {}) {
+  const existing = await vocabDb.words.toArray()
+  const existingSet = new Set(existing.map((w) => w.word.toLowerCase().trim()))
+  const now = Date.now()
+  let imported = 0, skipped = 0
+
+  for (const row of rows) {
+    const key = (row.word || '').toLowerCase().trim()
+    if (!key) continue
+    if (skipDuplicates && existingSet.has(key)) { skipped++; continue }
+    await vocabDb.words.add({
+      word: row.word.trim(),
+      meanings: Array.isArray(row.meanings) ? row.meanings.filter(Boolean) : [],
+      example: row.example || '',
+      phonetic: row.phonetic || '',
+      note: '',
+      categoryId: row.categoryId || categoryId || null,
+      favorite: 0, isMistake: 0, correctCount: 0, wrongCount: 0,
+      createdAt: now, updatedAt: now,
+      srsInterval: 0, srsEase: 2.5, srsDue: now, srsReviews: 0
+    })
+    existingSet.add(key)
+    imported++
+  }
+  return { imported, skipped }
+}
+
 export async function recordStudyResult(id, remembered) {
   const word = await vocabDb.words.get(id)
   if (!word) return

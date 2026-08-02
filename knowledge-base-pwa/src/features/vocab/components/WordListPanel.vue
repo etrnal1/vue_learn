@@ -18,9 +18,13 @@
       </button>
     </div>
 
+    <div class="toolbar-group">
+      <input v-model.trim="searchKeyword" class="input" placeholder="搜索单词、释义…" />
+    </div>
+
     <div v-if="filteredWords.length === 0" class="empty">
-      <strong>{{ categoryFilter || favoriteOnly ? '没有匹配的单词' : '还没有单词' }}</strong>
-      <p>{{ categoryFilter || favoriteOnly ? '试试调整筛选条件' : '点击"添加单词"开始记录' }}</p>
+      <strong>{{ categoryFilter || favoriteOnly || searchKeyword ? '没有匹配的单词' : '还没有单词' }}</strong>
+      <p>{{ categoryFilter || favoriteOnly || searchKeyword ? '试试调整筛选条件' : '点击"添加单词"开始记录' }}</p>
     </div>
 
     <div v-else class="word-card-grid">
@@ -57,7 +61,8 @@ export default {
       words: [],
       categories: [],
       categoryFilter: '',
-      favoriteOnly: false
+      favoriteOnly: false,
+      searchKeyword: ''
     }
   },
 
@@ -69,6 +74,13 @@ export default {
       }
       if (this.favoriteOnly) {
         list = list.filter((w) => w.favorite === 1)
+      }
+      if (this.searchKeyword) {
+        const kw = this.searchKeyword.toLowerCase()
+        list = list.filter((w) =>
+          w.word.toLowerCase().includes(kw) ||
+          (w.meanings || []).some((m) => m.toLowerCase().includes(kw))
+        )
       }
       return list
     }

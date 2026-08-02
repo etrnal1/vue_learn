@@ -3613,3 +3613,113 @@ section.dashboard.panel {
   gap: 10px;
   margin-top: 12px;
 }
+
+/* ─── 批量导入 ─── */
+.import-pick {
+  display: grid;
+  gap: 16px;
+  max-width: 520px;
+}
+
+.import-format-hint {
+  background: var(--input-bg);
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.import-hint-code {
+  background: rgba(0,0,0,0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  overflow-x: auto;
+  margin: 6px 0 0;
+  line-height: 1.6;
+  color: var(--text);
+}
+[data-theme="dark"] .import-hint-code {
+  background: rgba(255,255,255,0.07);
+}
+
+.import-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.import-preview {
+  display: grid;
+  gap: 14px;
+  max-width: 600px;
+}
+
+.import-stats-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.import-pill-warn {
+  background: rgba(217,119,6,0.12);
+  color: #d97706;
+  border: 0.5px solid rgba(217,119,6,0.25);
+}
+
+.import-table-wrap {
+  overflow-x: auto;
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.import-table th,
+.import-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 0.5px solid var(--border);
+  white-space: nowrap;
+}
+.import-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.import-table tbody tr:last-child td { border-bottom: none; }
+.import-num { color: var(--muted); width: 32px; }
+.import-meanings { max-width: 180px; white-space: normal; }
+.import-muted { color: var(--muted); }
+.import-more {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+.import-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.import-done {
+  text-align: center;
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+}
+.import-done-icon { font-size: 2.4rem; margin: 0; }
+.import-done-title { font-size: 1.2rem; font-weight: 700; margin: 0; }

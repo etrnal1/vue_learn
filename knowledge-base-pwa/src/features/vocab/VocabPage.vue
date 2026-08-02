@@ -18,6 +18,7 @@
           <span v-if="mistakeCount > 0" class="pill vocab-mistake-pill">{{ mistakeCount }}</span>
         </button>
         <button type="button" class="btn btn-primary" :class="{ 'btn-active': subView === 'add' }" @click="subView = 'add'">➕ 添加单词</button>
+        <button type="button" class="btn" :class="{ 'btn-active': subView === 'import' }" @click="subView = 'import'">📥 导入</button>
       </div>
     </section>
 
@@ -32,6 +33,8 @@
       <StudyPanel v-else-if="subView === 'study'" source="all" @mistake-count-change="onMistakeCountChange" />
 
       <MistakeBookPanel v-else-if="subView === 'mistakes'" @mistake-count-change="onMistakeCountChange" />
+
+      <ImportPanel v-else-if="subView === 'import'" @done="handleImportDone" />
 
       <template v-else-if="subView === 'add'">
         <div class="section-head">
@@ -71,18 +74,19 @@ import WordForm from './components/WordForm.vue'
 import WordListPanel from './components/WordListPanel.vue'
 import StudyPanel from './components/StudyPanel.vue'
 import MistakeBookPanel from './components/MistakeBookPanel.vue'
+import ImportPanel from './components/ImportPanel.vue'
 import { listWords, getDueCount } from './vocabDb.js'
 
 export default {
   name: 'VocabPage',
 
-  components: { WordForm, WordListPanel, StudyPanel, MistakeBookPanel },
+  components: { WordForm, WordListPanel, StudyPanel, MistakeBookPanel, ImportPanel },
 
   emits: ['mistake-count-change'],
 
   data() {
     return {
-      subView: 'list', // list | srs | study | mistakes | add
+      subView: 'list', // list | srs | study | mistakes | add | import
       editId: null,
       mistakeCount: 0,
       dueCount: 0
@@ -112,6 +116,12 @@ export default {
     async handleAddDone() {
       this.subView = 'list'
       await this.refreshMistakeCount()
+    },
+    async handleImportDone() {
+      this.subView = 'list'
+      await Promise.all([this.refreshMistakeCount(), this.refreshDueCount()])
+      await this.$nextTick()
+      await this.$refs.listPanel?.loadAll()
     },
     onMistakeCountChange(count) {
       this.mistakeCount = count
